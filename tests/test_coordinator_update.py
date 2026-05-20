@@ -5,8 +5,8 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 # conftest.py installs all HA stubs before this module is collected.
-from custom_components.tplink_powerline.coordinator import TpLinkPowerlineCoordinator
-from custom_components.tplink_powerline.const import get_mac
+from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
+from custom_components.powerline.const import get_mac
 
 # Use uppercase MACs so get_mac() normalisation is a no-op.
 MAC_A = "AA:BB:CC:DD:EE:01"

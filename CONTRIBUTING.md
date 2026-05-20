@@ -19,7 +19,7 @@ Please use the [bug report template](https://github.com/Chance-Konstruktion/ha-t
 - Home Assistant version + integration version
 - Adapter model(s) + firmware version
 - Reproducible steps
-- Debug logs from `custom_components.tplink_powerline`
+- Debug logs from `custom_components.powerline`
 - Comparison with the Windows **tpPLC** app (if available)
 
 ## Debug Logging
@@ -27,7 +27,7 @@ Please use the [bug report template](https://github.com/Chance-Konstruktion/ha-t
 ```yaml
 logger:
   logs:
-    custom_components.tplink_powerline: debug
+    custom_components.powerline: debug
 ```
 
 ## Wireshark (optional but very helpful)
@@ -64,7 +64,7 @@ Small, focused PRs are preferred:
 
 1. Describe the problem or feature briefly
 2. Keep changes scoped and well-separated
-3. Validate with `python -m compileall custom_components/tplink_powerline`
+3. Validate with `python -m compileall custom_components/powerline`
 4. For protocol changes: include log excerpts or Wireshark captures
 5. Update translations (`strings.json`, `en.json`, `de.json`) if adding user-visible strings
 
@@ -75,7 +75,7 @@ git clone https://github.com/Chance-Konstruktion/ha-tp-link-powerline.git
 cd ha-tp-link-powerline
 
 # Validate syntax
-python -m compileall custom_components/tplink_powerline
+python -m compileall custom_components/powerline
 
 # Test in HA dev container or copy to config/custom_components/
 ```
@@ -83,7 +83,7 @@ python -m compileall custom_components/tplink_powerline
 ## Architecture
 
 ```
-custom_components/tplink_powerline/
+custom_components/powerline/
   __init__.py       -- Entry setup, migration, device cleanup
   config_flow.py    -- Config + Options flow
   const.py          -- Constants, MAC normalization

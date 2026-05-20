@@ -1,5 +1,5 @@
 {
-  "domain": "tplink_powerline",
+  "domain": "powerline",
   "name": "Powerline Network",
   "codeowners": ["@Chance-Konstruktion"],
   "config_flow": true,

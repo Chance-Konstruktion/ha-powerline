@@ -64,7 +64,7 @@ body:
     id: ha_logs
     attributes:
       label: Relevante Home Assistant Logs
-      description: Bitte Debug-Logs aus `custom_components.tplink_powerline` einfügen
+      description: Bitte Debug-Logs aus `custom_components.powerline` einfügen
       render: shell
     validations:
       required: true

@@ -7,10 +7,10 @@ from unittest import TestCase
 _MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
-    / "tplink_powerline"
+    / "powerline"
     / "homeplug.py"
 )
-_SPEC = importlib.util.spec_from_file_location("tplink_powerline_homeplug", _MODULE_PATH)
+_SPEC = importlib.util.spec_from_file_location("powerline_homeplug", _MODULE_PATH)
 _MODULE = importlib.util.module_from_spec(_SPEC)
 assert _SPEC and _SPEC.loader
 _SPEC.loader.exec_module(_MODULE)
