@@ -64,7 +64,7 @@ sudo setcap cap_net_raw+ep $(readlink -f $(which python3))
 4. Go to **Settings** > **Devices & Services** > **Add Integration** > **"Powerline Network"**
 
 ### Manual
-1. Copy `custom_components/tplink_powerline` to your `config/custom_components/` directory
+1. Copy `custom_components/powerline` to your `config/custom_components/` directory
 2. Restart Home Assistant
 3. Go to **Settings** > **Devices & Services** > **Add Integration** > **"Powerline Network"**
 4. Click **Next** -- adapters are discovered automatically
@@ -135,7 +135,7 @@ Home Assistant (Ethernet, CAP_NET_RAW)
 ```yaml
 logger:
   logs:
-    custom_components.tplink_powerline: debug
+    custom_components.powerline: debug
 ```
 
 ### Common Issues
@@ -166,7 +166,7 @@ eth.type == 0x88e1 || eth.type == 0x8912
 Please use the [bug report template](https://github.com/Chance-Konstruktion/ha-tp-link-powerline/issues/new?template=bug_report.yml) and include:
 - Home Assistant version + integration version
 - Adapter model(s) + firmware
-- Debug logs from `custom_components.tplink_powerline`
+- Debug logs from `custom_components.powerline`
 - Comparison with the Windows **tpPLC** app (if available)
 
 ## License

@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Any
 
-DOMAIN = "tplink_powerline"
+DOMAIN = "powerline"
 MANUFACTURER = "Powerline"
 
 # Polling interval (seconds)

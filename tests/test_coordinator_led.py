@@ -5,7 +5,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 # conftest.py installs all HA stubs before this module is collected.
-from custom_components.tplink_powerline.coordinator import TpLinkPowerlineCoordinator
+from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
 
 
 class _FakeHass:
@@ -57,7 +57,7 @@ class TestCoordinatorLed(IsolatedAsyncioTestCase):
         )
 
         # Patch LED_SET_TIMEOUT to something tiny so the test is fast
-        import custom_components.tplink_powerline.coordinator as coord_mod
+        import custom_components.powerline.coordinator as coord_mod
         original = coord_mod.LED_SET_TIMEOUT
         coord_mod.LED_SET_TIMEOUT = 0.01
         try:
