@@ -10,7 +10,9 @@ Communicates directly via **HomePlug AV** (Layer 2, Ethertype `0x88E1`) and **ME
 
 ## Features
 
-> **Current status:** Only the **Online/Offline status** (Connected / Disconnected) is confirmed to work reliably. All other features listed below are implemented but **not yet verified** to work correctly on real hardware. Use them with caution and report your findings.
+> **Current status:** The **Online/Offline status** is confirmed to work reliably (it rides on the universal HomePlug AV `CC_DISCOVER_LIST`, which every chipset answers).
+>
+> The MEDIAXTREAM (Broadcom) features below were re-implemented against the documented protocol (`serock/mediaxtream-dissector`, `serock/pla-util`) after several **wrong MMTYPE values** were found — e.g. Network Stats was `0xA034` instead of `0xA02C`, Station Info `0xA080` instead of `0xA04C`, and LED/Power-Saving were sent as opaque "action" blobs instead of structured **Set Parameter** writes (LED = param `0x003E`, Power-Saving = `0x0029`). These corrections are expected to make TX/RX rates, LED and Power-Saving work, but still need **confirmation on real hardware**. Please report your findings (debug log + Wireshark capture).
 
 - **Auto-Discovery** -- finds all Powerline adapters automatically via Layer 2
 - **Online Status** per adapter (BinarySensor with `device_class: connectivity`) ✅ **Working**

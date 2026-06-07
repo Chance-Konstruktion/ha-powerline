@@ -44,34 +44,41 @@ CC_DISCOVER_LIST_REQ = 0x0014
 CC_DISCOVER_LIST_CNF = 0x0015
 
 # ── MEDIAXTREAM MMEs (0x8912, Broadcom BCM60xxx only) ──
-# From pla-util wiki + Wireshark MEDIAXTREAM dissector
+# MMTYPE values verified against serock/mediaxtream-dissector (the Wireshark
+# Mediaxtream dissector) and serock/pla-util. Earlier values for NW_STATS
+# (0xA034) and STATION_INFO (0xA080) were wrong and never got a response —
+# that is the main reason TX/RX rates always read 0.
 MX_DISCOVER_REQ       = 0xA070
 MX_DISCOVER_CNF       = 0xA071
-MX_NW_INFO_REQ        = 0xA028  # Network Info (contains station list + rates)
+MX_NW_INFO_REQ        = 0xA028  # Network Info (station list)
 MX_NW_INFO_CNF        = 0xA029
-MX_NW_STATS_REQ       = 0xA034  # Network Stats / Sniffer Request
-MX_NW_STATS_CNF       = 0xA035
+MX_NW_STATS_REQ       = 0xA02C  # Network Stats (avg PHY rates) = pla-util get-network-stats
+MX_NW_STATS_CNF       = 0xA02D
 MX_GET_PARAM_REQ      = 0xA05C  # Get Parameter
 MX_GET_PARAM_CNF      = 0xA05D
-MX_SET_KEY_REQ        = 0xA018  # Set Key
+MX_SET_PARAM_REQ      = 0xA058  # Set Parameter (LED, power saving, NMK, HFID, ...)
+MX_SET_PARAM_CNF      = 0xA059
+MX_SET_KEY_REQ        = 0xA018  # Set Key (legacy)
 MX_SET_KEY_CNF        = 0xA019
-MX_LINK_STATS_REQ     = 0xA032  # Link Stats
+MX_LINK_STATS_REQ     = 0xA032  # Link Stats (undocumented fallback)
 MX_LINK_STATS_CNF     = 0xA033
-MX_GET_STATION_REQ    = 0xA080  # Get Station Info
-MX_GET_STATION_CNF    = 0xA081
-MX_ACTION_REQ         = 0xA058  # Broadcom action command (LED, power saving, QoS)
-MX_ACTION_CNF         = 0xA059  # Response to action command
-MX_ACTION_ALT_CNF     = 0xA069  # Alternative action response (seen on TL-PA7017 LED OFF)
+MX_GET_STATION_REQ    = 0xA04C  # Station Info = pla-util get-station-info
+MX_GET_STATION_CNF    = 0xA04D
+# 0xA058/0xA059 used to be modelled as an opaque "action" command. It is
+# actually Set Parameter — these aliases keep older call sites working.
+MX_ACTION_REQ         = MX_SET_PARAM_REQ
+MX_ACTION_CNF         = MX_SET_PARAM_CNF
+MX_ACTION_ALT_CNF     = 0xA069  # Alternative confirmation seen on some BCM firmware
 MX_STATUS_IND         = 0x6046  # Periodic status indication (TX/RX rates, every 2-5s)
 
-# Valid confirmations for MX_ACTION_REQ (0xA058).
+# Valid confirmations for Set Parameter (0xA058).
 # 0x6046 is a passive status broadcast every 2-5s regardless of any request,
 # so accepting it as an ACK produces false positives. 0xA019 / 0xA05D / 0xA071
-# are responses to other requests; seeing those instead of an action CNF means
-# the adapter silently ignored our action frame.
+# are responses to other requests; seeing those instead of a Set Parameter CNF
+# means the adapter silently ignored our write.
 _MX_ACTION_OK = frozenset((
-    MX_ACTION_CNF,      # 0xA059 - standard action confirmation
-    MX_ACTION_ALT_CNF,  # 0xA069 - alternative action confirmation (BCM firmware)
+    MX_SET_PARAM_CNF,   # 0xA059 - Set Parameter confirmation
+    MX_ACTION_ALT_CNF,  # 0xA069 - alternative confirmation (BCM firmware)
 ))
 
 # ── Qualcomm Vendor-Specific MMEs (0x88E1) ──
@@ -85,11 +92,16 @@ HPAV_MME_HDR = 5    # Version(1) + MMType(2) + FragInfo(2)
 MX_MME_HDR = 9      # Version(1) + MMType(2) + FragInfo(2) + OUI(3) + SeqNum(1)
 ETH_MIN = 60
 
-# ── MEDIAXTREAM Get Parameter IDs (from pla-util wiki) ──
+# ── MEDIAXTREAM Get/Set Parameter IDs ──
+# Verified against serock/mediaxtream-dissector. These are the same IDs used
+# by both Get Parameter (0xA05C, read) and Set Parameter (0xA058, write).
 PARAM_MANUFACTURER_HFID = 0x0001
 PARAM_USER_HFID         = 0x0025
 PARAM_MANUFACTURER_DAK1 = 0x0009
 PARAM_USER_NMK          = 0x0024
+PARAM_POWER_STANDBY     = 0x0029  # Power Manager Standby Timeout (power saving)
+PARAM_LED_CONTROL       = 0x003E  # LED on/off
+PARAM_LED_OPTIONS       = 0x003F  # LED options/behaviour
 
 
 # ══════════════════════════════════════════════════════════
@@ -179,6 +191,25 @@ def build_mx_frame(dst: bytes, src: bytes, mmtype: int, seq: int = 1,
         + payload
     )
     return frame.ljust(ETH_MIN, b"\x00")
+
+
+def build_mx_set_param(dst: bytes, src: bytes, param_id: int, value: bytes,
+                       octets_per_element: int = 1, seq: int = 1,
+                       version: int = 0x02) -> bytes:
+    """Build a MEDIAXTREAM Set Parameter (0xA058) frame.
+
+    Payload layout (serock/mediaxtream-dissector):
+      ParamID(2 LE) + OctetsPerElement(1) + NumElements(2 LE) + Value(N)
+    """
+    num_elements = max(1, len(value) // octets_per_element)
+    payload = (
+        struct.pack("<H", param_id)
+        + struct.pack("<B", octets_per_element)
+        + struct.pack("<H", num_elements)
+        + value
+    )
+    return build_mx_frame(dst, src, MX_SET_PARAM_REQ, seq=seq,
+                          payload=payload, version=version)
 
 
 # ══════════════════════════════════════════════════════════
@@ -684,10 +715,10 @@ class HomeplugAV:
             self._chipset = "broadcom"
             return True
 
-        # ── A: MX NW_STATS (0xA034) — primary Broadcom rate method ──
+        # ── A: MX NW_STATS (0xA02C) — primary Broadcom rate method ──
         # This is the dedicated PHY rate request for Broadcom chipsets.
         # Unicast to each adapter, then broadcast as fallback.
-        _LOGGER.debug("Trying MX NW_STATS (0xA034) unicast...")
+        _LOGGER.debug("Trying MX NW_STATS (0xA02C) unicast...")
         for mac in list(devices.keys()):
             dst = mac_to_bytes(mac)
             frame = build_mx_frame(dst, self._src_mac,
@@ -710,7 +741,7 @@ class HomeplugAV:
                                          "%s TX=%d RX=%d", m, tx, rx)
 
         if not found:
-            _LOGGER.debug("Trying MX NW_STATS (0xA034) broadcast...")
+            _LOGGER.debug("Trying MX NW_STATS (0xA02C) broadcast...")
             frame = build_mx_frame(BROADCAST_MAC, self._src_mac,
                                    MX_NW_STATS_REQ,
                                    seq=self._next_seq())
@@ -759,8 +790,8 @@ class HomeplugAV:
         if found:
             return True
 
-        # ── C: MX GET_STATION_INFO (0xA080) UNICAST to each adapter ──
-        _LOGGER.debug("Trying MX GET_STATION_INFO (0xA080) unicast...")
+        # ── C: MX GET_STATION_INFO (0xA04C) UNICAST to each adapter ──
+        _LOGGER.debug("Trying MX GET_STATION_INFO (0xA04C) unicast...")
         for mac in list(devices.keys()):
             dst = mac_to_bytes(mac)
             frame = build_mx_frame(dst, self._src_mac,
@@ -954,14 +985,60 @@ class HomeplugAV:
 
         Returns {mac: {"led": bool|None, "qos": str|None, "power_saving": bool|None}}.
 
-        Note: No confirmed GET_PARAM IDs for device settings yet.
-        State detection requires Wireshark captures of tpPLC reading state.
-        For now, returns None for all states (defaults will be used).
+        LED is read via Get Parameter 0xA05C / param 0x003E and power saving
+        via param 0x0029. QoS has no confirmed parameter id yet, so it stays
+        None and the coordinator keeps its default. Anything that cannot be
+        parsed confidently returns None so defaults are used instead of guesses.
         """
-        states: dict[str, dict] = {}
-        for mac in macs:
-            states[mac] = {"led": None, "qos": None, "power_saving": None}
+        states: dict[str, dict] = {mac: {"led": None, "qos": None,
+                                          "power_saving": None} for mac in macs}
+        try:
+            self._open_mx()
+        except (PermissionError, OSError) as e:
+            _LOGGER.debug("Cannot open MX socket for state query: %s", e)
+            return states
+        try:
+            for mac in macs:
+                led_val = self._get_param_value(mac, PARAM_LED_CONTROL)
+                if led_val:
+                    states[mac]["led"] = led_val[0] != 0
+                ps_val = self._get_param_value(mac, PARAM_POWER_STANDBY)
+                if ps_val:
+                    states[mac]["power_saving"] = any(b != 0 for b in ps_val)
+        finally:
+            self._close()
         return states
+
+    def _get_param_value(self, mac: str, param_id: int,
+                         timeout: float = 1.5) -> bytes | None:
+        """Read a parameter via Get Parameter (0xA05C). Returns value or None.
+
+        The confirmation echoes the request, then either the value directly or
+        an OctetsPerElement(1)+NumElements(2 LE) header followed by the value.
+        """
+        dst = mac_to_bytes(mac)
+        frame = build_mx_frame(dst, self._src_mac, MX_GET_PARAM_REQ,
+                               seq=self._next_seq(),
+                               payload=struct.pack("<H", param_id))
+        for mmtype, src, data in self._send_recv(
+                self._sock_mx, frame, timeout, expected_src=mac):
+            if mmtype != MX_GET_PARAM_CNF:
+                continue
+            off = ETH_HDR + MX_MME_HDR
+            payload = data[off:] if len(data) > off else b""
+            idx = payload.find(struct.pack("<H", param_id))
+            if idx < 0:
+                continue
+            tail = payload[idx + 2:]
+            # Optional OctetsPerElement(1)+NumElements(2 LE) header.
+            if len(tail) >= 3 and tail[0] in (1, 2, 4):
+                octets = tail[0]
+                num = struct.unpack("<H", tail[1:3])[0] or 1
+                value = tail[3:3 + octets * num]
+                if value:
+                    return value
+            return tail[:4] or None
+        return None
 
     def _parse_state_from_param(self, state: dict, param_id: int,
                                  val: bytes) -> None:
@@ -1000,52 +1077,38 @@ class HomeplugAV:
 
     # ── LED Control ──────────────────────────────────────
 
-    # MEDIAXTREAM MX_ACTION_REQ (0xA058) payloads
-    # Confirmed via Wireshark on TL-PA7017 (BCM60355).
-    # Each payload is 30 bytes (padded with 0x00).
-    #
-    # NOTE: MMType 0xA058 is reused by vendors for different purposes.
-    # jbit/powerline (Rust) and pla-util implement a "SetProperty" layout
-    #   [seq][prop_id][0x00][count=1][size_lo][size_hi][data...]
-    # that is used ONLY for HFID (human-friendly ID) properties
-    # (prop IDs 0x1b/0x1c/0x25/0x26). Neither project implements LED,
-    # QoS or Power-Saving over MEDIAXTREAM -- no Property IDs exist.
-    #
-    # The payloads below are the TP-Link/Gigle proprietary "Action"
-    # opcodes captured from the vendor tpPLC Utility with Wireshark.
-    # They are confirmed working on TL-PA7017 firmware:
-    #   LED ON  -> response 0xA059 (MX_ACTION_CNF)
-    #   LED OFF -> response 0xA069 (MX_ACTION_ALT_CNF, firmware dep.)
-    # Do NOT replace with the SetProperty structure; it will be rejected.
-    _LED_ON_PAYLOAD = bytes.fromhex(
-        "950002010000000000000000000000000000000000000000000000000000")
-    _LED_OFF_PAYLOAD = bytes.fromhex(
-        "4e9500020100470000000000000000000000000000000000000000000000")
+    # LED and power saving are MEDIAXTREAM *Set Parameter* (0xA058) writes,
+    # NOT opaque vendor "action" blobs. The structured payload is built by
+    # build_mx_set_param(): ParamID(2 LE) + OctetsPerElement + NumElements + Value.
+    #   LED            -> param 0x003E, value 0x01 (on) / 0x00 (off)
+    #   Power Standby  -> param 0x0029, standby timeout (seconds)
+    # A successful write is confirmed by 0xA059 (Set Parameter CNF) — see
+    # _MX_ACTION_OK. Earlier builds shipped hand-captured 30-byte blobs that
+    # did not carry the correct ParamID at the right offset, so the adapter
+    # silently ignored them.
 
-    # Energiesparmodus: enable requires two-step sequence
-    _POWER_SAVE_ON_1 = bytes.fromhex(
-        "532900000000000000000000000000000000000000000000000000000000")
-    _POWER_SAVE_ON_2 = bytes.fromhex(
-        "052900020100002c81000000000000000000000000000000000000000000")
-    _POWER_SAVE_OFF = bytes.fromhex(
-        "ec7400010100000000000000000000000000000000000000000000000000")
+    # Standby timeout written when power saving is enabled. The exact units
+    # are not fully confirmed; 300 s mirrors tpPLC's typical "low power" value.
+    _POWER_STANDBY_TIMEOUT_ON = 300
+    _POWER_STANDBY_TIMEOUT_OFF = 0
 
     def _set_led_broadcom(self, mac: str, on: bool) -> bool:
-        """Set LED via MEDIAXTREAM MME 0xA058 (Broadcom BCM60xxx)."""
+        """Set LED via MEDIAXTREAM Set Parameter 0xA058 / param 0x003E."""
         dst = mac_to_bytes(mac)
-        payload = self._LED_ON_PAYLOAD if on else self._LED_OFF_PAYLOAD
-        frame = build_mx_frame(dst, self._src_mac, MX_ACTION_REQ,
-                               seq=self._next_seq(), payload=payload)
+        frame = build_mx_set_param(
+            dst, self._src_mac, PARAM_LED_CONTROL,
+            b"\x01" if on else b"\x00",
+            seq=self._next_seq())
         responses = self._send_recv(self._sock_mx, frame, 2.5,
                                     expected_src=mac)
         for mmtype, src, data in responses:
             if mmtype in _MX_ACTION_OK:
-                _LOGGER.info("LED %s via MX 0xA058 for %s (resp=0x%04X)",
+                _LOGGER.info("LED %s via Set Parameter 0x003E for %s (resp=0x%04X)",
                              "ON" if on else "OFF", mac, mmtype)
                 return True
         if responses:
             _LOGGER.debug(
-                "LED %s: %s replied but no MX_ACTION_CNF/ALT_CNF "
+                "LED %s: %s replied but no Set Parameter CNF "
                 "(got %s) -- command likely ignored",
                 "ON" if on else "OFF", mac,
                 [f"0x{m:04X}" for m, _, _ in responses])
@@ -1054,36 +1117,20 @@ class HomeplugAV:
         return False
 
     def _set_power_saving_broadcom(self, mac: str, on: bool) -> bool:
-        """Set power saving mode via MEDIAXTREAM MME 0xA058 (Broadcom)."""
+        """Set power saving via MEDIAXTREAM Set Parameter 0xA058 / param 0x0029."""
         dst = mac_to_bytes(mac)
-        if on:
-            # Two-step sequence for enabling power saving
-            frame1 = build_mx_frame(dst, self._src_mac, MX_ACTION_REQ,
-                                    seq=self._next_seq(), payload=self._POWER_SAVE_ON_1)
-            got_resp = any(
-                mmtype in _MX_ACTION_OK
-                for mmtype, _, _ in self._send_recv(
-                    self._sock_mx, frame1, 2.5, expected_src=mac)
-            )
-            if not got_resp:
-                _LOGGER.debug("Power saving step 1 got no action CNF from %s", mac)
-
-            frame2 = build_mx_frame(dst, self._src_mac, MX_ACTION_REQ,
-                                    seq=self._next_seq(), payload=self._POWER_SAVE_ON_2)
-            for mmtype, src, data in self._send_recv(
-                    self._sock_mx, frame2, 2.5, expected_src=mac):
-                if mmtype in _MX_ACTION_OK:
-                    _LOGGER.info("Power saving ON for %s", mac)
-                    return True
-        else:
-            frame = build_mx_frame(dst, self._src_mac, MX_ACTION_REQ,
-                                   seq=self._next_seq(), payload=self._POWER_SAVE_OFF)
-            for mmtype, src, data in self._send_recv(
-                    self._sock_mx, frame, 2.5, expected_src=mac):
-                if mmtype in _MX_ACTION_OK:
-                    _LOGGER.info("Power saving OFF for %s", mac)
-                    return True
-        _LOGGER.debug("Power saving %s: no action CNF from %s",
+        timeout = self._POWER_STANDBY_TIMEOUT_ON if on else self._POWER_STANDBY_TIMEOUT_OFF
+        frame = build_mx_set_param(
+            dst, self._src_mac, PARAM_POWER_STANDBY,
+            struct.pack("<I", timeout), octets_per_element=4,
+            seq=self._next_seq())
+        for mmtype, src, data in self._send_recv(
+                self._sock_mx, frame, 2.5, expected_src=mac):
+            if mmtype in _MX_ACTION_OK:
+                _LOGGER.info("Power saving %s for %s (standby=%ds)",
+                             "ON" if on else "OFF", mac, timeout)
+                return True
+        _LOGGER.debug("Power saving %s: no Set Parameter CNF from %s",
                       "ON" if on else "OFF", mac)
         return False
 
@@ -1337,7 +1384,7 @@ class HomeplugAV:
         for mac in sorted(disc_macs):
             dst = mac_to_bytes(mac)
             tests.extend([
-                (f"MX NW_STATS unicast (0xA034) → {mac}",
+                (f"MX NW_STATS unicast (0xA02C) → {mac}",
                  self._sock_mx,
                  build_mx_frame(dst, self._src_mac,
                                 MX_NW_STATS_REQ,
@@ -1349,7 +1396,7 @@ class HomeplugAV:
                                 MX_LINK_STATS_REQ,
                                 seq=self._next_seq())),
 
-                (f"MX GET_STATION_INFO (0xA080) → {mac}",
+                (f"MX GET_STATION_INFO (0xA04C) → {mac}",
                  self._sock_mx,
                  build_mx_frame(dst, self._src_mac,
                                 MX_GET_STATION_REQ,
