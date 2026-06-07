@@ -6,6 +6,8 @@ All notable changes to **Powerline Network** (ha-tp-link-powerline) are document
 
 ### Fixed
 - **TX/RX rates always 0** -- the MEDIAXTREAM Network Stats MMTYPE was wrong (`0xA034`); corrected to **`0xA02C/0xA02D`** (the `pla-util get-network-stats` command). Station Info corrected from `0xA080` to **`0xA04C/0xA04D`**. Values verified against `serock/mediaxtream-dissector` and `serock/pla-util`.
+- **Absurd PHY rates (~33000 Mbps)** -- the rate field's top bit (`0x8000`) is a link-active flag, not part of the value. It is now masked off (`decode_phy_rate()`), confirmed against a real TL-PA7017 capture (`0x81A6` -> 422 Mbps).
+- **Config flow button labelled "OK"** -- the discover/confirm steps use an empty form, so Home Assistant showed a generic "OK" button that did not match the "Click Submit" text. Added an explicit per-step `submit` label ("Submit" / "Absenden").
 - **LED control did nothing** -- `0xA058` is **Set Parameter**, not an opaque "action" command. LED is now written as a structured Set Parameter to param **`0x003E` (LED Control)** with value `0x01`/`0x00`, instead of a hand-captured 30-byte blob that never carried the correct parameter id.
 - **Power saving did nothing** -- now written via Set Parameter to param **`0x0029` (Power Manager Standby Timeout)**.
 
