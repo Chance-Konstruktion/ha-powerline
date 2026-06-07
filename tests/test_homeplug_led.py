@@ -24,12 +24,19 @@ ETH_HDR = _MODULE.ETH_HDR
 MX_MME_HDR = _MODULE.MX_MME_HDR
 ETHERTYPE_MEDIAXTREAM = _MODULE.ETHERTYPE_MEDIAXTREAM
 MX_SET_PARAM_REQ = _MODULE.MX_SET_PARAM_REQ
+MX_SET_PARAM_CNF = _MODULE.MX_SET_PARAM_CNF
 MX_APPLY_REQ = _MODULE.MX_APPLY_REQ
 MX_APPLY_CNF = _MODULE.MX_APPLY_CNF
 PARAM_LED_CONTROL = _MODULE.PARAM_LED_CONTROL
 PARAM_LED_OPTIONS = _MODULE.PARAM_LED_OPTIONS
 PARAM_LED_AUX = _MODULE.PARAM_LED_AUX
+PARAM_POWER_STANDBY = _MODULE.PARAM_POWER_STANDBY
+PARAM_POWER_STANDBY_AUX = _MODULE.PARAM_POWER_STANDBY_AUX
 import struct as _struct
+
+
+def _param_id(frame):
+    return _struct.unpack("<H", _mme_payload(frame)[0:2])[0]
 
 
 def _mme_type(frame):
@@ -112,6 +119,56 @@ class TestSetParameterFrame(TestCase):
         p2 = _mme_payload(frames[1])
         self.assertEqual(bytes.fromhex("02a00112"), p2[5:9])  # ON value, bit 0x10 set
         self.assertTrue(p2[8] & 0x10)
+
+
+class TestSetPowerSaving(TestCase):
+    """Power saving must toggle bit 0x8000 of param 0x0029 and Apply."""
+
+    MAC = "B0:19:21:F5:DB:A7"
+
+    def _run(self, on):
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        frames = []
+
+        def _capture(sock, frame, *a, **k):
+            frames.append(frame)
+            mme = _mme_type(frame)
+            if mme == MX_APPLY_REQ:
+                return [(MX_APPLY_CNF, self.MAC, b"")]
+            if mme == MX_SET_PARAM_REQ:
+                return [(MX_SET_PARAM_CNF, self.MAC, b"")]
+            return []  # GET -> no reply, timeout falls back to 300
+
+        with patch.object(hp, "_open_hpav"), \
+             patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_send_recv", side_effect=_capture), \
+             patch.object(hp, "_close"):
+            result = hp.set_power_saving(self.MAC, on)
+        return result, frames
+
+    def test_power_saving_on_sets_enable_bit(self) -> None:
+        result, frames = self._run(True)
+        self.assertTrue(result)
+        set_029 = [f for f in frames
+                   if _mme_type(f) == MX_SET_PARAM_REQ and _param_id(f) == PARAM_POWER_STANDBY]
+        self.assertEqual(1, len(set_029))
+        val = _struct.unpack("<H", _mme_payload(set_029[0])[5:7])[0]
+        self.assertTrue(val & 0x8000)            # enabled flag
+        self.assertEqual(300, val & 0x7FFF)      # standby timeout preserved
+        self.assertTrue(any(_mme_type(f) == MX_APPLY_REQ for f in frames))
+
+    def test_power_saving_off_clears_bit_and_writes_aux(self) -> None:
+        result, frames = self._run(False)
+        self.assertTrue(result)
+        params = [_param_id(f) for f in frames if _mme_type(f) == MX_SET_PARAM_REQ]
+        self.assertIn(PARAM_POWER_STANDBY, params)
+        self.assertIn(PARAM_POWER_STANDBY_AUX, params)   # tpPLC clears 0x0074 on disable
+        set_029 = next(f for f in frames
+                       if _mme_type(f) == MX_SET_PARAM_REQ and _param_id(f) == PARAM_POWER_STANDBY)
+        val = _struct.unpack("<H", _mme_payload(set_029)[5:7])[0]
+        self.assertFalse(val & 0x8000)           # disabled
 
 
 class TestHomeplugSetLed(TestCase):

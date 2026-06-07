@@ -10,7 +10,7 @@ All notable changes to **Powerline Network** (ha-tp-link-powerline) are document
 - **Config flow button labelled "OK"** -- the discover/confirm steps use an empty form, so Home Assistant showed a generic "OK" button that did not match the "Click Submit" text. Added an explicit per-step `submit` label ("Submit" / "Absenden").
 - **LED control did nothing** -- reverse-engineered the exact tpPLC sequence from a Wireshark capture (TL-PA7017). Toggling the LED is two `Set Parameter` writes (param **`0x0095`** and **`0x003F` "LED Options"**, byte 3 bit `0x10` = enabled) followed by an **Apply (`0xA020`)**. The old build sent a single mis-framed write and no apply, so nothing happened.
 - **Get Parameter responses parsed wrong** -- the confirmation format is `OctetsPerElement(1) + NumElements(2 LE) + Value` (no parameter-id echo). Fixed `parse_mx_get_param_cnf()`, which also makes firmware/model strings and LED state read-back reliable.
-- **Power saving did nothing** -- now written via Set Parameter to param **`0x0029` (Power Manager Standby Timeout)** (value/units still unverified, pending a capture).
+- **Power saving did nothing** -- reverse-engineered from a tpPLC capture (TL-PA7017). Param **`0x0029`** is a 16-bit value: low 15 bits = standby timeout (s), top bit **`0x8000` = power-saving enabled** (same flag scheme as the PHY rate). Toggling writes `0x0029` (with/without the flag, timeout preserved), clears companion param `0x0074` on disable, then commits with **Apply (`0xA020`)**. The old 4-byte write with no flag/apply did nothing. Read-back now uses the `0x8000` bit too.
 
 ### Added
 - `build_mx_set_param()` helper implementing the documented Set Parameter payload layout (ParamID + OctetsPerElement + NumElements + Value).

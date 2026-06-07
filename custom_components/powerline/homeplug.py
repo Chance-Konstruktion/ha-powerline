@@ -101,7 +101,8 @@ PARAM_MANUFACTURER_HFID = 0x0001
 PARAM_USER_HFID         = 0x0025
 PARAM_MANUFACTURER_DAK1 = 0x0009
 PARAM_USER_NMK          = 0x0024
-PARAM_POWER_STANDBY     = 0x0029  # Power Manager Standby Timeout (power saving)
+PARAM_POWER_STANDBY     = 0x0029  # Power Manager Standby: low 15 bits = timeout(s), bit 0x8000 = enabled
+PARAM_POWER_STANDBY_AUX = 0x0074  # Companion param tpPLC clears when disabling power saving
 PARAM_LED_CONTROL       = 0x003E  # LED control (read-only on TL-PA7017, always 0)
 PARAM_LED_OPTIONS       = 0x003F  # LED options — bit 0x10 of byte 3 = LED enabled
 PARAM_LED_AUX           = 0x0095  # Undocumented LED companion param (tpPLC writes it too)
@@ -1013,9 +1014,11 @@ class HomeplugAV:
                 led_opt = self._get_param_value(mac, PARAM_LED_OPTIONS)
                 if led_opt and len(led_opt) >= 4:
                     states[mac]["led"] = bool(led_opt[3] & 0x10)
+                # Power saving = bit 0x8000 of the 0x0029 standby value.
                 ps_val = self._get_param_value(mac, PARAM_POWER_STANDBY)
-                if ps_val:
-                    states[mac]["power_saving"] = any(b != 0 for b in ps_val)
+                if ps_val and len(ps_val) >= 2:
+                    standby = struct.unpack("<H", ps_val[0:2])[0]
+                    states[mac]["power_saving"] = bool(standby & 0x8000)
         finally:
             self._close()
         return states
@@ -1085,11 +1088,6 @@ class HomeplugAV:
     _LED_AUX_VALUE   = {True: bytes.fromhex("0000"),     False: bytes.fromhex("4700")}
     _LED_OPTS_VALUE  = {True: bytes.fromhex("02a00112"), False: bytes.fromhex("02a00102")}
 
-    # Standby timeout written when power saving is enabled. The exact units
-    # are not fully confirmed; 300 s mirrors tpPLC's typical "low power" value.
-    _POWER_STANDBY_TIMEOUT_ON = 300
-    _POWER_STANDBY_TIMEOUT_OFF = 0
-
     def _set_led_broadcom(self, mac: str, on: bool) -> bool:
         """Set LED via the captured tpPLC Set Parameter + Apply sequence."""
         dst = mac_to_bytes(mac)
@@ -1123,20 +1121,46 @@ class HomeplugAV:
         return False
 
     def _set_power_saving_broadcom(self, mac: str, on: bool) -> bool:
-        """Set power saving via MEDIAXTREAM Set Parameter 0xA058 / param 0x0029."""
+        """Set power saving via Set Parameter 0xA058 / param 0x0029 + Apply.
+
+        Confirmed from a tpPLC capture (TL-PA7017): param 0x0029 is a 16-bit
+        value whose low 15 bits are the standby timeout (seconds) and whose top
+        bit (0x8000) is the power-saving enabled flag — same flag scheme as the
+        PHY rate field. tpPLC also clears companion param 0x0074 when disabling.
+          OFF: 0x0029 = 0x012C (300s, flag clear) + 0x0074 = 0
+          ON : 0x0029 = 0x812C (300s, flag set)
+        """
         dst = mac_to_bytes(mac)
-        timeout = self._POWER_STANDBY_TIMEOUT_ON if on else self._POWER_STANDBY_TIMEOUT_OFF
-        frame = build_mx_set_param(
-            dst, self._src_mac, PARAM_POWER_STANDBY,
-            struct.pack("<I", timeout), octets_per_element=4,
-            seq=self._next_seq())
-        for mmtype, src, data in self._send_recv(
-                self._sock_mx, frame, 2.5, expected_src=mac):
-            if mmtype in _MX_ACTION_OK:
-                _LOGGER.info("Power saving %s for %s (standby=%ds)",
-                             "ON" if on else "OFF", mac, timeout)
-                return True
-        _LOGGER.debug("Power saving %s: no Set Parameter CNF from %s",
+        # Preserve the configured standby timeout; default to tpPLC's 300 s.
+        timeout = 300
+        cur = self._get_param_value(mac, PARAM_POWER_STANDBY)
+        if cur and len(cur) >= 2:
+            t = struct.unpack("<H", cur[0:2])[0] & 0x7FFF
+            if t:
+                timeout = t
+        value = (timeout & 0x7FFF) | (0x8000 if on else 0)
+
+        f1 = build_mx_set_param(dst, self._src_mac, PARAM_POWER_STANDBY,
+                                struct.pack("<H", value), octets_per_element=2,
+                                seq=self._next_seq())
+        resp1 = self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac)
+        set_ok = any(m in _MX_ACTION_OK for m, _, _ in resp1)
+
+        if not on:
+            faux = build_mx_set_param(dst, self._src_mac, PARAM_POWER_STANDBY_AUX,
+                                      b"\x00", octets_per_element=1,
+                                      seq=self._next_seq())
+            self._send_recv(self._sock_mx, faux, 2.0, expected_src=mac)
+
+        f2 = build_mx_frame(dst, self._src_mac, MX_APPLY_REQ, seq=self._next_seq())
+        resp2 = self._send_recv(self._sock_mx, f2, 2.0, expected_src=mac)
+        apply_ok = any(m == MX_APPLY_CNF for m, _, _ in resp2)
+
+        if set_ok or apply_ok:
+            _LOGGER.info("Power saving %s for %s (standby=%ds set_cnf=%s apply_cnf=%s)",
+                         "ON" if on else "OFF", mac, timeout, set_ok, apply_ok)
+            return True
+        _LOGGER.debug("Power saving %s: no Set Parameter/Apply CNF from %s",
                       "ON" if on else "OFF", mac)
         return False
 
