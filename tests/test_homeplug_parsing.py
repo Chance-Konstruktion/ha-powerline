@@ -20,6 +20,7 @@ ETH_HDR = _MODULE.ETH_HDR
 parse_mx_nw_info_cnf = _MODULE.parse_mx_nw_info_cnf
 parse_mx_status_ind = _MODULE.parse_mx_status_ind
 parse_mx_nw_stats_cnf = _MODULE.parse_mx_nw_stats_cnf
+parse_mx_get_param_cnf = _MODULE.parse_mx_get_param_cnf
 decode_phy_rate = _MODULE.decode_phy_rate
 
 
@@ -68,6 +69,21 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual("EC:08:6B:54:FE:E3", stations[0]["mac"])
         self.assertEqual(422, stations[0]["tx_rate"])
         self.assertEqual(274, stations[0]["rx_rate"])
+
+    def test_parse_mx_get_param_cnf_hfid_string(self) -> None:
+        # Real capture: octets=1, num=0x40 (64), value = HFID string.
+        payload = bytes.fromhex("014000") + b"tpver_701E14_190426_901".ljust(64, b"\x00")
+        frame = (b"\x00" * (ETH_HDR + MX_MME_HDR)) + payload
+        val = parse_mx_get_param_cnf(frame)
+        self.assertTrue(val.startswith(b"tpver_701E14_190426_901"))
+
+    def test_parse_mx_get_param_cnf_led_options(self) -> None:
+        # Real capture: octets=4, num=1, value=02a00112 (LED on, bit 0x10 set).
+        payload = bytes.fromhex("04010002a00112") + b"\x00" * 20
+        frame = (b"\x00" * (ETH_HDR + MX_MME_HDR)) + payload
+        val = parse_mx_get_param_cnf(frame)
+        self.assertEqual(bytes.fromhex("02a00112"), val)
+        self.assertTrue(val[3] & 0x10)  # LED enabled
 
     def test_parse_mx_status_ind_extracts_rates(self) -> None:
         payload = b"\x02\x46\x04\x00" + b"\x05\x00\x06\x00"

@@ -8,12 +8,13 @@ All notable changes to **Powerline Network** (ha-tp-link-powerline) are document
 - **TX/RX rates always 0** -- the MEDIAXTREAM Network Stats MMTYPE was wrong (`0xA034`); corrected to **`0xA02C/0xA02D`** (the `pla-util get-network-stats` command). Station Info corrected from `0xA080` to **`0xA04C/0xA04D`**. Values verified against `serock/mediaxtream-dissector` and `serock/pla-util`.
 - **Absurd PHY rates (~33000 Mbps)** -- the rate field's top bit (`0x8000`) is a link-active flag, not part of the value. It is now masked off (`decode_phy_rate()`), confirmed against a real TL-PA7017 capture (`0x81A6` -> 422 Mbps).
 - **Config flow button labelled "OK"** -- the discover/confirm steps use an empty form, so Home Assistant showed a generic "OK" button that did not match the "Click Submit" text. Added an explicit per-step `submit` label ("Submit" / "Absenden").
-- **LED control did nothing** -- `0xA058` is **Set Parameter**, not an opaque "action" command. LED is now written as a structured Set Parameter to param **`0x003E` (LED Control)** with value `0x01`/`0x00`, instead of a hand-captured 30-byte blob that never carried the correct parameter id.
-- **Power saving did nothing** -- now written via Set Parameter to param **`0x0029` (Power Manager Standby Timeout)**.
+- **LED control did nothing** -- reverse-engineered the exact tpPLC sequence from a Wireshark capture (TL-PA7017). Toggling the LED is two `Set Parameter` writes (param **`0x0095`** and **`0x003F` "LED Options"**, byte 3 bit `0x10` = enabled) followed by an **Apply (`0xA020`)**. The old build sent a single mis-framed write and no apply, so nothing happened.
+- **Get Parameter responses parsed wrong** -- the confirmation format is `OctetsPerElement(1) + NumElements(2 LE) + Value` (no parameter-id echo). Fixed `parse_mx_get_param_cnf()`, which also makes firmware/model strings and LED state read-back reliable.
+- **Power saving did nothing** -- now written via Set Parameter to param **`0x0029` (Power Manager Standby Timeout)** (value/units still unverified, pending a capture).
 
 ### Added
 - `build_mx_set_param()` helper implementing the documented Set Parameter payload layout (ParamID + OctetsPerElement + NumElements + Value).
-- **State read-back** -- `query_device_states()` now reads the real LED and power-saving state via Get Parameter (`0xA05C`, params `0x003E` / `0x0029`) instead of always returning defaults.
+- **State read-back** -- `query_device_states()` now reads the real LED (param `0x003F`, bit `0x10`) and power-saving state via Get Parameter (`0xA05C`) instead of always returning defaults.
 
 ## [4.2.0] -- 2026-03-31
 

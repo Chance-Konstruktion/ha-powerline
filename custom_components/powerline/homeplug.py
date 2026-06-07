@@ -58,6 +58,8 @@ MX_GET_PARAM_REQ      = 0xA05C  # Get Parameter
 MX_GET_PARAM_CNF      = 0xA05D
 MX_SET_PARAM_REQ      = 0xA058  # Set Parameter (LED, power saving, NMK, HFID, ...)
 MX_SET_PARAM_CNF      = 0xA059
+MX_APPLY_REQ          = 0xA020  # Apply/commit settings (sent by tpPLC after writes)
+MX_APPLY_CNF          = 0xA021
 MX_SET_KEY_REQ        = 0xA018  # Set Key (legacy)
 MX_SET_KEY_CNF        = 0xA019
 MX_LINK_STATS_REQ     = 0xA032  # Link Stats (undocumented fallback)
@@ -100,8 +102,9 @@ PARAM_USER_HFID         = 0x0025
 PARAM_MANUFACTURER_DAK1 = 0x0009
 PARAM_USER_NMK          = 0x0024
 PARAM_POWER_STANDBY     = 0x0029  # Power Manager Standby Timeout (power saving)
-PARAM_LED_CONTROL       = 0x003E  # LED on/off
-PARAM_LED_OPTIONS       = 0x003F  # LED options/behaviour
+PARAM_LED_CONTROL       = 0x003E  # LED control (read-only on TL-PA7017, always 0)
+PARAM_LED_OPTIONS       = 0x003F  # LED options — bit 0x10 of byte 3 = LED enabled
+PARAM_LED_AUX           = 0x0095  # Undocumented LED companion param (tpPLC writes it too)
 
 
 # ══════════════════════════════════════════════════════════
@@ -357,26 +360,22 @@ def parse_mx_nw_info_cnf(data: bytes) -> dict:
 def parse_mx_get_param_cnf(data: bytes) -> bytes:
     """Parse MEDIAXTREAM Get Parameter.CNF (0xa05d).
 
-    Payload after MX header: ParamID(varies) + OctetsPerElement(1) +
-                             NumElements(1) + Value(N)
+    Confirmed format from a tpPLC capture (TL-PA7017):
+      OctetsPerElement(1) + NumElements(2 LE) + Value(OctetsPerElement*NumElements)
+    e.g. 01 4000 <64 bytes> = HFID string; 02 0100 4700 = a 2-byte value 0x0047.
     """
     off = ETH_HDR + MX_MME_HDR
     payload = data[off:] if len(data) > off else b""
-    # The exact offset depends on param type. Try to find value data.
-    # Typical: some header bytes + OctetsPerElem(1) + NumElem(1) + Data
-    if len(payload) < 4:
+    if len(payload) < 3:
         return b""
-    # Search for a reasonable structure
-    # From pla-util wiki: param bytes + octets_per_element(1) + num_elements(1) + value
-    # The param echo varies in size. Let's try offset 0 first (common).
-    # If OctetsPerElement=1 and NumElements makes sense, use it.
-    for start in range(0, min(8, len(payload) - 2)):
-        octs = payload[start]
-        num = payload[start + 1]
-        if octs in (1, 2, 4) and 0 < num <= 128 and start + 2 + num * octs <= len(payload):
-            return payload[start + 2:start + 2 + num * octs]
-    # Fallback: return everything after header
-    return payload
+    octets = payload[0]
+    num = struct.unpack("<H", payload[1:3])[0]
+    if octets in (1, 2, 4) and 0 < num <= 255:
+        end = 3 + octets * num
+        if end <= len(payload):
+            return payload[3:end]
+    # Fallback: best-effort, skip the 3-byte header.
+    return payload[3:]
 
 def decode_phy_rate(raw: int) -> int:
     """Decode a MEDIAXTREAM PHY rate (Mbps) from its 16-bit LE field.
@@ -995,10 +994,10 @@ class HomeplugAV:
 
         Returns {mac: {"led": bool|None, "qos": str|None, "power_saving": bool|None}}.
 
-        LED is read via Get Parameter 0xA05C / param 0x003E and power saving
-        via param 0x0029. QoS has no confirmed parameter id yet, so it stays
-        None and the coordinator keeps its default. Anything that cannot be
-        parsed confidently returns None so defaults are used instead of guesses.
+        LED is read via Get Parameter 0xA05C / param 0x003F (LED Options) and
+        power saving via param 0x0029. QoS has no confirmed parameter id yet, so
+        it stays None and the coordinator keeps its default. Anything that cannot
+        be parsed confidently returns None so defaults are used instead of guesses.
         """
         states: dict[str, dict] = {mac: {"led": None, "qos": None,
                                           "power_saving": None} for mac in macs}
@@ -1009,9 +1008,11 @@ class HomeplugAV:
             return states
         try:
             for mac in macs:
-                led_val = self._get_param_value(mac, PARAM_LED_CONTROL)
-                if led_val:
-                    states[mac]["led"] = led_val[0] != 0
+                # LED state lives in LED Options (0x003F): byte 3, bit 0x10.
+                # tpPLC capture: ...01 12 = on, ...01 02 = off.
+                led_opt = self._get_param_value(mac, PARAM_LED_OPTIONS)
+                if led_opt and len(led_opt) >= 4:
+                    states[mac]["led"] = bool(led_opt[3] & 0x10)
                 ps_val = self._get_param_value(mac, PARAM_POWER_STANDBY)
                 if ps_val:
                     states[mac]["power_saving"] = any(b != 0 for b in ps_val)
@@ -1021,11 +1022,7 @@ class HomeplugAV:
 
     def _get_param_value(self, mac: str, param_id: int,
                          timeout: float = 1.5) -> bytes | None:
-        """Read a parameter via Get Parameter (0xA05C). Returns value or None.
-
-        The confirmation echoes the request, then either the value directly or
-        an OctetsPerElement(1)+NumElements(2 LE) header followed by the value.
-        """
+        """Read a parameter via Get Parameter (0xA05C). Returns value or None."""
         dst = mac_to_bytes(mac)
         frame = build_mx_frame(dst, self._src_mac, MX_GET_PARAM_REQ,
                                seq=self._next_seq(),
@@ -1034,20 +1031,9 @@ class HomeplugAV:
                 self._sock_mx, frame, timeout, expected_src=mac):
             if mmtype != MX_GET_PARAM_CNF:
                 continue
-            off = ETH_HDR + MX_MME_HDR
-            payload = data[off:] if len(data) > off else b""
-            idx = payload.find(struct.pack("<H", param_id))
-            if idx < 0:
-                continue
-            tail = payload[idx + 2:]
-            # Optional OctetsPerElement(1)+NumElements(2 LE) header.
-            if len(tail) >= 3 and tail[0] in (1, 2, 4):
-                octets = tail[0]
-                num = struct.unpack("<H", tail[1:3])[0] or 1
-                value = tail[3:3 + octets * num]
-                if value:
-                    return value
-            return tail[:4] or None
+            val = parse_mx_get_param_cnf(data)
+            if val:
+                return val
         return None
 
     def _parse_state_from_param(self, state: dict, param_id: int,
@@ -1087,15 +1073,17 @@ class HomeplugAV:
 
     # ── LED Control ──────────────────────────────────────
 
-    # LED and power saving are MEDIAXTREAM *Set Parameter* (0xA058) writes,
-    # NOT opaque vendor "action" blobs. The structured payload is built by
-    # build_mx_set_param(): ParamID(2 LE) + OctetsPerElement + NumElements + Value.
-    #   LED            -> param 0x003E, value 0x01 (on) / 0x00 (off)
-    #   Power Standby  -> param 0x0029, standby timeout (seconds)
-    # A successful write is confirmed by 0xA059 (Set Parameter CNF) — see
-    # _MX_ACTION_OK. Earlier builds shipped hand-captured 30-byte blobs that
-    # did not carry the correct ParamID at the right offset, so the adapter
-    # silently ignored them.
+    # LED control is a MEDIAXTREAM *Set Parameter* (0xA058) sequence, confirmed
+    # byte-for-byte from a tpPLC capture on TL-PA7017 (BCM60355). Toggling the
+    # LED writes TWO parameters and then commits with an Apply (0xA020):
+    #   1. param 0x0095 (2-byte): 0x0000 = on,            0x0047 = off
+    #   2. param 0x003F (4-byte LED Options): 02 a0 01 12 = on, 02 a0 01 02 = off
+    #      (byte 3 bit 0x10 is the LED-enabled flag)
+    #   3. Apply 0xA020 (empty) -> 0xA021
+    # The previous build only sent a single (mis-framed) 0x0095 write and no
+    # Apply, so nothing happened. param 0x003E exists but is read-only here.
+    _LED_AUX_VALUE   = {True: bytes.fromhex("0000"),     False: bytes.fromhex("4700")}
+    _LED_OPTS_VALUE  = {True: bytes.fromhex("02a00112"), False: bytes.fromhex("02a00102")}
 
     # Standby timeout written when power saving is enabled. The exact units
     # are not fully confirmed; 300 s mirrors tpPLC's typical "low power" value.
@@ -1103,27 +1091,35 @@ class HomeplugAV:
     _POWER_STANDBY_TIMEOUT_OFF = 0
 
     def _set_led_broadcom(self, mac: str, on: bool) -> bool:
-        """Set LED via MEDIAXTREAM Set Parameter 0xA058 / param 0x003E."""
+        """Set LED via the captured tpPLC Set Parameter + Apply sequence."""
         dst = mac_to_bytes(mac)
-        frame = build_mx_set_param(
-            dst, self._src_mac, PARAM_LED_CONTROL,
-            b"\x01" if on else b"\x00",
-            seq=self._next_seq())
-        responses = self._send_recv(self._sock_mx, frame, 2.5,
-                                    expected_src=mac)
-        for mmtype, src, data in responses:
-            if mmtype in _MX_ACTION_OK:
-                _LOGGER.info("LED %s via Set Parameter 0x003E for %s (resp=0x%04X)",
-                             "ON" if on else "OFF", mac, mmtype)
-                return True
-        if responses:
-            _LOGGER.debug(
-                "LED %s: %s replied but no Set Parameter CNF "
-                "(got %s) -- command likely ignored",
-                "ON" if on else "OFF", mac,
-                [f"0x{m:04X}" for m, _, _ in responses])
-        else:
-            _LOGGER.debug("LED %s: no reply from %s", "ON" if on else "OFF", mac)
+        state = "ON" if on else "OFF"
+
+        # 1) LED companion parameter 0x0095 (2-byte value).
+        f1 = build_mx_set_param(dst, self._src_mac, PARAM_LED_AUX,
+                                self._LED_AUX_VALUE[on], octets_per_element=2,
+                                seq=self._next_seq())
+        self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac)
+
+        # 2) LED Options 0x003F (4-byte value) — the actual enable flag.
+        f2 = build_mx_set_param(dst, self._src_mac, PARAM_LED_OPTIONS,
+                                self._LED_OPTS_VALUE[on], octets_per_element=4,
+                                seq=self._next_seq())
+        resp2 = self._send_recv(self._sock_mx, f2, 2.0, expected_src=mac)
+        opts_ok = any(m in _MX_ACTION_OK for m, _, _ in resp2)
+
+        # 3) Apply / commit (0xA020) -> 0xA021.
+        f3 = build_mx_frame(dst, self._src_mac, MX_APPLY_REQ, seq=self._next_seq())
+        resp3 = self._send_recv(self._sock_mx, f3, 2.0, expected_src=mac)
+        apply_ok = any(m == MX_APPLY_CNF for m, _, _ in resp3)
+
+        if opts_ok or apply_ok:
+            _LOGGER.info("LED %s for %s (opts_cnf=%s apply_cnf=%s)",
+                         state, mac, opts_ok, apply_ok)
+            return True
+        seen = [f"0x{m:04X}" for m, _, _ in (resp2 + resp3)]
+        _LOGGER.debug("LED %s: no Set Parameter/Apply CNF from %s (got %s)",
+                      state, mac, seen or "nothing")
         return False
 
     def _set_power_saving_broadcom(self, mac: str, on: bool) -> bool:

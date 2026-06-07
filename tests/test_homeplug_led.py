@@ -24,8 +24,20 @@ ETH_HDR = _MODULE.ETH_HDR
 MX_MME_HDR = _MODULE.MX_MME_HDR
 ETHERTYPE_MEDIAXTREAM = _MODULE.ETHERTYPE_MEDIAXTREAM
 MX_SET_PARAM_REQ = _MODULE.MX_SET_PARAM_REQ
+MX_APPLY_REQ = _MODULE.MX_APPLY_REQ
+MX_APPLY_CNF = _MODULE.MX_APPLY_CNF
 PARAM_LED_CONTROL = _MODULE.PARAM_LED_CONTROL
+PARAM_LED_OPTIONS = _MODULE.PARAM_LED_OPTIONS
+PARAM_LED_AUX = _MODULE.PARAM_LED_AUX
 import struct as _struct
+
+
+def _mme_type(frame):
+    return _struct.unpack("<H", frame[ETH_HDR + 1:ETH_HDR + 3])[0]
+
+
+def _mme_payload(frame):
+    return frame[ETH_HDR + MX_MME_HDR:]
 
 
 class TestSetParameterFrame(TestCase):
@@ -50,15 +62,17 @@ class TestSetParameterFrame(TestCase):
         self.assertEqual(1, _struct.unpack("<H", payload[3:5])[0])  # num elements
         self.assertEqual(0x01, payload[5])            # LED on
 
-    def test_set_led_sends_led_parameter(self) -> None:
+    def test_set_led_off_sends_captured_tpplc_sequence(self) -> None:
+        """LED OFF must send 0x0095, 0x003F (=02a00102) and Apply 0xA020."""
         hp = HomeplugAV("eth0")
         hp._sock_mx = MagicMock()
         hp._sock_hpav = MagicMock()
-        captured = {}
+        frames = []
 
         def _capture(sock, frame, *args, **kwargs):
-            captured["frame"] = frame
-            return [(MX_ACTION_CNF, "B0:19:21:F5:DB:A7", b"")]
+            frames.append(frame)
+            # ACK the Apply so set_led reports success.
+            return [(MX_APPLY_CNF, "B0:19:21:F5:DB:A7", b"")]
 
         with patch.object(hp, "_open_hpav"), \
              patch.object(hp, "_open_mx"), \
@@ -67,9 +81,37 @@ class TestSetParameterFrame(TestCase):
             result = hp.set_led("B0:19:21:F5:DB:A7", False)
 
         self.assertTrue(result)
-        payload = captured["frame"][ETH_HDR + MX_MME_HDR:]
-        self.assertEqual(PARAM_LED_CONTROL, _struct.unpack("<H", payload[0:2])[0])
-        self.assertEqual(0x00, payload[5])  # LED off
+        self.assertEqual(3, len(frames))
+        # Frame 1: Set Parameter 0x0095
+        p1 = _mme_payload(frames[0])
+        self.assertEqual(MX_SET_PARAM_REQ, _mme_type(frames[0]))
+        self.assertEqual(PARAM_LED_AUX, _struct.unpack("<H", p1[0:2])[0])
+        # Frame 2: Set Parameter 0x003F with the OFF LED-options value
+        p2 = _mme_payload(frames[1])
+        self.assertEqual(PARAM_LED_OPTIONS, _struct.unpack("<H", p2[0:2])[0])
+        self.assertEqual(bytes.fromhex("02a00102"), p2[5:9])  # OFF value
+        # Frame 3: Apply
+        self.assertEqual(MX_APPLY_REQ, _mme_type(frames[2]))
+
+    def test_set_led_on_sets_enable_flag(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        frames = []
+
+        def _capture(sock, frame, *args, **kwargs):
+            frames.append(frame)
+            return [(MX_APPLY_CNF, "B0:19:21:F5:DB:A7", b"")]
+
+        with patch.object(hp, "_open_hpav"), \
+             patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_send_recv", side_effect=_capture), \
+             patch.object(hp, "_close"):
+            hp.set_led("B0:19:21:F5:DB:A7", True)
+
+        p2 = _mme_payload(frames[1])
+        self.assertEqual(bytes.fromhex("02a00112"), p2[5:9])  # ON value, bit 0x10 set
+        self.assertTrue(p2[8] & 0x10)
 
 
 class TestHomeplugSetLed(TestCase):
