@@ -500,6 +500,9 @@ class HomeplugAV:
         self._seq = 1
         self._chipset = "unknown"  # "broadcom" or "qualcomm"
         self._led_success_macs: set[str] = set()
+        # MACs whose firmware/model we already tried — avoids re-querying
+        # (and timing out on) device info every single poll.
+        self._info_attempted: set[str] = set()
         # Serializes the socket-using public methods across executor threads.
         self._lock = threading.RLock()
 
@@ -752,10 +755,12 @@ class HomeplugAV:
         # peers on the powerline (e.g. passive 0x6046 status indications,
         # or NW_STATS if it has ever linked). So we always attempt.
 
-        # ── P: Passive 0x6046 listening (Broadcom, fastest) ──
-        # The adapter sends rates every 2-5s without us asking.
-        _LOGGER.debug("Trying passive 0x6046 listening (6s)...")
-        for mmtype, src, data in self._listen(self._sock_mx, 6.0):
+        # ── P: Passive 0x6046 listening (Broadcom) ──
+        # Some adapters broadcast rates every 2-5s. Keep this short: the active
+        # NW_STATS query below is the reliable path and listening 6s on every
+        # poll just lengthens the time the shared lock is held.
+        _LOGGER.debug("Trying passive 0x6046 listening (2s)...")
+        for mmtype, src, data in self._listen(self._sock_mx, 2.0):
             if mmtype == MX_STATUS_IND:
                 info = parse_mx_status_ind(data)
                 if not info:
@@ -990,6 +995,12 @@ class HomeplugAV:
 
     def _fetch_device_info(self, devices: dict):
         for mac in list(devices.keys()):
+            # Firmware/model rarely change and the queries are slow (and time
+            # out on adapters that don't answer). Try each adapter only once
+            # per session instead of every poll.
+            if mac in self._info_attempted and devices[mac].get("firmware_ver"):
+                continue
+            self._info_attempted.add(mac)
             dst = mac_to_bytes(mac)
 
             if self._chipset in ("broadcom", "unknown"):

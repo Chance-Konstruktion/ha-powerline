@@ -45,6 +45,22 @@ class TestMirrorLinkRate(TestCase):
         self.assertEqual(100, devices["X"]["tx_rate"])  # own rate wins
 
 
+class TestDeviceInfoCaching(TestCase):
+    """Device info must not be re-queried every poll once attempted."""
+
+    def test_skips_already_attempted_with_firmware(self) -> None:
+        from unittest.mock import patch
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = object()
+        hp._sock_hpav = object()
+        devices = {"AA:BB:CC:DD:EE:FF": {"mac": "AA:BB:CC:DD:EE:FF",
+                                         "firmware_ver": "v1", "model": "m"}}
+        hp._info_attempted.add("AA:BB:CC:DD:EE:FF")
+        with patch.object(hp, "_send_recv") as sr:
+            hp._fetch_device_info(devices)
+        sr.assert_not_called()
+
+
 class TestMediaXtreamParsing(TestCase):
     """Tests for undocumented Broadcom payload formats."""
 
