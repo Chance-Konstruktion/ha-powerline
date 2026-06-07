@@ -3,11 +3,13 @@
     "step": {
       "user": {
         "title": "Powerline Netzwerk",
-        "description": "Klicke 'Absenden' um nach Powerline-Adaptern in deinem Netzwerk zu suchen.\n\nBen\u00f6tigt Raw-Socket-Zugriff (CAP_NET_RAW).\n\nUnterst\u00fctzt: TP-Link, FRITZ!Powerline, devolo und andere HomePlug AV Adapter."
+        "description": "Klicke 'Absenden' um nach Powerline-Adaptern in deinem Netzwerk zu suchen.\n\nBen\u00f6tigt Raw-Socket-Zugriff (CAP_NET_RAW).\n\nUnterst\u00fctzt: TP-Link, FRITZ!Powerline, devolo und andere HomePlug AV Adapter.",
+        "submit": "Absenden"
       },
       "confirm": {
         "title": "Ger\u00e4te gefunden",
-        "description": "{count} Powerline-Adapter gefunden:\n\n{devices}\n\nKlicke 'Absenden' um sie hinzuzuf\u00fcgen."
+        "description": "{count} Powerline-Adapter gefunden:\n\n{devices}\n\nKlicke 'Absenden' um sie hinzuzuf\u00fcgen.",
+        "submit": "Absenden"
       }
     },
     "error": {
