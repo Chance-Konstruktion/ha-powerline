@@ -121,6 +121,43 @@ class TestSetParameterFrame(TestCase):
         self.assertTrue(p2[8] & 0x10)
 
 
+class TestSendRecvEarlyStop(TestCase):
+    """_send_recv must return as soon as a stop_on MMTYPE arrives."""
+
+    @staticmethod
+    def _mx_frame(src_mac, mmtype):
+        dst = b"\x11" * 6
+        eth = dst + src_mac + _struct.pack(">H", 0x8912)
+        mme = _struct.pack("<BHH", 2, mmtype, 0) + b"\x00\x1f\x84" + b"\x01"
+        return (eth + mme).ljust(60, b"\x00")
+
+    def test_stops_on_ack_without_draining_background(self) -> None:
+        import socket as _socket
+        adapter = bytes.fromhex("b01921f5dba7")
+        frames = [
+            self._mx_frame(adapter, 0xA070),   # background beacon
+            self._mx_frame(adapter, MX_SET_PARAM_CNF),  # our ACK -> should stop here
+            self._mx_frame(adapter, 0xA070),   # must NOT be read
+        ]
+
+        class _FakeSock:
+            def __init__(self): self.read = 0
+            def settimeout(self, t): pass
+            def send(self, f): pass
+            def recv(self, n):
+                if self.read < len(frames):
+                    f = frames[self.read]; self.read += 1; return f
+                raise _socket.timeout()
+
+        hp = HomeplugAV("eth0")
+        sock = _FakeSock()
+        out = hp._send_recv(sock, b"x", timeout=5.0,
+                            expected_src="B0:19:21:F5:DB:A7",
+                            stop_on=frozenset((MX_SET_PARAM_CNF,)))
+        self.assertEqual(2, sock.read)            # stopped right after the ACK
+        self.assertEqual(MX_SET_PARAM_CNF, out[-1][0])
+
+
 class TestSetPowerSaving(TestCase):
     """Power saving must toggle bit 0x8000 of param 0x0029 and Apply."""
 
