@@ -19,6 +19,8 @@ MX_MME_HDR = _MODULE.MX_MME_HDR
 ETH_HDR = _MODULE.ETH_HDR
 parse_mx_nw_info_cnf = _MODULE.parse_mx_nw_info_cnf
 parse_mx_status_ind = _MODULE.parse_mx_status_ind
+parse_mx_nw_stats_cnf = _MODULE.parse_mx_nw_stats_cnf
+decode_phy_rate = _MODULE.decode_phy_rate
 
 
 class TestMediaXtreamParsing(TestCase):
@@ -47,6 +49,25 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual(2, len(parsed["stations"]))
         self.assertEqual("B0:19:21:F5:DB:A7", parsed["stations"][0]["mac"])
         self.assertEqual("AA:BB:CC:DD:EE:FF", parsed["stations"][1]["mac"])
+
+    def test_decode_phy_rate_masks_link_flag(self) -> None:
+        self.assertEqual(422, decode_phy_rate(0x81A6))
+        self.assertEqual(274, decode_phy_rate(0x8112))
+        self.assertEqual(430, decode_phy_rate(0x81AE))
+        # Already-clean values pass through unchanged.
+        self.assertEqual(422, decode_phy_rate(0x01A6))
+
+    def test_parse_mx_nw_stats_cnf_real_capture(self) -> None:
+        # Real TL-PA7017 (BCM60355) capture: 1 station, TX=0x81A6 RX=0x8112,
+        # high bit is a link-active flag -> 422 / 274 Mbps.
+        payload = bytes.fromhex("01ec086b54fee3a681128100000000")
+        frame = (b"\x00" * (ETH_HDR + MX_MME_HDR)) + payload
+        stations = parse_mx_nw_stats_cnf(frame)
+
+        self.assertEqual(1, len(stations))
+        self.assertEqual("EC:08:6B:54:FE:E3", stations[0]["mac"])
+        self.assertEqual(422, stations[0]["tx_rate"])
+        self.assertEqual(274, stations[0]["rx_rate"])
 
     def test_parse_mx_status_ind_extracts_rates(self) -> None:
         payload = b"\x02\x46\x04\x00" + b"\x05\x00\x06\x00"

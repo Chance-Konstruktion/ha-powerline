@@ -378,10 +378,20 @@ def parse_mx_get_param_cnf(data: bytes) -> bytes:
     # Fallback: return everything after header
     return payload
 
+def decode_phy_rate(raw: int) -> int:
+    """Decode a MEDIAXTREAM PHY rate (Mbps) from its 16-bit LE field.
+
+    Confirmed on TL-PA7017 (BCM60355): the top bit (0x8000) is a "link active"
+    flag, the low 15 bits are the rate in Mbps. e.g. 0x81A6 -> 422 Mbps.
+    """
+    return raw & 0x7FFF
+
 def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
     """Parse MEDIAXTREAM Network Stats.CNF — extract PHY rates.
 
-    Format: NumStations(1) + [DA(6) + AvgTX(2 LE) + AvgRX(2 LE)] per station
+    Format: NumStations(1) + [DA(6) + AvgTX(2 LE) + AvgRX(2 LE)] per station.
+    Each rate's high bit (0x8000) is a link-active flag, masked off by
+    decode_phy_rate().
     """
     stations = []
     off = ETH_HDR + MX_MME_HDR
@@ -396,8 +406,8 @@ def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
         if p + 10 > len(payload):
             break
         mac = mac_to_str(payload[p:p+6])
-        tx = struct.unpack("<H", payload[p+6:p+8])[0]
-        rx = struct.unpack("<H", payload[p+8:p+10])[0]
+        tx = decode_phy_rate(struct.unpack("<H", payload[p+6:p+8])[0])
+        rx = decode_phy_rate(struct.unpack("<H", payload[p+8:p+10])[0])
         p += 10
         stations.append({"mac": mac, "plcmac": mac, "tx_rate": tx, "rx_rate": rx})
     return stations
