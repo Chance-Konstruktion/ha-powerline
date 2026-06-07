@@ -82,6 +82,7 @@ _MX_ACTION_OK = frozenset((
     MX_SET_PARAM_CNF,   # 0xA059 - Set Parameter confirmation
     MX_ACTION_ALT_CNF,  # 0xA069 - alternative confirmation (BCM firmware)
 ))
+_MX_APPLY_OK = frozenset((MX_APPLY_CNF,))  # 0xA021 - Apply/commit confirmation
 
 # ── Qualcomm Vendor-Specific MMEs (0x88E1) ──
 VS_SW_VER_REQ   = 0xA000;  VS_SW_VER_CNF   = 0xA001
@@ -532,6 +533,7 @@ class HomeplugAV:
     def _send_recv(self, sock: socket.socket, frame: bytes,
                    timeout: float = 3.0,
                    expected_src: str | None = None,
+                   stop_on: frozenset[int] | None = None,
                    ) -> list[tuple[int, str, bytes]]:
         """Send frame, collect responses until timeout.
 
@@ -539,6 +541,12 @@ class HomeplugAV:
         originate from that MAC. This prevents unrelated background traffic
         (e.g. 0x6046 status broadcasts from other adapters) from being
         misinterpreted as a response to our request.
+
+        If stop_on is given, return as soon as a response with one of those
+        MMTYPEs is received. The 0x8912 bus carries heavy background traffic
+        (0xA070 beacons, 0x6046 status), so without this every control command
+        would block for the full timeout — three sequential LED writes then
+        exceed the coordinator's 10s budget and the switch reports a failure.
         """
         sock.settimeout(timeout)
         sock.send(frame)
@@ -556,6 +564,8 @@ class HomeplugAV:
                 if expect is not None and src.upper() != expect:
                     continue
                 results.append((mmtype, src, data))
+                if stop_on is not None and mmtype in stop_on:
+                    break
             except socket.timeout:
                 break
             except OSError:
@@ -1031,7 +1041,8 @@ class HomeplugAV:
                                seq=self._next_seq(),
                                payload=struct.pack("<H", param_id))
         for mmtype, src, data in self._send_recv(
-                self._sock_mx, frame, timeout, expected_src=mac):
+                self._sock_mx, frame, timeout, expected_src=mac,
+                stop_on=frozenset((MX_GET_PARAM_CNF,))):
             if mmtype != MX_GET_PARAM_CNF:
                 continue
             val = parse_mx_get_param_cnf(data)
@@ -1097,18 +1108,21 @@ class HomeplugAV:
         f1 = build_mx_set_param(dst, self._src_mac, PARAM_LED_AUX,
                                 self._LED_AUX_VALUE[on], octets_per_element=2,
                                 seq=self._next_seq())
-        self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac)
+        self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac,
+                        stop_on=_MX_ACTION_OK)
 
         # 2) LED Options 0x003F (4-byte value) — the actual enable flag.
         f2 = build_mx_set_param(dst, self._src_mac, PARAM_LED_OPTIONS,
                                 self._LED_OPTS_VALUE[on], octets_per_element=4,
                                 seq=self._next_seq())
-        resp2 = self._send_recv(self._sock_mx, f2, 2.0, expected_src=mac)
+        resp2 = self._send_recv(self._sock_mx, f2, 2.0, expected_src=mac,
+                                stop_on=_MX_ACTION_OK)
         opts_ok = any(m in _MX_ACTION_OK for m, _, _ in resp2)
 
         # 3) Apply / commit (0xA020) -> 0xA021.
         f3 = build_mx_frame(dst, self._src_mac, MX_APPLY_REQ, seq=self._next_seq())
-        resp3 = self._send_recv(self._sock_mx, f3, 2.0, expected_src=mac)
+        resp3 = self._send_recv(self._sock_mx, f3, 2.0, expected_src=mac,
+                                stop_on=_MX_APPLY_OK)
         apply_ok = any(m == MX_APPLY_CNF for m, _, _ in resp3)
 
         if opts_ok or apply_ok:
@@ -1143,17 +1157,20 @@ class HomeplugAV:
         f1 = build_mx_set_param(dst, self._src_mac, PARAM_POWER_STANDBY,
                                 struct.pack("<H", value), octets_per_element=2,
                                 seq=self._next_seq())
-        resp1 = self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac)
+        resp1 = self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac,
+                                stop_on=_MX_ACTION_OK)
         set_ok = any(m in _MX_ACTION_OK for m, _, _ in resp1)
 
         if not on:
             faux = build_mx_set_param(dst, self._src_mac, PARAM_POWER_STANDBY_AUX,
                                       b"\x00", octets_per_element=1,
                                       seq=self._next_seq())
-            self._send_recv(self._sock_mx, faux, 2.0, expected_src=mac)
+            self._send_recv(self._sock_mx, faux, 2.0, expected_src=mac,
+                            stop_on=_MX_ACTION_OK)
 
         f2 = build_mx_frame(dst, self._src_mac, MX_APPLY_REQ, seq=self._next_seq())
-        resp2 = self._send_recv(self._sock_mx, f2, 2.0, expected_src=mac)
+        resp2 = self._send_recv(self._sock_mx, f2, 2.0, expected_src=mac,
+                                stop_on=_MX_APPLY_OK)
         apply_ok = any(m == MX_APPLY_CNF for m, _, _ in resp2)
 
         if set_ok or apply_ok:
