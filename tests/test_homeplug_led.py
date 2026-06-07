@@ -19,6 +19,57 @@ _SPEC.loader.exec_module(_MODULE)
 HomeplugAV = _MODULE.HomeplugAV
 MX_ACTION_CNF = _MODULE.MX_ACTION_CNF
 MX_SET_KEY_CNF = _MODULE.MX_SET_KEY_CNF
+build_mx_set_param = _MODULE.build_mx_set_param
+ETH_HDR = _MODULE.ETH_HDR
+MX_MME_HDR = _MODULE.MX_MME_HDR
+ETHERTYPE_MEDIAXTREAM = _MODULE.ETHERTYPE_MEDIAXTREAM
+MX_SET_PARAM_REQ = _MODULE.MX_SET_PARAM_REQ
+PARAM_LED_CONTROL = _MODULE.PARAM_LED_CONTROL
+import struct as _struct
+
+
+class TestSetParameterFrame(TestCase):
+    """The LED/power-saving writes must be real Set Parameter (0xA058) frames."""
+
+    def test_build_mx_set_param_carries_param_id_and_value(self) -> None:
+        dst = bytes.fromhex("b01921f5dba7")
+        src = bytes.fromhex("001122334455")
+        frame = build_mx_set_param(dst, src, PARAM_LED_CONTROL, b"\x01", seq=7)
+
+        # Ethertype 0x8912 (MEDIAXTREAM)
+        self.assertEqual(ETHERTYPE_MEDIAXTREAM,
+                         _struct.unpack("!H", frame[12:14])[0])
+        # MMTYPE 0xA058 (Set Parameter), little-endian after version byte
+        self.assertEqual(MX_SET_PARAM_REQ,
+                         _struct.unpack("<H", frame[ETH_HDR + 1:ETH_HDR + 3])[0])
+        # Payload: ParamID(2 LE) + OctetsPerElement + NumElements(2 LE) + Value
+        payload = frame[ETH_HDR + MX_MME_HDR:]
+        self.assertEqual(PARAM_LED_CONTROL,
+                         _struct.unpack("<H", payload[0:2])[0])
+        self.assertEqual(1, payload[2])               # octets per element
+        self.assertEqual(1, _struct.unpack("<H", payload[3:5])[0])  # num elements
+        self.assertEqual(0x01, payload[5])            # LED on
+
+    def test_set_led_sends_led_parameter(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        captured = {}
+
+        def _capture(sock, frame, *args, **kwargs):
+            captured["frame"] = frame
+            return [(MX_ACTION_CNF, "B0:19:21:F5:DB:A7", b"")]
+
+        with patch.object(hp, "_open_hpav"), \
+             patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_send_recv", side_effect=_capture), \
+             patch.object(hp, "_close"):
+            result = hp.set_led("B0:19:21:F5:DB:A7", False)
+
+        self.assertTrue(result)
+        payload = captured["frame"][ETH_HDR + MX_MME_HDR:]
+        self.assertEqual(PARAM_LED_CONTROL, _struct.unpack("<H", payload[0:2])[0])
+        self.assertEqual(0x00, payload[5])  # LED off
 
 
 class TestHomeplugSetLed(TestCase):

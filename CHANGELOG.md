@@ -2,6 +2,17 @@
 
 All notable changes to **Powerline Network** (ha-tp-link-powerline) are documented here.
 
+## [Unreleased]
+
+### Fixed
+- **TX/RX rates always 0** -- the MEDIAXTREAM Network Stats MMTYPE was wrong (`0xA034`); corrected to **`0xA02C/0xA02D`** (the `pla-util get-network-stats` command). Station Info corrected from `0xA080` to **`0xA04C/0xA04D`**. Values verified against `serock/mediaxtream-dissector` and `serock/pla-util`.
+- **LED control did nothing** -- `0xA058` is **Set Parameter**, not an opaque "action" command. LED is now written as a structured Set Parameter to param **`0x003E` (LED Control)** with value `0x01`/`0x00`, instead of a hand-captured 30-byte blob that never carried the correct parameter id.
+- **Power saving did nothing** -- now written via Set Parameter to param **`0x0029` (Power Manager Standby Timeout)**.
+
+### Added
+- `build_mx_set_param()` helper implementing the documented Set Parameter payload layout (ParamID + OctetsPerElement + NumElements + Value).
+- **State read-back** -- `query_device_states()` now reads the real LED and power-saving state via Get Parameter (`0xA05C`, params `0x003E` / `0x0029`) instead of always returning defaults.
+
 ## [4.2.0] -- 2026-03-31
 
 ### Added
