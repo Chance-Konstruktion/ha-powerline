@@ -17,7 +17,11 @@ from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, get_mac
 
 _LOGGER = logging.getLogger(__name__)
 
-LED_SET_TIMEOUT = 10.0
+# Control commands (LED, power saving, QoS) are serialized with the poll on a
+# shared lock, so a command issued mid-poll must wait for the poll to finish.
+# This budget must comfortably exceed a full poll, otherwise a command that
+# actually succeeds gets reported as a timeout failure in the UI.
+LED_SET_TIMEOUT = 30.0
 
 
 class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
