@@ -20,14 +20,32 @@ Requires: CAP_NET_RAW (root or setcap cap_net_raw+ep)
 """
 
 import asyncio
+import functools
 import logging
 import os
 import socket
 import struct
+import threading
 import time
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _locked(method):
+    """Serialize a HomeplugAV method on self._lock.
+
+    discover() and the control commands (set_led, set_power_saving, ...) each
+    open and close the shared raw sockets. When a poll and a switch command run
+    in different executor threads at the same time, one closes self._sock_mx
+    while the other is mid-_send_recv -> 'NoneType has no attribute settimeout'.
+    Serializing every socket-using entry point prevents that.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 
 # ── Ethertypes ──
 ETHERTYPE_HPAV = 0x88E1          # Standard HomePlug AV
@@ -482,6 +500,8 @@ class HomeplugAV:
         self._seq = 1
         self._chipset = "unknown"  # "broadcom" or "qualcomm"
         self._led_success_macs: set[str] = set()
+        # Serializes the socket-using public methods across executor threads.
+        self._lock = threading.RLock()
 
     def _next_seq(self) -> int:
         s = self._seq
@@ -612,6 +632,7 @@ class HomeplugAV:
 
     # ── Discovery ──────────────────────────────────────────
 
+    @_locked
     def discover(self, timeout: float = 5.0) -> list[dict]:
         try:
             self._open_hpav()
@@ -677,6 +698,7 @@ class HomeplugAV:
 
     # ── Passive Rate Monitoring ─────────────────────────────
 
+    @_locked
     def get_passive_rates(self, timeout: float = 6.0) -> dict[str, dict[str, int]]:
         """Listen passively for 0x6046 status indications (Broadcom).
 
@@ -706,6 +728,22 @@ class HomeplugAV:
         return rates
 
     # ── Rate Fetching ─────────────────────────────────────
+
+    @staticmethod
+    def _mirror_link_rate(devices: dict, responder: str, peer: str,
+                          tx: int, rx: int) -> None:
+        """A PLC link rate belongs to both endpoints.
+
+        NW_STATS lists only the peer station, so the responding adapter would
+        otherwise show 0. In a typical 2-adapter setup that means only one
+        device reports a speed. Mirror the rate onto the responder too (only if
+        it has none yet, so a directly reported rate always wins).
+        """
+        if responder and peer and responder != peer and responder in devices:
+            d = devices[responder]
+            if d.get("tx_rate", 0) == 0 and d.get("rx_rate", 0) == 0:
+                d["tx_rate"] = tx
+                d["rx_rate"] = rx
 
     def _fetch_rates(self, devices: dict) -> bool:
         found = False
@@ -756,6 +794,7 @@ class HomeplugAV:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx
                             devices[m]["rx_rate"] = rx
+                            self._mirror_link_rate(devices, src, m, tx, rx)
                             found = True
                             _LOGGER.info("NW_STATS unicast: "
                                          "%s TX=%d RX=%d", m, tx, rx)
@@ -777,6 +816,7 @@ class HomeplugAV:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx
                             devices[m]["rx_rate"] = rx
+                            self._mirror_link_rate(devices, src, m, tx, rx)
                             found = True
                             _LOGGER.info("NW_STATS broadcast: "
                                          "%s TX=%d RX=%d", m, tx, rx)
@@ -1000,6 +1040,7 @@ class HomeplugAV:
 
     # ── State Query ───────────────────────────────────────
 
+    @_locked
     def query_device_states(self, macs: list[str]) -> dict[str, dict]:
         """Query LED, QoS, and power saving state from each adapter.
 
@@ -1181,6 +1222,7 @@ class HomeplugAV:
                       "ON" if on else "OFF", mac)
         return False
 
+    @_locked
     def set_led(self, mac: str, on: bool, timeout: float = 2.0) -> bool:
         """Set LED on a specific adapter (by MAC)."""
         try:
@@ -1231,6 +1273,7 @@ class HomeplugAV:
         finally:
             self._close()
 
+    @_locked
     def set_power_saving(self, mac: str, on: bool) -> bool:
         """Set power saving mode on a specific adapter (by MAC)."""
         try:
@@ -1359,6 +1402,7 @@ class HomeplugAV:
         _LOGGER.warning("QoS: no confirmation from %s for priority '%s'", mac, priority)
         return False
 
+    @_locked
     def set_qos_priority(self, mac: str, priority: str) -> bool:
         """Set QoS priority on a specific adapter (by MAC)."""
         try:
@@ -1381,6 +1425,7 @@ class HomeplugAV:
 
     # ── Diagnostics ──────────────────────────────────────
 
+    @_locked
     def diagnose(self, timeout: float = 10.0) -> str:
         src_mac = get_iface_mac(self.interface or "")
         lines = [

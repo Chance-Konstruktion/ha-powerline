@@ -22,6 +22,27 @@ parse_mx_status_ind = _MODULE.parse_mx_status_ind
 parse_mx_nw_stats_cnf = _MODULE.parse_mx_nw_stats_cnf
 parse_mx_get_param_cnf = _MODULE.parse_mx_get_param_cnf
 decode_phy_rate = _MODULE.decode_phy_rate
+HomeplugAV = _MODULE.HomeplugAV
+
+
+class TestMirrorLinkRate(TestCase):
+    """The PLC link rate should appear on both endpoints, not just the peer."""
+
+    def test_responder_gets_the_link_rate(self) -> None:
+        devices = {
+            "B0:19:21:F5:DB:A7": {"mac": "B0:19:21:F5:DB:A7", "tx_rate": 0, "rx_rate": 0},
+            "EC:08:6B:54:FE:E3": {"mac": "EC:08:6B:54:FE:E3", "tx_rate": 422, "rx_rate": 274},
+        }
+        # B0:19:21 responded reporting peer EC:08:6B with 422/274.
+        HomeplugAV._mirror_link_rate(devices, "B0:19:21:F5:DB:A7",
+                                     "EC:08:6B:54:FE:E3", 422, 274)
+        self.assertEqual(422, devices["B0:19:21:F5:DB:A7"]["tx_rate"])
+        self.assertEqual(274, devices["B0:19:21:F5:DB:A7"]["rx_rate"])
+
+    def test_does_not_overwrite_existing_rate(self) -> None:
+        devices = {"X": {"mac": "X", "tx_rate": 100, "rx_rate": 50}}
+        HomeplugAV._mirror_link_rate(devices, "X", "Y", 999, 999)
+        self.assertEqual(100, devices["X"]["tx_rate"])  # own rate wins
 
 
 class TestMediaXtreamParsing(TestCase):
