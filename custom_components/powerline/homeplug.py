@@ -401,17 +401,21 @@ def parse_mx_get_param_cnf(data: bytes) -> bytes:
 def decode_phy_rate(raw: int) -> int:
     """Decode a MEDIAXTREAM PHY rate (Mbps) from its 16-bit LE field.
 
-    Confirmed on TL-PA7017 (BCM60355): the top bit (0x8000) is a "link active"
-    flag, the low 15 bits are the rate in Mbps. e.g. 0x81A6 -> 422 Mbps.
+    Confirmed on TL-PA7017 (BCM60355) across two link types: the rate is the
+    low 12 bits, the top nibble is a status/flag field (0x8xxx on the AV500
+    link, 0x4xxx on the AV1000<->AV1000 link). e.g.
+      0x819D -> 413 Mbps (AV500 link)
+      0x4223 -> 547 Mbps (AV1000<->AV1000 link)
+    Masking only the top bit (0x8000) was wrong: it left 0x4223 as 16931.
     """
-    return raw & 0x7FFF
+    return raw & 0x0FFF
 
 def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
     """Parse MEDIAXTREAM Network Stats.CNF — extract PHY rates.
 
     Format: NumStations(1) + [DA(6) + AvgTX(2 LE) + AvgRX(2 LE)] per station.
-    Each rate's high bit (0x8000) is a link-active flag, masked off by
-    decode_phy_rate().
+    Each rate's top nibble (0xF000) is a status field; decode_phy_rate() keeps
+    only the low 12 bits.
     """
     stations = []
     off = ETH_HDR + MX_MME_HDR
