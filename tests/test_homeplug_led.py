@@ -183,6 +183,25 @@ class TestLedEarlyBail(TestCase):
         # so 2 sends total instead of the full 6 (3 writes x 2 attempts).
         self.assertEqual(2, len(calls))
 
+    def test_qualcomm_chipset_sends_no_frames(self) -> None:
+        """A confirmed Qualcomm adapter has no safe LED path: return False
+
+        without firing any frames (the old build sent invented 0xA00C/0xA00E
+        MMEs that don't exist).
+        """
+        hp = HomeplugAV("eth0")
+        hp._chipset = "qualcomm"
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        sends = MagicMock(return_value=[])
+
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_send_recv", sends), patch.object(hp, "_close"):
+            ok = hp.set_led("EC:08:6B:54:FE:E3", True)
+
+        self.assertFalse(ok)
+        sends.assert_not_called()
+
 
 class TestQosReadback(TestCase):
     """query_device_states should derive the QoS mode from the 0x0069 map."""

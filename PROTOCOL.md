@@ -54,11 +54,24 @@ and [`serock/pla-util`](https://github.com/serock/pla-util), then confirmed live
 > Info — **both wrong**; the adapter never answered, so TX/RX always read 0.
 
 ### Qualcomm / Atheros (`0x88E1` + QCA OUI `00:B0:52`)
-| MMTYPE | Name |
-|--------|------|
-| `0xA048` / `0xA049` | `VS_NW_STATS` (PHY rates) |
-| `0xA000` / `0xA001` | `VS_SW_VER` (firmware) |
-| `0xA0B0` / `0xA0B1` | Read/Write **module (PIB)** — used for LED/QoS on QCA |
+Values from [`qca/open-plc-utils` `mme/qualcomm.h`](https://github.com/qca/open-plc-utils/blob/master/mme/qualcomm.h) (the canonical reference).
+
+| MMTYPE | Name | Use |
+|--------|------|-----|
+| `0xA000` / `0xA001` | `VS_SW_VER` | firmware version — **read, safe** |
+| `0xA038` / `0xA039` | `VS_NW_INFO` | network info + PHY rates — **read, safe** |
+| `0xA030` / `0xA031` | `VS_LNK_STATS` | per-link statistics — **read, safe** |
+| `0xA074` / `0xA075` | `VS_NW_INFO_STATS` | extended network info/stats — **read, safe** |
+| `0xA024` / `0xA025` | `VS_RD_MOD` | read module (PIB/MAC) — **read, safe** |
+| `0xA020` | `VS_WR_MOD` | **write** module (PIB) — ⚠️ risky |
+| `0xA028` | `VS_MOD_NVM` | commit module to NVM — ⚠️ risky |
+| `0xA094` | `VS_SET_LED_BEHAVIOR` | declared in `qualcomm.h` but **never implemented** (no payload struct) |
+
+Module codes for `VS_RD_MOD` / `VS_WR_MOD`: `VS_MODULE_MAC = 1<<0`, `VS_MODULE_PIB = 1<<1`, `VS_MODULE_FORCE = 1<<4`.
+
+> ⚠️ Older builds used `0xA048` ("VS_NW_STATS") for QCA rates — it is **not** in
+> `qualcomm.h` and never got a confirmed response. Use `VS_NW_INFO` (`0xA038`)
+> or `VS_LNK_STATS` (`0xA030`) instead.
 
 ---
 
@@ -204,26 +217,55 @@ State read-back matches the live CAP bytes against these patterns.
 
 ---
 
-## 9 · Qualcomm (QCA) — why control isn't implemented
+## 9 · Qualcomm (QCA / AV500) — current state
 
-On the Qualcomm AV500, LED / power saving / QoS are **not** simple messages.
-tpPLC changes them by reading the entire **Parameter Information Block (PIB)** in
-32 chunked `0xA0B0` frames (~1448 bytes each), editing it, and **writing the whole
-PIB back** — confirmed by the PIB signature inside the capture:
+### What works (read-only, safe)
+Discovery (`CC_DISCOVER_LIST`), online status, firmware (`VS_SW_VER`), and the
+read MMEs in §2 (`VS_NW_INFO`, `VS_LNK_STATS`, `VS_NW_INFO_STATS`). The
+**Diagnose** button now sends all of these to a QCA adapter and dumps the raw
+responses — that output is the starting point for decoding rates on a specific
+QCA7420 firmware.
 
-```
-PIB-QCA7420-1.1.0.844-01-FINAL-20120919...
-QCA7420/6410/7000 MAC SW v1.1.0 Rev:01 FINAL
-Qualcomm Atheros HomePlug AV Device
-```
+### Why control (LED / QoS / power saving) isn't implemented
+There is **no safe Layer-2 control command** for these on QCA:
 
-A faulty / interrupted PIB write can corrupt the config (lose the network key,
-drop the adapter off the network → factory reset). For a single LED toggle the
-risk/benefit is wrong, so **QCA control is intentionally not implemented**.
-Discovery, online status and PHY rates *do* work on Qualcomm.
+- `VS_SET_LED_BEHAVIOR` (`0xA094`) is declared in `qualcomm.h` but **has no
+  implementation** anywhere in open-plc-utils — no payload struct, no tool uses
+  it — so there is nothing to copy and no way to verify a guess.
+- The only path tpPLC actually uses is a full **Parameter Information Block
+  (PIB)** read-modify-write via `VS_RD_MOD` (`0xA024`) → edit → `VS_WR_MOD`
+  (`0xA020`) / `VS_MOD_NVM` (`0xA028`). The PIB signature is visible in a
+  capture:
 
-If a safe, non-PIB Qualcomm path is ever found (e.g. via
-[`open-plc-utils`](https://github.com/qca/open-plc-utils)), this is where it'd go.
+  ```
+  PIB-QCA7420-1.1.0.844-01-FINAL-20120919...
+  QCA7420/6410/7000 MAC SW v1.1.0 Rev:01 FINAL
+  Qualcomm Atheros HomePlug AV Device
+  ```
+
+  A faulty / interrupted PIB write can corrupt the config (lose the network key,
+  drop the adapter off the network → factory reset). For a single LED toggle the
+  risk/benefit is wrong, so **QCA control is intentionally not implemented**.
+
+### How to add QCA control safely — capture recipe
+The proven method (every Broadcom feature was built this way): capture the
+official **tpPLC** app performing the action against your QCA7420, then decode it.
+
+1. Run tpPLC on a PC wired to the QCA adapter; start a Wireshark capture on that
+   NIC with display filter:
+   ```
+   eth.type == 0x88e1
+   ```
+2. Toggle the LED (then QoS, then power saving) **one action at a time**, noting
+   the order. Save each as a separate `.pcapng`.
+3. For each action, look at the frames the **PC sends** (not the adapter's
+   replies). If they are `VS_WR_MOD` (`0xA020`) PIB writes, diff the PIB bytes
+   between the "on" and "off" captures to find the changed offset(s).
+4. Also run the integration's **Diagnose** button and grab its QCA section — it
+   shows which read MMEs your firmware answers.
+
+Share the captures (or the changed PIB offsets) and a verified, minimal-write
+QCA control path can be added here — same as `_set_led_broadcom` / `_set_qos_broadcom`.
 
 ---
 
