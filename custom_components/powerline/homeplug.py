@@ -102,9 +102,21 @@ _MX_ACTION_OK = frozenset((
 ))
 _MX_APPLY_OK = frozenset((MX_APPLY_CNF,))  # 0xA021 - Apply/commit confirmation
 
-# ── Qualcomm Vendor-Specific MMEs (0x88E1) ──
-VS_SW_VER_REQ   = 0xA000;  VS_SW_VER_CNF   = 0xA001
-VS_NW_INFO_REQ  = 0xA038;  VS_NW_INFO_CNF  = 0xA039
+# ── Qualcomm Vendor-Specific MMEs (0x88E1 + QCA OUI 00:B0:52) ──
+# Values from qca/open-plc-utils mme/qualcomm.h (the canonical reference).
+VS_SW_VER_REQ        = 0xA000;  VS_SW_VER_CNF        = 0xA001  # firmware version
+VS_NW_INFO_REQ       = 0xA038;  VS_NW_INFO_CNF       = 0xA039  # network info (+ PHY rates)
+VS_LNK_STATS_REQ     = 0xA030;  VS_LNK_STATS_CNF     = 0xA031  # per-link statistics
+VS_NW_INFO_STATS_REQ = 0xA074;  VS_NW_INFO_STATS_CNF = 0xA075  # extended network info/stats
+VS_RD_MOD_REQ        = 0xA024;  VS_RD_MOD_CNF        = 0xA025  # read module (PIB/MAC) — read-only
+# VS_WR_MOD (0xA020) / VS_MOD_NVM (0xA028) write the PIB. Module codes:
+# VS_MODULE_MAC=1<<0, VS_MODULE_PIB=1<<1, VS_MODULE_FORCE=1<<4. Intentionally
+# NOT used here — a bad PIB write can lose the network key / brick the adapter.
+# VS_SET_LED_BEHAVIOR (0xA094) exists as a constant in qualcomm.h but has no
+# implementation in open-plc-utils (no payload struct), so we can't use it.
+VS_SET_LED_BEHAVIOR  = 0xA094
+# 0xA048 was used by older builds as "VS_NW_STATS" but is not in qualcomm.h and
+# never got a confirmed response; kept only so existing call sites still resolve.
 VS_NW_STATS_REQ = 0xA048;  VS_NW_STATS_CNF = 0xA049
 
 # ── Constants ──
@@ -1280,25 +1292,18 @@ class HomeplugAV:
                     self._led_success_macs.add(mac.upper())
                     return True
 
-            # Qualcomm fallback
-            if self._chipset in ("qualcomm", "unknown"):
-                dst = mac_to_bytes(mac)
-                led_val = b"\x01" if on else b"\x00"
-                qca_tests = [
-                    ("QCA 0xA00C", build_qca_frame(
-                        dst, self._src_mac, 0xA00C,
-                        struct.pack("<BBH", 0x00, 0x02, 1) + led_val), 0xA00D),
-                    ("QCA 0xA00E", build_qca_frame(
-                        dst, self._src_mac, 0xA00E, led_val), 0xA00F),
-                ]
-                for name, frame, expect in qca_tests:
-                    _LOGGER.debug("LED: trying %s for %s (on=%s)", name, mac, on)
-                    for mmtype, src, data in self._send_recv(
-                            self._sock_hpav, frame, 1.5):
-                        if mmtype == expect:
-                            _LOGGER.info("LED works via %s!", name)
-                            self._led_success_macs.add(mac.upper())
-                            return True
+            # Qualcomm (QCA) has no safe Layer-2 LED command. open-plc-utils
+            # defines VS_SET_LED_BEHAVIOR (0xA094) but never implements it (no
+            # payload struct), and the only working path tpPLC uses is a full
+            # PIB read-modify-write (VS_RD_MOD/VS_WR_MOD), which can lose the
+            # network key if interrupted. We deliberately do not attempt it.
+            if self._chipset == "qualcomm":
+                _LOGGER.info(
+                    "LED control is not available on Qualcomm (QCA) adapter %s: "
+                    "it requires a risky PIB rewrite. Capture tpPLC toggling the "
+                    "LED on this adapter (see PROTOCOL.md) to add safe support.",
+                    mac)
+                return False
 
             _LOGGER.warning(
                 "LED: no response from %s. "
@@ -1492,15 +1497,34 @@ class HomeplugAV:
                             MX_GET_PARAM_REQ, seq=self._next_seq(),
                             payload=struct.pack("<H", PARAM_USER_HFID))),
 
-            ("QCA VS_NW_STATS (0xA048) on 0x88E1",
-             self._sock_hpav,
-             build_qca_frame(BROADCAST_MAC, self._src_mac,
-                             VS_NW_STATS_REQ)),
-
             ("QCA VS_SW_VER (0xA000) on 0x88E1",
              self._sock_hpav,
              build_qca_frame(BROADCAST_MAC, self._src_mac,
                              VS_SW_VER_REQ)),
+
+            # Documented Qualcomm read MMEs (open-plc-utils qualcomm.h). These
+            # are the real QCA rate/topology sources and are read-only. Dump the
+            # raw responses so a QCA7420 (AV500) capture can be decoded later.
+            ("QCA VS_NW_INFO (0xA038) on 0x88E1",
+             self._sock_hpav,
+             build_qca_frame(BROADCAST_MAC, self._src_mac,
+                             VS_NW_INFO_REQ)),
+
+            ("QCA VS_LNK_STATS (0xA030) on 0x88E1",
+             self._sock_hpav,
+             build_qca_frame(BROADCAST_MAC, self._src_mac,
+                             VS_LNK_STATS_REQ)),
+
+            ("QCA VS_NW_INFO_STATS (0xA074) on 0x88E1",
+             self._sock_hpav,
+             build_qca_frame(BROADCAST_MAC, self._src_mac,
+                             VS_NW_INFO_STATS_REQ)),
+
+            # Legacy/unverified guess kept for comparison.
+            ("QCA VS_NW_STATS? (0xA048) on 0x88E1",
+             self._sock_hpav,
+             build_qca_frame(BROADCAST_MAC, self._src_mac,
+                             VS_NW_STATS_REQ)),
         ])
 
         for label, sock, frame in tests:

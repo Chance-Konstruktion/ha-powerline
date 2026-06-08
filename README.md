@@ -126,7 +126,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
 > *Parameter Information Block* and the vendor app only changes them via a full
 > PIB read-modify-write — too risky to replicate, so those controls aren't
-> offered there. Details in [`PROTOCOL.md` §9](PROTOCOL.md#9--qualcomm-qca--why-control-isnt-implemented).
+> offered there. Details + capture recipe in [`PROTOCOL.md` §9](PROTOCOL.md#9--qualcomm-qca--av500--current-state).
 
 <details>
 <summary><b>📋 Entities created</b></summary>
@@ -241,7 +241,7 @@ Capture the official tpPLC app performing an action and compare with
 ## 🗺️ Roadmap
 
 - [x] HomePlug AV / AV2 — discovery, rates, LED, power saving, QoS (Broadcom)
-- [ ] **Qualcomm (QCA) control** — only if a safe, non-PIB path is found
+- [ ] **Qualcomm (QCA / AV500) control** — needs a tpPLC capture of the action ([recipe](PROTOCOL.md#9--qualcomm-qca--av500--current-state)); only via a safe, minimal PIB write
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
 
 ---
