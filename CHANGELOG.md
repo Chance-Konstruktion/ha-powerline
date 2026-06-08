@@ -1,8 +1,34 @@
 # Changelog
 
-All notable changes to **Powerline Network** (ha-tp-link-powerline) are documented here.
+All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-06-08
+
+First public release. Native Home Assistant integration for HomePlug AV / AV2
+powerline adapters over raw Layer 2 (no IP / WiFi needed).
+
+### Added
+- **Auto-discovery** of adapters via `CC_DISCOVER_LIST` (works on every chipset).
+- **Per-adapter sensors**: TX/RX PHY rate (Mbit/s) and online status.
+- **Broadcom (MEDIAXTREAM) control**: LED switch, power-saving switch, and QoS
+  priority select — all reverse-engineered from tpPLC captures and verified on a
+  TL-PA7017 (BCM60355).
+- **Network overview** entities (total TX/RX, adapters online/total) and a
+  **Diagnose** button that dumps a full protocol scan to the log.
+- **Qualcomm (QCA / AV500)**: discovery, online status, firmware and rates;
+  Diagnose probes the correct QCA read MMEs (`VS_NW_INFO`, `VS_LNK_STATS`,
+  `VS_NW_INFO_STATS`). QCA control (LED/QoS/power-saving) is intentionally not
+  implemented yet — see `PROTOCOL.md` §9. Planned for 0.2.
+- **Documentation**: rewritten README, full Layer-2 reference (`PROTOCOL.md`),
+  banner and local preview.
+
+### Note on versioning
+- The pre-release `manifest.json` carried an inflated `4.x` version that was
+  never published. Reset to **`0.1.0`** for this first real release.
+
+The entries below were developed pre-release and are included in 0.1.0.
 
 ### Fixed
 - **LED/power-saving on a non-Broadcom adapter hung for ~12 s before failing** -- on a mixed network (e.g. a Qualcomm AV500 alongside Broadcom AV1000s), the MEDIAXTREAM control sequence ran every write into its full timeout on the adapter that does not speak MEDIAXTREAM. It now bails out as soon as the first Set Parameter gets no reply, failing in ~2 s.

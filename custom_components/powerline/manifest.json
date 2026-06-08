@@ -4,9 +4,9 @@
   "codeowners": ["@Chance-Konstruktion"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/Chance-Konstruktion/ha-tp-link-powerline",
+  "documentation": "https://github.com/Chance-Konstruktion/ha-powerline",
   "integration_type": "hub",
   "iot_class": "local_push",
   "requirements": [],
-  "version": "4.2.0"
+  "version": "0.1.0"
 }
