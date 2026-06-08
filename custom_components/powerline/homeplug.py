@@ -125,6 +125,7 @@ PARAM_POWER_STANDBY_AUX = 0x0074  # Companion param tpPLC clears when disabling 
 PARAM_LED_CONTROL       = 0x003E  # LED control (read-only on TL-PA7017, always 0)
 PARAM_LED_OPTIONS       = 0x003F  # LED options — bit 0x10 of byte 3 = LED enabled
 PARAM_LED_AUX           = 0x0095  # Undocumented LED companion param (tpPLC writes it too)
+PARAM_QOS_PRIORITY_MAP  = 0x0069  # QoS priority mapping table (~1000 bytes)
 
 
 # ══════════════════════════════════════════════════════════
@@ -390,7 +391,7 @@ def parse_mx_get_param_cnf(data: bytes) -> bytes:
         return b""
     octets = payload[0]
     num = struct.unpack("<H", payload[1:3])[0]
-    if octets in (1, 2, 4) and 0 < num <= 255:
+    if octets in (1, 2, 4) and 0 < num <= 2000:
         end = 3 + octets * num
         if end <= len(payload):
             return payload[3:end]
@@ -1307,105 +1308,44 @@ class HomeplugAV:
 
     # ── QoS Priority Control ────────────────────────────
 
-    # QoS uses a two-frame sequence via MX_ACTION_REQ (0xA058):
-    #   Frame 1: short (30 bytes) — confirmed from Wireshark captures
-    #   Frame 2: long (variable) — traffic classification rules
-    #
-    # Short frame structure: [indicator] 69 00 00 ... (30 bytes, 0x00 padded)
-    # Long frame structure:  [indicator] 69 00 01 e8 03 00 e8 [class] 00 01 02 ff...
-    #
-    # Priority indicators (Byte 23 of Ethernet frame = payload[0]):
-    #   Gaming:      short=0x54, long=0x16  class=0x38
-    #   VoIP:        short=0xa7, long=0x22  class=0x78
-    #   Audio/Video: short=0xcd, long=0xcc  class=0x58
-    #   Internet:    short=0x8f, long=0x60  class=0x18
-
-    # Short frames (30 bytes each) — from Wireshark captures
-    _QOS_SHORT = {
-        "gaming":      bytes.fromhex("546900000000000000000000000000000000000000000000000000000000"),
-        "voip":        bytes.fromhex("a76900000000000000000000000000000000000000000000000000000000"),
-        "audio_video": bytes.fromhex("cd6900000000000000000000000000000000000000000000000000000000"),
-        "internet":    bytes.fromhex("8f6900000000000000000000000000000000000000000000000000000000"),
-    }
-
-    # Long frames — traffic classification rules from Wireshark captures.
-    # Structure: [indicator] 69 00 01 e8 03 00 e8 [class_byte] 00 01 02
-    #            followed by rule blocks (ff ff ff masks, port ranges, etc.)
-    # These are reconstructed from the confirmed patterns.
-    # If the adapter doesn't accept them, replace with full Wireshark hex dumps.
-    _QOS_LONG = {
-        "gaming": bytes.fromhex(
-            "166900"               # indicator + 69 00
-            "01e80300e838"         # rule header: class=0x38 (gaming)
-            "000102"               # rule type
-            "ffffffffffff00"       # MAC mask (any)
-            "ffffffffffff00"       # MAC mask (any)
-            "0000ffff"             # port range: all
-            "0000ffff"             # port range: all
-            "00"                   # protocol: any
-            "00000000000000000000" # padding
-        ),
-        "voip": bytes.fromhex(
-            "226900"               # indicator + 69 00
-            "01e80300e878"         # rule header: class=0x78 (voip)
-            "000102"               # rule type
-            "ffffffffffff00"       # MAC mask
-            "ffffffffffff00"       # MAC mask
-            "0000ffff"             # port range
-            "0000ffff"             # port range
-            "00"                   # protocol
-            "00000000000000000000" # padding
-        ),
-        "audio_video": bytes.fromhex(
-            "cc6900"               # indicator + 69 00
-            "01e80300e858"         # rule header: class=0x58 (audio/video)
-            "000102"               # rule type
-            "ffffffffffff00"       # MAC mask
-            "ffffffffffff00"       # MAC mask
-            "0000ffff"             # port range
-            "0000ffff"             # port range
-            "00"                   # protocol
-            "00000000000000000000" # padding
-        ),
-        "internet": bytes.fromhex(
-            "606900"               # indicator + 69 00
-            "01e80300e818"         # rule header: class=0x18 (internet)
-            "000102"               # rule type
-            "ffffffffffff00"       # MAC mask
-            "ffffffffffff00"       # MAC mask
-            "0000ffff"             # port range
-            "0000ffff"             # port range
-            "00"                   # protocol
-            "00000000000000000000" # padding
-        ),
+    # QoS priority is a Broadcom "priority mapping" table (Set Parameter, param
+    # 0x0069), confirmed from a tpPLC capture on TL-PA7017. tpPLC reads the
+    # ~1000-byte table (Get Parameter 0xA05C), rewrites the 8 channel-access-
+    # priority (CAP) bytes and writes it back (0xA058) — no Apply needed.
+    # CAP encoding: 0x18=CAP0 (low) .. 0x78=CAP3 (high), step 0x20.
+    # The 8 CAP bytes sit at these offsets within the table value, and each
+    # mode writes this exact 8-byte pattern (captured byte-for-byte):
+    _QOS_CAP_OFFSETS = (2, 27, 52, 77, 102, 127, 152, 177)
+    _QOS_CAP_MAP = {
+        "internet":    bytes((0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18)),
+        "audio_video": bytes((0x58, 0x18, 0x18, 0x38, 0x58, 0x58, 0x78, 0x78)),
+        "gaming":      bytes((0x38, 0x18, 0x18, 0x38, 0x58, 0x58, 0x78, 0x78)),
+        "voip":        bytes((0x78, 0x18, 0x18, 0x38, 0x58, 0x58, 0x78, 0x78)),
     }
 
     def _set_qos_broadcom(self, mac: str, priority: str) -> bool:
-        """Set QoS priority via MEDIAXTREAM two-frame sequence (Broadcom)."""
-        if priority not in self._QOS_SHORT:
+        """Set QoS priority by read-modify-writing the 0x0069 priority map."""
+        caps = self._QOS_CAP_MAP.get(priority)
+        if caps is None:
             _LOGGER.error("Unknown QoS priority: %s", priority)
             return False
 
+        table = self._get_param_value(mac, PARAM_QOS_PRIORITY_MAP)
+        if not table or len(table) <= self._QOS_CAP_OFFSETS[-1]:
+            _LOGGER.debug("QoS: could not read priority map from %s (got %s bytes)",
+                          mac, len(table) if table else 0)
+            return False
+
+        buf = bytearray(table)
+        for off, cap in zip(self._QOS_CAP_OFFSETS, caps):
+            buf[off] = cap
+
         dst = mac_to_bytes(mac)
-
-        # Frame 1: short command
-        frame1 = build_mx_frame(dst, self._src_mac, MX_ACTION_REQ,
-                                seq=self._next_seq(),
-                                payload=self._QOS_SHORT[priority])
-        got_resp = any(
-            mmtype in _MX_ACTION_OK
-            for mmtype, _, _ in self._send_recv(
-                self._sock_mx, frame1, 1.5, expected_src=mac)
-        )
-        if not got_resp:
-            _LOGGER.debug("QoS short frame got no action CNF from %s", mac)
-
-        # Frame 2: long traffic classification rules
-        frame2 = build_mx_frame(dst, self._src_mac, MX_ACTION_REQ,
-                                seq=self._next_seq(),
-                                payload=self._QOS_LONG[priority])
+        frame = build_mx_set_param(dst, self._src_mac, PARAM_QOS_PRIORITY_MAP,
+                                   bytes(buf), octets_per_element=1,
+                                   seq=self._next_seq())
         for mmtype, src, data in self._send_recv(
-                self._sock_mx, frame2, 1.5, expected_src=mac):
+                self._sock_mx, frame, 2.5, expected_src=mac, stop_on=_MX_ACTION_OK):
             if mmtype in _MX_ACTION_OK:
                 _LOGGER.info("QoS priority set to '%s' for %s", priority, mac)
                 return True

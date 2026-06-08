@@ -18,6 +18,7 @@ All notable changes to **Powerline Network** (ha-tp-link-powerline) are document
 - **Power saving did nothing** -- reverse-engineered from a tpPLC capture (TL-PA7017). Param **`0x0029`** is a 16-bit value: low 15 bits = standby timeout (s), top bit **`0x8000` = power-saving enabled** (same flag scheme as the PHY rate). Toggling writes `0x0029` (with/without the flag, timeout preserved), clears companion param `0x0074` on disable, then commits with **Apply (`0xA020`)**. The old 4-byte write with no flag/apply did nothing. Read-back now uses the `0x8000` bit too.
 
 ### Added
+- **QoS Priority now actually works (Broadcom)** -- reverse-engineered from a tpPLC capture (TL-PA7017). QoS is the priority-mapping table (param `0x0069`): the integration reads it (Get Parameter), rewrites the 8 channel-access-priority (CAP) bytes for the chosen mode (Internet/Gaming/Audio-Video/VoIP) and writes it back (Set Parameter) — a safe read-modify-write, no flashing. The previous guessed two-frame payloads were ACKed but did nothing.
 - `build_mx_set_param()` helper implementing the documented Set Parameter payload layout (ParamID + OctetsPerElement + NumElements + Value).
 - **State read-back** -- `query_device_states()` now reads the real LED (param `0x003F`, bit `0x10`) and power-saving state via Get Parameter (`0xA05C`) instead of always returning defaults.
 

@@ -158,6 +158,38 @@ class TestSendRecvEarlyStop(TestCase):
         self.assertEqual(MX_SET_PARAM_CNF, out[-1][0])
 
 
+class TestSetQos(TestCase):
+    """QoS does a read-modify-write of the 0x0069 priority map."""
+
+    MAC = "B0:19:21:F5:E0:DC"
+
+    def test_gaming_patches_cap_bytes(self) -> None:
+        from custom_components.powerline import homeplug  # noqa
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        table = bytes(1000)  # zeroed table read back from the adapter
+        sent = {}
+
+        def _capture(sock, frame, *a, **k):
+            sent["frame"] = frame
+            return [(MX_SET_PARAM_CNF, self.MAC, b"")]
+
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_get_param_value", return_value=table), \
+             patch.object(hp, "_send_recv", side_effect=_capture), \
+             patch.object(hp, "_close"):
+            ok = hp.set_qos_priority(self.MAC, "gaming")
+
+        self.assertTrue(ok)
+        # value starts after param(2)+octets(1)+num(2) = 5 bytes
+        value = _mme_payload(sent["frame"])[5:]
+        offsets = (2, 27, 52, 77, 102, 127, 152, 177)
+        gaming = (0x38, 0x18, 0x18, 0x38, 0x58, 0x58, 0x78, 0x78)
+        for off, cap in zip(offsets, gaming):
+            self.assertEqual(cap, value[off], f"offset {off}")
+
+
 class TestSetPowerSaving(TestCase):
     """Power saving must toggle bit 0x8000 of param 0x0029 and Apply."""
 
