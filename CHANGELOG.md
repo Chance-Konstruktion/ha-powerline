@@ -4,6 +4,27 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Network overview device overhauled.** The meaningless "TX Total / RX Total"
+  sum sensors (which just added unrelated link rates together) and the separate
+  "Adapters Total" sensor are **removed**. The overview device now exposes:
+  - **Adapters Online** (with the ever-seen total as an attribute),
+  - **Slowest Link** — the weakest link rate in the network, i.e. the actual
+    bottleneck (with the responsible adapter as an attribute),
+  - **Network Problem** — a `problem` binary sensor that turns on when a known
+    adapter is offline,
+  - and the **Diagnose** button (unchanged).
+
+  *Breaking:* dashboards/automations referencing the old `*_total` / total-rate
+  entities must be updated.
+
+### Research
+- **Qualcomm (AV500) LED decoded.** A tpPLC capture (QCA7420) shows LED on/off is
+  a full-PIB read-modify-write via MME `0xA0B0/0xA0B1`, but only **10 PIB bytes**
+  change (`0x01` = off / `0x00` = on at offsets `0x1ED5, 0x1EFD, 0x1F05, 0x1F1D,
+  0x1F25, 0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D`) with no checksum/counter churn.
+  Documented in `PROTOCOL.md` §9; implementation planned for 0.2.
+
 ## [0.1.0] - 2026-06-08
 
 First public release. Native Home Assistant integration for HomePlug AV / AV2

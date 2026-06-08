@@ -53,7 +53,7 @@ def _preload(coord, devices):
 
 
 class TestAsyncUpdateData(IsolatedAsyncioTestCase):
-    async def test_returns_correct_totals_for_two_devices(self):
+    async def test_returns_slowest_link_and_health(self):
         devices = [_make_device(MAC_A, tx=200, rx=100), _make_device(MAC_B, tx=300, rx=150)]
         coord = _build_coordinator(discover_result=devices)
 
@@ -61,8 +61,11 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
 
         self.assertTrue(data["online"])
         self.assertEqual(data["plc_device_count"], 2)
-        self.assertEqual(data["total_tx_rate"], 500)
-        self.assertEqual(data["total_rx_rate"], 250)
+        # Weakest link = min over adapters of min(tx, rx) = min(100, 150) = 100.
+        self.assertEqual(data["slowest_link"], 100)
+        self.assertEqual(data["slowest_link_mac"], MAC_A)
+        # Both adapters online -> no problem.
+        self.assertFalse(data["network_problem"])
 
     async def test_new_device_triggers_callback(self):
         device = _make_device(MAC_A)
@@ -99,6 +102,7 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
 
         self.assertEqual(data["plc_device_count"], 1)        # online only
         self.assertEqual(data["plc_device_count_total"], 2)  # includes offline
+        self.assertTrue(data["network_problem"])             # B offline -> problem
 
     async def test_default_states_set_for_new_device(self):
         device = _make_device(MAC_A)

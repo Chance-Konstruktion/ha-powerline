@@ -150,8 +150,6 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Build output data
             online_devices = {m: d for m, d in self.devices.items() if d.get("_online", True)}
-            total_tx = sum(d.get("tx_rate", 0) for d in online_devices.values())
-            total_rx = sum(d.get("rx_rate", 0) for d in online_devices.values())
 
             plc_rates: dict[str, dict[str, int]] = {}
             for mac, dev in self.devices.items():
@@ -160,14 +158,31 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "rx": dev.get("rx_rate", 0),
                 }
 
+            # Weakest/slowest link: the lowest per-adapter link rate among online
+            # adapters that actually report one. A single number summing all rates
+            # is meaningless; the slowest link is what actually limits the network.
+            links: list[tuple[int, str]] = []
+            for mac, dev in online_devices.items():
+                rates = [r for r in (dev.get("tx_rate", 0), dev.get("rx_rate", 0)) if r > 0]
+                if rates:
+                    links.append((min(rates), mac))
+            slowest = min(links) if links else None
+
+            total = len(self.devices)
+            online = len(online_devices)
+            # Network has a problem if nothing is reachable, or a known adapter
+            # that we have seen before is currently offline.
+            network_problem = online == 0 or online < total
+
             return {
-                "online": len(online_devices) > 0,
+                "online": online > 0,
                 "plc_devices": self.devices,
-                "plc_device_count": len(online_devices),
-                "plc_device_count_total": len(self.devices),
+                "plc_device_count": online,
+                "plc_device_count_total": total,
                 "plc_rates": plc_rates,
-                "total_tx_rate": total_tx,
-                "total_rx_rate": total_rx,
+                "slowest_link": slowest[0] if slowest else None,
+                "slowest_link_mac": slowest[1] if slowest else None,
+                "network_problem": network_problem,
             }
 
         except Exception as err:

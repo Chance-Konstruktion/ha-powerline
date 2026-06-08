@@ -141,8 +141,9 @@ Settings → Devices & Services → Add Integration → "Powerline"
 ### Network overview (virtual device)
 | Entity | Type | Description |
 |--------|------|-------------|
-| TX Total / RX Total | Sensor | Sum of all adapter rates (Mbit/s) |
-| Adapters Online / Total | Sensor | Reachable / ever-seen adapter count |
+| Adapters Online | Sensor | Reachable adapters (`total` ever-seen as attribute) |
+| Slowest Link | Sensor | Weakest link rate in the network (Mbit/s) — the actual bottleneck |
+| Network Problem | Binary Sensor (`problem`) | On when a known adapter is offline |
 | Diagnose | Button | Runs a full protocol scan to the log |
 
 ### Per adapter
