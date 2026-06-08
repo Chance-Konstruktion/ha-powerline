@@ -89,11 +89,24 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual("AA:BB:CC:DD:EE:FF", parsed["stations"][1]["mac"])
 
     def test_decode_phy_rate_masks_link_flag(self) -> None:
+        # AV500 link (top nibble 0x8)
+        self.assertEqual(413, decode_phy_rate(0x819D))
         self.assertEqual(422, decode_phy_rate(0x81A6))
         self.assertEqual(274, decode_phy_rate(0x8112))
-        self.assertEqual(430, decode_phy_rate(0x81AE))
-        # Already-clean values pass through unchanged.
-        self.assertEqual(422, decode_phy_rate(0x01A6))
+        # AV1000<->AV1000 link (top nibble 0x4) — real capture, real 547/545
+        self.assertEqual(547, decode_phy_rate(0x4223))
+        self.assertEqual(545, decode_phy_rate(0x4221))
+        self.assertEqual(554, decode_phy_rate(0x422A))
+
+    def test_parse_mx_nw_stats_cnf_av1000_link(self) -> None:
+        # Real capture (2x AV1000): TX=0x4223 RX=0x4221 -> 547 / 545.
+        payload = bytes.fromhex("01b01921f5e0dc2342214200000000")
+        frame = (b"\x00" * (ETH_HDR + MX_MME_HDR)) + payload
+        stations = parse_mx_nw_stats_cnf(frame)
+        self.assertEqual(1, len(stations))
+        self.assertEqual("B0:19:21:F5:E0:DC", stations[0]["mac"])
+        self.assertEqual(547, stations[0]["tx_rate"])
+        self.assertEqual(545, stations[0]["rx_rate"])
 
     def test_parse_mx_nw_stats_cnf_real_capture(self) -> None:
         # Real TL-PA7017 (BCM60355) capture: 1 station, TX=0x81A6 RX=0x8112,

@@ -32,6 +32,7 @@ PARAM_LED_OPTIONS = _MODULE.PARAM_LED_OPTIONS
 PARAM_LED_AUX = _MODULE.PARAM_LED_AUX
 PARAM_POWER_STANDBY = _MODULE.PARAM_POWER_STANDBY
 PARAM_POWER_STANDBY_AUX = _MODULE.PARAM_POWER_STANDBY_AUX
+PARAM_QOS_PRIORITY_MAP = _MODULE.PARAM_QOS_PRIORITY_MAP
 import struct as _struct
 
 
@@ -156,6 +157,94 @@ class TestSendRecvEarlyStop(TestCase):
                             stop_on=frozenset((MX_SET_PARAM_CNF,)))
         self.assertEqual(2, sock.read)            # stopped right after the ACK
         self.assertEqual(MX_SET_PARAM_CNF, out[-1][0])
+
+
+class TestLedEarlyBail(TestCase):
+    """A non-Broadcom adapter (no MX reply) must fail fast, not run all writes."""
+
+    def test_no_response_bails_after_first_write(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._chipset = "broadcom"  # network has a Broadcom adapter
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        calls = []
+
+        def _capture(sock, frame, *a, **k):
+            calls.append(frame)
+            return []  # adapter never answers (Qualcomm AV500)
+
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_send_recv", side_effect=_capture), \
+             patch.object(hp, "_close"):
+            ok = hp.set_led("EC:08:6B:54:FE:E3", True)
+
+        self.assertFalse(ok)
+        # 2 attempts (set_led retries once), each bails after the first write,
+        # so 2 sends total instead of the full 6 (3 writes x 2 attempts).
+        self.assertEqual(2, len(calls))
+
+
+class TestQosReadback(TestCase):
+    """query_device_states should derive the QoS mode from the 0x0069 map."""
+
+    def test_reads_led_ps_and_qos(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = MagicMock()
+        mac = "B0:19:21:F5:E0:DC"
+        table = bytearray(1000)
+        offsets = (2, 27, 52, 77, 102, 127, 152, 177)
+        gaming = (0x38, 0x18, 0x18, 0x38, 0x58, 0x58, 0x78, 0x78)
+        for o, c in zip(offsets, gaming):
+            table[o] = c
+
+        def _get(m, param_id, *a, **k):
+            if param_id == PARAM_LED_OPTIONS:
+                return bytes.fromhex("02a00112")       # LED on (bit 0x10)
+            if param_id == PARAM_POWER_STANDBY:
+                return bytes.fromhex("2c81")           # 0x812C -> PS on
+            if param_id == PARAM_QOS_PRIORITY_MAP:
+                return bytes(table)
+            return None
+
+        with patch.object(hp, "_open_mx"), patch.object(hp, "_close"), \
+             patch.object(hp, "_get_param_value", side_effect=_get):
+            states = hp.query_device_states([mac])
+
+        self.assertTrue(states[mac]["led"])
+        self.assertTrue(states[mac]["power_saving"])
+        self.assertEqual("gaming", states[mac]["qos"])
+
+
+class TestSetQos(TestCase):
+    """QoS does a read-modify-write of the 0x0069 priority map."""
+
+    MAC = "B0:19:21:F5:E0:DC"
+
+    def test_gaming_patches_cap_bytes(self) -> None:
+        from custom_components.powerline import homeplug  # noqa
+        hp = HomeplugAV("eth0")
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        table = bytes(1000)  # zeroed table read back from the adapter
+        sent = {}
+
+        def _capture(sock, frame, *a, **k):
+            sent["frame"] = frame
+            return [(MX_SET_PARAM_CNF, self.MAC, b"")]
+
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_get_param_value", return_value=table), \
+             patch.object(hp, "_send_recv", side_effect=_capture), \
+             patch.object(hp, "_close"):
+            ok = hp.set_qos_priority(self.MAC, "gaming")
+
+        self.assertTrue(ok)
+        # value starts after param(2)+octets(1)+num(2) = 5 bytes
+        value = _mme_payload(sent["frame"])[5:]
+        offsets = (2, 27, 52, 77, 102, 127, 152, 177)
+        gaming = (0x38, 0x18, 0x18, 0x38, 0x58, 0x58, 0x78, 0x78)
+        for off, cap in zip(offsets, gaming):
+            self.assertEqual(cap, value[off], f"offset {off}")
 
 
 class TestSetPowerSaving(TestCase):
