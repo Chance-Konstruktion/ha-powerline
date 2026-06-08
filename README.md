@@ -10,19 +10,27 @@ Communicates directly via **HomePlug AV** (Layer 2, Ethertype `0x88E1`) and **ME
 
 ## Features
 
-> **Current status:** The **Online/Offline status** is confirmed to work reliably (it rides on the universal HomePlug AV `CC_DISCOVER_LIST`, which every chipset answers).
+> **Current status (verified on real hardware):** Feature support depends on the adapter's **chipset**. The protocol was reverse-engineered from Wireshark captures of the official **tpPLC** utility and confirmed on TP-Link AV1000 (Broadcom BCM60355) and a Qualcomm QCA7420 (AV500).
 >
-> The MEDIAXTREAM (Broadcom) features below were re-implemented against the documented protocol (`serock/mediaxtream-dissector`, `serock/pla-util`) after several **wrong MMTYPE values** were found — e.g. Network Stats was `0xA034` instead of `0xA02C`, Station Info `0xA080` instead of `0xA04C`, and LED/Power-Saving were sent as opaque "action" blobs instead of structured **Set Parameter** writes (LED = param `0x003E`, Power-Saving = `0x0029`). These corrections are expected to make TX/RX rates, LED and Power-Saving work, but still need **confirmation on real hardware**. Please report your findings (debug log + Wireshark capture).
+> | Feature | Broadcom (MEDIAXTREAM) | Qualcomm (QCA) |
+> |---|---|---|
+> | Online / Offline status | ✅ | ✅ |
+> | TX/RX PHY data rates | ✅ | ✅ |
+> | LED control | ✅ | ❌ *(needs risky PIB rewrite — not implemented)* |
+> | Power Saving | ✅ | ❌ |
+> | QoS Priority | ✅ | ❌ |
+>
+> Online status and rates work on **all** HomePlug AV chipsets. LED / Power Saving / QoS are **Broadcom-only**: they use MEDIAXTREAM `Set Parameter` (a safe, single-message write). On Qualcomm adapters the same settings live in the device's Parameter Information Block (PIB), which the vendor app only changes via a full read-modify-write — too risky to replicate, so these controls are not offered there.
 
 - **Auto-Discovery** -- finds all Powerline adapters automatically via Layer 2
-- **Online Status** per adapter (BinarySensor with `device_class: connectivity`) ✅ **Working**
-- **TX/RX Data Rates** per adapter (Mbit/s PHY Rate) via passive monitoring (0x6046) ⚠️ *Unverified*
-- **Adapter Count** (online + total) ⚠️ *Unverified*
-- **Firmware Version** and model detection per adapter ⚠️ *Unverified*
-- **LED Control** per adapter (on/off via MEDIAXTREAM 0xA058) ⚠️ *Unverified*
-- **Power Saving Mode** per adapter (on/off, Broadcom only) ⚠️ *Unverified*
-- **QoS Priority** per adapter (Gaming, VoIP, Audio/Video, Internet) ⚠️ *Unverified*
-- **Diagnostic Button** -- full protocol scan with raw frame dump to logs ⚠️ *Unverified*
+- **Online Status** per adapter (BinarySensor with `device_class: connectivity`) -- all chipsets
+- **TX/RX Data Rates** per adapter (Mbit/s PHY rate, low 12 bits of the NW_STATS field) -- all chipsets
+- **Adapter Count** (online + total)
+- **Firmware Version** and model detection per adapter (Broadcom)
+- **LED Control** per adapter -- MEDIAXTREAM Set Parameter (`0x0095` + `0x003F` + Apply `0xA020`), Broadcom only
+- **Power Saving Mode** per adapter -- Set Parameter `0x0029` (bit `0x8000` = enabled), Broadcom only
+- **QoS Priority** per adapter (Gaming, VoIP, Audio/Video, Internet) -- priority-map `0x0069`, Broadcom only
+- **Diagnostic Button** -- full protocol scan with raw frame dump to logs
 - **Dynamic Discovery** -- new adapters appear automatically within one poll cycle
 - **Dual Protocol** -- auto-detects Broadcom (MEDIAXTREAM) vs. Qualcomm chipsets
 
@@ -30,11 +38,9 @@ Communicates directly via **HomePlug AV** (Layer 2, Ethertype `0x88E1`) and **ME
 
 | Adapter | Chipset | Status |
 |---------|---------|--------|
-| TP-Link TL-PA7017 | Broadcom BCM60355 | Tested (Discovery) |
-| TP-Link AV1000 | Broadcom | Tested (Discovery, Rates) |
-| FRITZ!Powerline AV500 | Broadcom | Tested (Discovery) |
-| devolo dLAN | Varies | Discovery works, features depend on chipset |
-| Other HomePlug AV adapters | QCA / Broadcom | Discovery works on all, vendor features vary |
+| TP-Link TL-PA7017 / AV1000 | Broadcom BCM60355 | ✅ All features (status, rates, LED, power saving, QoS) |
+| Qualcomm QCA7420 (AV500-class) | Qualcomm/Atheros | Status + rates ✅; LED/power saving/QoS not supported (PIB-only) |
+| FRITZ!Powerline, devolo dLAN, others | Broadcom / QCA | Status + rates work; vendor features work on Broadcom |
 
 ## Requirements
 
