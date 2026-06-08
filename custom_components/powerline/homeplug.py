@@ -1062,10 +1062,11 @@ class HomeplugAV:
 
         Returns {mac: {"led": bool|None, "qos": str|None, "power_saving": bool|None}}.
 
-        LED is read via Get Parameter 0xA05C / param 0x003F (LED Options) and
-        power saving via param 0x0029. QoS has no confirmed parameter id yet, so
-        it stays None and the coordinator keeps its default. Anything that cannot
-        be parsed confidently returns None so defaults are used instead of guesses.
+        Read via Get Parameter (0xA05C): LED from param 0x003F (LED Options,
+        byte 3 bit 0x10), power saving from param 0x0029 (bit 0x8000), and QoS
+        by matching the priority-map (0x0069) CAP bytes to a known mode. Anything
+        that cannot be parsed confidently stays None so the coordinator keeps its
+        default instead of showing a guess.
         """
         states: dict[str, dict] = {mac: {"led": None, "qos": None,
                                           "power_saving": None} for mac in macs}
@@ -1086,6 +1087,14 @@ class HomeplugAV:
                 if ps_val and len(ps_val) >= 2:
                     standby = struct.unpack("<H", ps_val[0:2])[0]
                     states[mac]["power_saving"] = bool(standby & 0x8000)
+                # QoS = match the priority map's CAP bytes (0x0069) to a mode.
+                qos_table = self._get_param_value(mac, PARAM_QOS_PRIORITY_MAP)
+                if qos_table and len(qos_table) > self._QOS_CAP_OFFSETS[-1]:
+                    caps = bytes(qos_table[o] for o in self._QOS_CAP_OFFSETS)
+                    for mode, pattern in self._QOS_CAP_MAP.items():
+                        if caps == pattern:
+                            states[mac]["qos"] = mode
+                            break
         finally:
             self._close()
         return states
@@ -1165,8 +1174,15 @@ class HomeplugAV:
         f1 = build_mx_set_param(dst, self._src_mac, PARAM_LED_AUX,
                                 self._LED_AUX_VALUE[on], octets_per_element=2,
                                 seq=self._next_seq())
-        self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac,
-                        stop_on=_MX_ACTION_OK)
+        resp1 = self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac,
+                                stop_on=_MX_ACTION_OK)
+        # No reply at all to the first write means this adapter does not speak
+        # MEDIAXTREAM (e.g. a Qualcomm AV500). Bail out now instead of running
+        # the remaining writes + Apply into their full timeouts.
+        if not resp1:
+            _LOGGER.debug("LED %s: %s did not answer Set Parameter "
+                          "(non-Broadcom adapter?)", state, mac)
+            return False
 
         # 2) LED Options 0x003F (4-byte value) — the actual enable flag.
         f2 = build_mx_set_param(dst, self._src_mac, PARAM_LED_OPTIONS,
@@ -1217,6 +1233,11 @@ class HomeplugAV:
         resp1 = self._send_recv(self._sock_mx, f1, 2.0, expected_src=mac,
                                 stop_on=_MX_ACTION_OK)
         set_ok = any(m in _MX_ACTION_OK for m, _, _ in resp1)
+        # No reply -> not a MEDIAXTREAM (Broadcom) adapter; don't run the rest.
+        if not resp1:
+            _LOGGER.debug("Power saving %s: %s did not answer Set Parameter "
+                          "(non-Broadcom adapter?)", "ON" if on else "OFF", mac)
+            return False
 
         if not on:
             faux = build_mx_set_param(dst, self._src_mac, PARAM_POWER_STANDBY_AUX,
