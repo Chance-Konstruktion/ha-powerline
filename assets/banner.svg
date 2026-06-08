@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" width="1280" height="420" role="img" aria-label="Powerline for Home Assistant">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c1326"/>
+      <stop offset="1" stop-color="#070b16"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowAmber" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f59e0b" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#1b2740" stroke-width="1"/>
+    </pattern>
+    <filter id="blur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="iconGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="420" fill="url(#bg)"/>
+  <rect width="1280" height="420" fill="url(#grid)"/>
+  <circle cx="250" cy="120" r="340" fill="url(#glowCyan)"/>
+  <circle cx="1080" cy="300" r="320" fill="url(#glowAmber)"/>
+  <rect x="0" y="0" width="1280" height="420" fill="none" stroke="#1e2c49" stroke-width="2"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+
+    <!-- Eyebrow tags -->
+    <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="14" letter-spacing="2" fill="#7dd3fc">
+      <text x="72" y="74">HACS</text>
+      <text x="148" y="74" fill="#475569">·</text>
+      <text x="168" y="74">LAYER 2</text>
+      <text x="268" y="74" fill="#475569">·</text>
+      <text x="288" y="74">NO IP · NO WIFI</text>
+      <text x="470" y="74" fill="#475569">·</text>
+      <text x="490" y="74" fill="#fbbf24">MIT</text>
+    </g>
+
+    <!-- Title with blur echo -->
+    <text x="70" y="196" font-size="118" font-weight="900" letter-spacing="-5" fill="url(#title)" opacity="0.35" filter="url(#blur)">Powerline</text>
+    <text x="70" y="196" font-size="118" font-weight="900" letter-spacing="-5" fill="url(#title)">Powerline</text>
+
+    <!-- Tagline -->
+    <text x="74" y="246" font-size="27" font-weight="500" fill="#cbd5e1">HomePlug AV / AV2 control for <tspan fill="#38bdf8" font-weight="700">Home Assistant</tspan></text>
+    <text x="74" y="280" font-size="18" fill="#7c8aa5">Reverse-engineered Layer-2 protocol &#8226; talks straight to the adapters</text>
+
+    <!-- Feature chips -->
+    <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#bae6fd">
+      <g>
+        <rect x="72" y="312" width="150" height="40" rx="20" fill="#0e1b33" stroke="#27486e"/>
+        <text x="92" y="338">&#9211;  Discovery</text>
+      </g>
+      <g>
+        <rect x="234" y="312" width="138" height="40" rx="20" fill="#0e1b33" stroke="#27486e"/>
+        <text x="254" y="338">&#8776;  Rates</text>
+      </g>
+      <g>
+        <rect x="384" y="312" width="108" height="40" rx="20" fill="#0e1b33" stroke="#27486e"/>
+        <text x="404" y="338">&#9673;  LED</text>
+      </g>
+      <g>
+        <rect x="504" y="312" width="160" height="40" rx="20" fill="#0e1b33" stroke="#27486e"/>
+        <text x="524" y="338" fill="#fcd34d">&#9889;  Power Save</text>
+      </g>
+      <g>
+        <rect x="676" y="312" width="104" height="40" rx="20" fill="#0e1b33" stroke="#27486e"/>
+        <text x="696" y="338">&#9638;  QoS</text>
+      </g>
+    </g>
+
+    <!-- Hero icon: socket emitting data waves -->
+    <g transform="translate(1015,150)" filter="url(#iconGlow)">
+      <!-- corner brackets -->
+      <g stroke="#f59e0b" stroke-width="3" fill="none" opacity="0.9">
+        <path d="M-70 -78 h-14 v14"/>
+        <path d="M150 -78 h14 v14"/>
+        <path d="M-70 78 h-14 v-14"/>
+        <path d="M150 78 h14 v-14"/>
+      </g>
+      <!-- adapter / socket body -->
+      <rect x="-58" y="-70" width="116" height="140" rx="22" fill="#0f2036" stroke="#22d3ee" stroke-width="3"/>
+      <circle cx="0" cy="0" r="40" fill="none" stroke="#38bdf8" stroke-width="3"/>
+      <circle cx="-15" cy="0" r="6.5" fill="#7dd3fc"/>
+      <circle cx="15" cy="0" r="6.5" fill="#7dd3fc"/>
+      <rect x="-6" y="-44" width="12" height="14" rx="3" fill="#38bdf8"/>
+      <!-- data waves -->
+      <g fill="none" stroke="#22d3ee" stroke-width="4" stroke-linecap="round">
+        <path d="M70 -22 q26 22 0 44" opacity="0.9"/>
+        <path d="M96 -38 q44 38 0 76" opacity="0.55"/>
+        <path d="M122 -54 q62 54 0 108" opacity="0.28"/>
+      </g>
+      <!-- packets -->
+      <rect x="78" y="-6" width="11" height="11" rx="2" fill="#fbbf24"/>
+      <rect x="104" y="-6" width="11" height="11" rx="2" fill="#fbbf24" opacity="0.6"/>
+      <rect x="130" y="-6" width="11" height="11" rx="2" fill="#fbbf24" opacity="0.3"/>
+    </g>
+  </g>
+
+  <!-- Bottom strip -->
+  <rect x="0" y="378" width="1280" height="42" fill="#060a13"/>
+  <rect x="0" y="378" width="1280" height="1" fill="#1e2c49"/>
+  <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="14">
+    <text x="72" y="404" fill="#64748b">&gt; <tspan fill="#38bdf8">0x88E1</tspan> &#43; <tspan fill="#38bdf8">0x8912</tspan>  &#8594;  discover &#8594; set&#160;parameter &#8594; <tspan fill="#34d399">confirmed</tspan></text>
+    <circle cx="1180" cy="399" r="5" fill="#34d399"/>
+    <text x="1196" y="404" fill="#34d399" letter-spacing="2">LIVE</text>
+  </g>
+</svg>

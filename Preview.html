@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>README Preview · ha-powerline</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root{
+    --accent:#22d3ee;
+    --bg:#0d1117; --bg2:#010409; --panel:#161b22; --border:#30363d;
+    --text:#e6edf3; --muted:#9198a1; --link:var(--accent);
+  }
+  [data-theme="light"]{
+    --bg:#ffffff; --bg2:#f6f8fa; --panel:#ffffff; --border:#d0d7de;
+    --text:#1f2328; --muted:#59636e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg2);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  /* GitHub chrome */
+  .ghhead{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;
+    display:flex;align-items:center;gap:12px;font-size:14px}
+  .ghhead .repo{font-size:15px}
+  .ghhead .repo b{color:var(--text)} .ghhead .repo a{color:var(--link);text-decoration:none}
+  .tabs{display:flex;gap:6px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--bg2)}
+  .tabs span{padding:10px 12px;font-size:14px;color:var(--muted);border-bottom:2px solid transparent}
+  .tabs span.active{color:var(--text);border-bottom-color:#f78166;font-weight:600}
+  .wrap{display:flex;gap:24px;max-width:1280px;margin:24px auto;padding:0 16px}
+  .main{flex:1;min-width:0}
+  .sidebar{width:296px;flex-shrink:0}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:14px;margin:0 0 8px}
+  .card p{color:var(--muted);font-size:14px;margin:0 0 10px}
+  .topic{display:inline-block;background:color-mix(in srgb,var(--accent) 16%,transparent);
+    color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);
+    border-radius:2em;padding:2px 10px;font-size:12px;margin:2px 4px 2px 0}
+  .langbar{height:8px;border-radius:6px;overflow:hidden;display:flex;margin:6px 0 10px}
+  /* README body (GitHub markdown-ish) */
+  .readme{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:32px 40px}
+  .md{color:var(--text);font-size:16px;line-height:1.6}
+  .md h1,.md h2{border-bottom:1px solid var(--border);padding-bottom:.3em;margin-top:24px}
+  .md h1{font-size:2em} .md h2{font-size:1.5em}
+  .md a{color:var(--link);text-decoration:none} .md a:hover{text-decoration:underline}
+  .md code{background:color-mix(in srgb,var(--muted) 22%,transparent);
+    padding:.2em .4em;border-radius:6px;font-size:85%;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .md pre{background:var(--bg2);border:1px solid var(--border);padding:16px;border-radius:6px;overflow:auto}
+  .md pre code{background:none;padding:0}
+  .md table{border-collapse:collapse;margin:12px 0;display:block;overflow:auto}
+  .md th,.md td{border:1px solid var(--border);padding:6px 13px}
+  .md tr:nth-child(2n){background:var(--bg2)}
+  .md blockquote{border-left:.25em solid var(--border);color:var(--muted);padding:0 1em;margin:0 0 16px}
+  .md img{max-width:100%}
+  .md details{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 14px;margin:8px 0}
+  .md summary{cursor:pointer;font-weight:600}
+  /* tweaks */
+  .tweaks{position:fixed;right:16px;bottom:16px;background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:9}
+  .tweaks h4{margin:0 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .tweaks .row{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .tweaks button{background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px}
+  .sw{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);cursor:pointer}
+  .sw.on{border-color:var(--text)}
+  .err{padding:40px;text-align:center;color:var(--muted)}
+  .err code{background:var(--panel);padding:.2em .5em;border-radius:6px}
+</style>
+</head>
+<body>
+  <div class="ghhead">
+    <span>📦</span>
+    <span class="repo"><a href="#">Chance-Konstruktion</a> / <b>ha-powerline</b></span>
+    <span style="margin-left:auto;color:var(--muted)">⭐ Star &nbsp; 🍴 Fork</span>
+  </div>
+  <div class="tabs" id="tabs">
+    <span class="active">📄 Code</span><span>Issues</span><span>Pull requests</span><span>Actions</span>
+  </div>
+
+  <div class="wrap">
+    <div class="main">
+      <div class="readme"><div class="md" id="md"><div class="err">Loading <code>README.md</code>…</div></div></div>
+    </div>
+    <div class="sidebar" id="sidebar">
+      <div class="card">
+        <h2>About</h2>
+        <p>Monitor &amp; control HomePlug AV/AV2 powerline adapters in Home Assistant — no IP, no WiFi, just Layer 2.</p>
+        <div>
+          <span class="topic">home-assistant</span><span class="topic">hacs</span>
+          <span class="topic">powerline</span><span class="topic">homeplug-av</span>
+          <span class="topic">mediaxtream</span><span class="topic">layer2</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Languages</h2>
+        <div class="langbar"><div style="width:88%;background:#3572A5"></div><div style="width:12%;background:#f1e05a"></div></div>
+        <p>● Python 88% &nbsp; ● Other 12%</p>
+      </div>
+      <div class="card">
+        <h2>License</h2>
+        <p>MIT</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tweaks">
+    <h4>Preview tweaks</h4>
+    <div class="row"><button id="theme">🌙 Dark</button><button id="chrome">GitHub chrome: on</button></div>
+    <div class="row"><button id="side">Sidebar: on</button></div>
+    <div class="row">Accent:
+      <span class="sw on" style="background:#22d3ee" data-c="#22d3ee"></span>
+      <span class="sw" style="background:#3b82f6" data-c="#3b82f6"></span>
+      <span class="sw" style="background:#f59e0b" data-c="#f59e0b"></span>
+      <span class="sw" style="background:#34d399" data-c="#34d399"></span>
+    </div>
+  </div>
+
+<script>
+  const $=s=>document.querySelector(s);
+  fetch('README.md').then(r=>{if(!r.ok)throw 0;return r.text()})
+    .then(t=>{ $('#md').innerHTML = marked.parse(t); })
+    .catch(()=>{ $('#md').innerHTML =
+      '<div class="err">Could not <code>fetch(README.md)</code> — browsers block this over <code>file://</code>.<br><br>'+
+      'Serve the folder first:<br><br><code>python -m http.server</code><br><br>then open <code>http://localhost:8000/Preview.html</code></div>'; });
+
+  // theme
+  $('#theme').onclick=()=>{const h=document.documentElement;
+    const d=h.getAttribute('data-theme')==='dark';h.setAttribute('data-theme',d?'light':'dark');
+    $('#theme').textContent=d?'☀️ Light':'🌙 Dark';};
+  // accent
+  document.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{
+    document.querySelectorAll('.sw').forEach(x=>x.classList.remove('on'));
+    s.classList.add('on');document.documentElement.style.setProperty('--accent',s.dataset.c);});
+  // chrome
+  let chrome=true;$('#chrome').onclick=()=>{chrome=!chrome;
+    document.querySelector('.ghhead').style.display=chrome?'':'none';
+    $('#tabs').style.display=chrome?'':'none';
+    $('#chrome').textContent='GitHub chrome: '+(chrome?'on':'off');};
+  // sidebar
+  let side=true;$('#side').onclick=()=>{side=!side;
+    $('#sidebar').style.display=side?'':'none';
+    $('#side').textContent='Sidebar: '+(side?'on':'off');};
+</script>
+</body>
+</html>
