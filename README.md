@@ -10,8 +10,11 @@ Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` 
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-03A9F4.svg)](https://www.home-assistant.io/)
+[![Release](https://img.shields.io/badge/release-0.1.0-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
 [![Protocol](https://img.shields.io/badge/Protocol-reverse--engineered-F59E0B.svg)](PROTOCOL.md)
+
+✅ **Verified end-to-end on TP-Link AV1000 (TL-PA7017, BCM60355)** — discovery, TX/RX rates, LED, power saving **and** QoS all confirmed working on real hardware.
 
 **[Quick Start](#-quick-start)** · **[Features](#-highlights)** · **[How it works](#-how-it-works)** · **[Protocol](PROTOCOL.md)** · **[Troubleshooting](#-troubleshooting)**
 
@@ -34,7 +37,7 @@ Pure PLC adapters (no WiFi, no web UI) are invisible to normal integrations. Thi
 <td width="33%" valign="top">
 
 ### 🧪 Verified, not guessed
-Every vendor command was **reverse-engineered from Wireshark** captures of the official tpPLC app and **confirmed on real hardware**. See [`PROTOCOL.md`](PROTOCOL.md).
+Every vendor command was **reverse-engineered from Wireshark** captures of the official tpPLC app and **tested on real AV1000 hardware** — LED, power saving and QoS all confirmed. See [`PROTOCOL.md`](PROTOCOL.md).
 
 </td>
 <td width="33%" valign="top">
@@ -118,10 +121,14 @@ Settings → Devices & Services → Add Integration → "Powerline"
 
 | Adapter / Chipset | Status & rates | LED · Power Save · QoS |
 |---|:---:|:---:|
-| TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ | ✅ |
-| Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ |
-| Qualcomm **QCA7420** (AV500-class) & other QCA | ✅ | ⛔ *(PIB-only — see note)* |
+| TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** |
+| Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* |
+| Qualcomm **QCA7420** (AV500-class) & other QCA | ✅ | 🚧 *(planned 0.2 — see note)* |
 | FRITZ!Powerline · devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset |
+
+> ✅ = tested & confirmed on real hardware. The **AV1000 (TL-PA7017)** is the
+> reference device: discovery, TX/RX rates, LED, power saving and QoS are all
+> verified end-to-end in 0.1.
 
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
 > *Parameter Information Block* and the vendor app only changes them via a full
@@ -240,8 +247,9 @@ Capture the official tpPLC app performing an action and compare with
 
 ## 🗺️ Roadmap
 
-- [x] HomePlug AV / AV2 — discovery, rates, LED, power saving, QoS (Broadcom)
-- [ ] **Qualcomm (QCA / AV500) control** — needs a tpPLC capture of the action ([recipe](PROTOCOL.md#9--qualcomm-qca--av500--current-state)); only via a safe, minimal PIB write
+- [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
+- [ ] **0.2 — Qualcomm (QCA / AV500) control:** LED, power saving, QoS via a safe, minimal PIB write. Driven by tpPLC captures from real QCA hardware ([recipe](PROTOCOL.md#9--qualcomm-qca--av500--current-state)).
+- [ ] **0.2 — rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate — being addressed alongside the AV500 work.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
 
 ---
