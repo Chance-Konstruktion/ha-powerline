@@ -93,40 +93,61 @@ async def async_setup_entry(
 
     setup_dynamic_platform(coordinator, async_add_entities, _sensor_factory)
 
-    # Network-wide aggregate sensors
+    # Network-wide sensors. The old "TX/RX total" sums were meaningless (adding
+    # unrelated link rates); replaced with the two things that actually matter:
+    # how many adapters are reachable, and the weakest link in the network.
     async_add_entities([
-        TotalSensor(coordinator, "total_tx_rate", "tx_total",
-                    UnitOfDataRate.MEGABITS_PER_SECOND, "mdi:upload-network"),
-        TotalSensor(coordinator, "total_rx_rate", "rx_total",
-                    UnitOfDataRate.MEGABITS_PER_SECOND, "mdi:download-network"),
-        TotalSensor(coordinator, "plc_device_count", "adapters_online",
-                    None, "mdi:lan"),
-        TotalSensor(coordinator, "plc_device_count_total", "adapters_total",
-                    None, "mdi:lan-check"),
+        AdaptersOnlineSensor(coordinator),
+        SlowestLinkSensor(coordinator),
     ])
 
 
 # --- Network-wide sensors ---
 
-class TotalSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEntity):
-    _attr_has_entity_name = True
+class AdaptersOnlineSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEntity):
+    """How many adapters are currently reachable (total exposed as attribute)."""
 
-    def __init__(self, coordinator: TpLinkPowerlineCoordinator, key: str,
-                 translation_key: str, unit: str | None, icon: str) -> None:
+    _attr_has_entity_name = True
+    _attr_translation_key = "adapters_online"
+    _attr_icon = "mdi:lan"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: TpLinkPowerlineCoordinator) -> None:
         super().__init__(coordinator)
-        self._key = key
-        self._attr_unique_id = f"tplink_plc_{key}"
-        self._attr_translation_key = translation_key
-        self._attr_native_unit_of_measurement = unit
-        self._attr_icon = icon
-        if unit:
-            self._attr_device_class = SensorDeviceClass.DATA_RATE
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_unique_id = "tplink_plc_adapters_online"
         self._attr_device_info = network_device_info()
 
     @property
-    def native_value(self) -> Any:
-        return (self.coordinator.data or {}).get(self._key)
+    def native_value(self) -> int | None:
+        return (self.coordinator.data or {}).get("plc_device_count")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"total": (self.coordinator.data or {}).get("plc_device_count_total")}
+
+
+class SlowestLinkSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEntity):
+    """The weakest link rate in the network — the bottleneck that matters."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "slowest_link"
+    _attr_icon = "mdi:speedometer-slow"
+    _attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: TpLinkPowerlineCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = "tplink_plc_slowest_link"
+        self._attr_device_info = network_device_info()
+
+    @property
+    def native_value(self) -> int | None:
+        return (self.coordinator.data or {}).get("slowest_link")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"adapter": (self.coordinator.data or {}).get("slowest_link_mac")}
 
 
 # --- Per-device sensors ---

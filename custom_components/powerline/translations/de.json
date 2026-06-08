@@ -34,15 +34,14 @@
   },
   "entity": {
     "sensor": {
-      "tx_total": { "name": "TX Gesamt" },
-      "rx_total": { "name": "RX Gesamt" },
       "adapters_online": { "name": "Adapter Online" },
-      "adapters_total": { "name": "Adapter Gesamt" },
+      "slowest_link": { "name": "Langsamste Verbindung" },
       "tx_rate": { "name": "TX Rate" },
       "rx_rate": { "name": "RX Rate" }
     },
     "binary_sensor": {
-      "connectivity": { "name": "Status" }
+      "connectivity": { "name": "Status" },
+      "network_problem": { "name": "Netzwerkproblem" }
     },
     "switch": {
       "led": { "name": "LED" },

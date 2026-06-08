@@ -65,6 +65,7 @@ Values from [`qca/open-plc-utils` `mme/qualcomm.h`](https://github.com/qca/open-
 | `0xA024` / `0xA025` | `VS_RD_MOD` | read module (PIB/MAC) — **read, safe** |
 | `0xA020` | `VS_WR_MOD` | **write** module (PIB) — ⚠️ risky |
 | `0xA028` | `VS_MOD_NVM` | commit module to NVM — ⚠️ risky |
+| `0xA0B0` / `0xA0B1` | module read/write (chunked) | what the **QCA7420** firmware actually uses (see §9) — ⚠️ writes the PIB |
 | `0xA094` | `VS_SET_LED_BEHAVIOR` | declared in `qualcomm.h` but **never implemented** (no payload struct) |
 
 Module codes for `VS_RD_MOD` / `VS_WR_MOD`: `VS_MODULE_MAC = 1<<0`, `VS_MODULE_PIB = 1<<1`, `VS_MODULE_FORCE = 1<<4`.
@@ -244,10 +245,37 @@ There is **no safe Layer-2 control command** for these on QCA:
   ```
 
   A faulty / interrupted PIB write can corrupt the config (lose the network key,
-  drop the adapter off the network → factory reset). For a single LED toggle the
-  risk/benefit is wrong, so **QCA control is intentionally not implemented**.
+  drop the adapter off the network → factory reset). So QCA control is **not yet
+  implemented**, but a capture (below) shows it is far less risky than feared.
 
-### How to add QCA control safely — capture recipe
+### Decoded: LED on/off (QCA7420) — captured & diffed
+A tpPLC capture (LED off → on → off) on a QCA7420 reveals the real mechanism.
+The module access uses MME **`0xA0B0`** (request) / **`0xA0B1`** (confirm) — a
+chunked module read/write (this firmware's variant of `VS_RD_MOD/WR_MOD`), OUI
+`00:b0:52`, header `MMV(1)=00 + MMTYPE(2 LE) + OUI(3)`. tpPLC reads the whole
+PIB in ~1400-byte chunks, edits it, and writes it all back.
+
+But diffing the written PIB across the three toggles shows **only 10 bytes ever
+change** — a LED-behavior table:
+
+| State | Value | PIB offsets |
+|-------|-------|-------------|
+| LED **off** | `0x01` | `0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25, 0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D` |
+| LED **on**  | `0x00` | (same offsets) |
+
+Key safety findings:
+- Writing the **same** state twice produces **byte-identical** frames (off-cycle 1
+  == off-cycle 3), so there is **no per-write counter**.
+- **No checksum churn**: the PIB image signature in the write "open" command
+  (`…7023 0000 89c5 80ea`) is identical for on *and* off — flipping these 10 bytes
+  needs no checksum recompute.
+
+⇒ A safe 0.2 implementation replicates tpPLC exactly: **read this device's real
+PIB → flip only those 10 bytes → write the chunks back → commit**. Never write a
+hard-coded PIB. (Power saving and QoS will be decoded the same way from their own
+captures, reusing the module read/write code.)
+
+### How to add more QCA control safely — capture recipe
 The proven method (every Broadcom feature was built this way): capture the
 official **tpPLC** app performing the action against your QCA7420, then decode it.
 

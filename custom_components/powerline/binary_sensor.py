@@ -17,7 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, get_mac
 from .coordinator import TpLinkPowerlineCoordinator
-from .sensor import device_info_for_adapter, setup_dynamic_platform
+from .sensor import device_info_for_adapter, network_device_info, setup_dynamic_platform
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +32,38 @@ async def async_setup_entry(
         return [PlcConnectivitySensor(coordinator, mac, device_info_for_adapter(mac, dev))]
 
     setup_dynamic_platform(coordinator, async_add_entities, _factory)
+
+    # Network-wide health indicator on the overview device.
+    async_add_entities([NetworkProblemSensor(coordinator)])
+
+
+class NetworkProblemSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], BinarySensorEntity):
+    """Network health: on when something is wrong (an adapter is offline)."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "network_problem"
+
+    def __init__(self, coordinator: TpLinkPowerlineCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = "tplink_plc_network_problem"
+        self._attr_device_info = network_device_info()
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        if not data:
+            return None
+        return bool(data.get("network_problem"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data or {}
+        return {
+            "adapters_online": data.get("plc_device_count"),
+            "adapters_total": data.get("plc_device_count_total"),
+        }
 
 
 class PlcConnectivitySensor(CoordinatorEntity[TpLinkPowerlineCoordinator], BinarySensorEntity):
