@@ -297,6 +297,30 @@ but changes for power saving. Since we can't reproduce it offline, 0.1.1 sends a
 best-effort value and **verifies by read-back**: if the firmware rejects a bad
 checksum the toggle is a harmless no-op (reported as failure), never a corruption.
 
+### Decoded: QoS + PHY rate (QCA7420)
+**QoS** is a 2-byte value in the PIB at **`0x0ADE`** (LE):
+
+| Mode | value |
+|------|-------|
+| Internet | `0x0000` |
+| Gaming | `0xFA41` |
+| Audio / Video | `0xFA42` |
+| VoIP | `0xFA43` |
+
+Changing it also updates two checksum fields at **`0x0376`** and **`0x03BE`**.
+Diffing the modes shows the checksum is **XOR-linear**: the value delta XORs
+straight into each field, e.g. internet→gaming flips `0x0ADE` `0000`→`FA41` and
+`0x0376` `51F7`→`ABB6`, `0x03BE` `B276`→`4837` (same `0xFA41` delta). So a write
+**reads the device's PIB, sets `0x0ADE`, and XORs the delta into both fields** —
+the checksum stays valid without recomputing it (reproduces the captured bytes
+exactly). The same two fields move for power saving (more bytes, so all 4
+checksum bytes change) — that's the remaining 0.2 work.
+
+**PHY rate** comes from `VS_NW_INFO` (`0xA039`): the responder's average PHY data
+rates are the **last two 4-byte LE** values (TX@end-8, RX@end-4). tpPLC displays
+`floor(raw * 21/16)`; the integration applies the same factor (verified
+124→162, 140→183, 141→185, 142→186).
+
 ### How to add more QCA control safely — capture recipe
 The proven method (every Broadcom feature was built this way): capture the
 official **tpPLC** app performing the action against your QCA7420, then decode it.

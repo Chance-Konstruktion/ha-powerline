@@ -123,7 +123,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 |---|:---:|:---:|
 | TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** |
 | Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* |
-| Qualcomm **QCA7420** (AV500-class) & other QCA | ✅ | 💡 LED *(0.1.1, experimental)* · PS/QoS planned |
+| Qualcomm **QCA7420** (AV500-class) & other QCA | ✅ | 💡 LED · 🚦 QoS *(via PIB)* · ⚡ Power Save planned |
 | FRITZ!Powerline · devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. The **AV1000 (TL-PA7017)** is the
@@ -249,8 +249,8 @@ Capture the official tpPLC app performing an action and compare with
 ## 🗺️ Roadmap
 
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
-- [x] **0.1.1 — Qualcomm (QCA / AV500) LED:** read-modify-write of the PIB LED table ([details](PROTOCOL.md#9--qualcomm-qca--av500--current-state)).
-- [ ] **0.2 — full Qualcomm control:** power saving + QoS (both touch PIB checksum fields still being cracked). 0.2 lands when AV500 is 100%.
+- [x] **0.1.1–0.1.4 — Qualcomm (QCA / AV500):** LED, QoS, and PHY rates via the PIB — incl. cracking the XOR checksum so QoS writes stay valid ([details](PROTOCOL.md#9--qualcomm-qca--av500--current-state)).
+- [ ] **0.2 — AV500 100%:** add **power saving** (same PIB/checksum path) + final verification of LED/QoS/rates on hardware.
 - [ ] **0.2 — rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate — being addressed alongside the AV500 work.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
 

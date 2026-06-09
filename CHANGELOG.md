@@ -4,6 +4,21 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-10
+
+### Added
+- **Qualcomm (AV500) QoS control.** Decoded from tpPLC captures: the QoS mode is
+  a 2-byte PIB value (`0x0ADE`: internet `0x0000`, gaming `0xFA41`, audio/video
+  `0xFA42`, VoIP `0xFA43`). Setting it also updates two **XOR checksums**
+  (`0x0376`, `0x03BE`); since the checksum is XOR-linear we maintain it by
+  XOR-ing the value delta — verified to reproduce the captured bytes exactly.
+  Implemented as a PIB read-modify-write with read-back confirmation.
+
+### Fixed
+- **QCA PHY rate now matches tpPLC.** The raw `VS_NW_INFO` field is the firmware
+  average PHY rate; tpPLC displays `floor(raw * 21/16)`. The integration applies
+  the same factor (verified: 124→162, 140→183, 141→185, 142→186).
+
 ## [0.1.3] - 2026-06-09
 
 ### Fixed
