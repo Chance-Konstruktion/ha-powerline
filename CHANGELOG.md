@@ -4,6 +4,17 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-09
+
+### Fixed
+- **QCA (AV500) PHY-rate decoding.** Decoded from a full tpPLC-start capture:
+  the `VS_NW_INFO` (`0xA039`) confirm carries the responder's average PHY data
+  rates as the **last two 4-byte little-endian** values (TX at end-8, RX at
+  end-4, Mbit/s). 0.1.2's best-effort 2-byte heuristic is replaced by this exact
+  parse, verified against the capture (e.g. `…7c000000 8c000000` → TX 124 / RX
+  140, mirrored on the peer). PLC rates fluctuate, so the integration shows the
+  current link rate, which can differ from a momentary tpPLC reading.
+
 ## [0.1.2] - 2026-06-09
 
 ### Fixed

@@ -537,39 +537,25 @@ def parse_qca_nw_stats_cnf(data: bytes) -> list[dict]:
     return stations
 
 
-def parse_qca_nw_info_cnf(data: bytes, known_macs: list[str]) -> list[dict]:
-    """Best-effort parse of Qualcomm VS_NW_INFO.CNF (0xA039) PHY rates.
+def parse_qca_nw_info_cnf(data: bytes) -> tuple[int, int] | None:
+    """Parse the responder's PHY link rate from QCA VS_NW_INFO.CNF (0xA039).
 
-    The confirm lists the network and its stations; each station's average PHY
-    data rates (Mbit/s, 2-byte little-endian) follow its MAC. The exact field
-    offsets vary by firmware, so we locate each known adapter MAC and take the
-    first plausible (10..1500 Mbps) 2-byte LE TX/RX pair that follows it. The
-    full payload is logged at debug so the layout can be confirmed/refined.
+    Confirmed on QCA7420 (2-adapter network, captured from tpPLC): the
+    responder's average PHY data rates to its peer are the **last two 4-byte
+    little-endian** values of the confirm — TX at end-8, RX at end-4 (Mbit/s).
+    e.g. tail ``...7c000000 8c000000`` => TX=124, RX=140. Returns (tx, rx) or
+    None if the values are out of range. The full payload is logged at debug.
     """
     payload = data[ETH_HDR:]
     _LOGGER.debug("QCA VS_NW_INFO payload (%d bytes): %s",
                   len(payload), payload.hex())
-    out: list[dict] = []
-    seen: set[str] = set()
-    for mac in known_macs:
-        mb = mac_to_bytes(mac)
-        idx = payload.find(mb)
-        while idx >= 0:
-            for p in range(idx + 6, min(idx + 6 + 12, len(payload) - 3)):
-                tx = struct.unpack_from("<H", payload, p)[0]
-                rx = struct.unpack_from("<H", payload, p + 2)[0]
-                if 10 <= tx <= 1500 and 10 <= rx <= 1500:
-                    if mac not in seen:
-                        out.append({"mac": mac, "plcmac": mac,
-                                    "tx_rate": tx, "rx_rate": rx})
-                        seen.add(mac)
-                    idx = -1
-                    break
-            else:
-                idx = payload.find(mb, idx + 1)
-                continue
-            break
-    return out
+    if len(payload) < 8:
+        return None
+    tx = struct.unpack_from("<I", payload, len(payload) - 8)[0]
+    rx = struct.unpack_from("<I", payload, len(payload) - 4)[0]
+    if 1 <= tx <= 5000 and 1 <= rx <= 5000:
+        return (tx, rx)
+    return None
 
 
 # ══════════════════════════════════════════════════════════
@@ -889,14 +875,12 @@ class HomeplugAV:
                 if mmtype == VS_NW_INFO_CNF:
                     self._chipset = "qualcomm"
                     qca = True
-                    for sta in parse_qca_nw_info_cnf(data, macs):
-                        m, tx, rx = sta["mac"], sta["tx_rate"], sta["rx_rate"]
-                        if (tx or rx) and m in devices:
-                            devices[m]["tx_rate"] = tx
-                            devices[m]["rx_rate"] = rx
-                            self._mirror_link_rate(devices, src, m, tx, rx)
-                            found = True
-                            _LOGGER.info("VS_NW_INFO: %s TX=%d RX=%d", m, tx, rx)
+                    rates = parse_qca_nw_info_cnf(data)
+                    if rates and src in devices:
+                        devices[src]["tx_rate"], devices[src]["rx_rate"] = rates
+                        found = True
+                        _LOGGER.info("VS_NW_INFO: %s TX=%d RX=%d",
+                                     src, rates[0], rates[1])
         if qca:
             if not found:
                 _LOGGER.info(
