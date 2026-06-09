@@ -4,6 +4,20 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-09
+
+### Added
+- **Qualcomm (AV500 / QCA7420) LED control.** Reverse-engineered from a tpPLC
+  capture: the LED lives in a 10-byte table in the PIB (`0x01` off / `0x00` on).
+  We do a careful read-modify-write over the module protocol (`0xA0B0/0xA0B1`) —
+  read the device's real PIB, flip only those 10 bytes, write it back, then
+  **verify by read-back**. Every other byte (network key, MAC, …) is preserved.
+  The frame builders were validated byte-for-byte against the capture, and the
+  read path against the captured PIB.
+  - *Caveat:* the write-open carries a whole-PIB checksum we can't reproduce
+    offline. If a firmware validates it, the toggle is a harmless no-op (reported
+    as failure via the read-back), never a corruption. Tested on real hardware.
+
 ### Changed
 - **Network overview device overhauled.** The meaningless "TX Total / RX Total"
   sum sensors (which just added unrelated link rates together) and the separate

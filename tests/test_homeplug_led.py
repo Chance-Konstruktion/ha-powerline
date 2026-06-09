@@ -183,24 +183,70 @@ class TestLedEarlyBail(TestCase):
         # so 2 sends total instead of the full 6 (3 writes x 2 attempts).
         self.assertEqual(2, len(calls))
 
-    def test_qualcomm_chipset_sends_no_frames(self) -> None:
-        """A confirmed Qualcomm adapter has no safe LED path: return False
-
-        without firing any frames (the old build sent invented 0xA00C/0xA00E
-        MMEs that don't exist).
-        """
+    def test_qualcomm_led_fails_gracefully_when_pib_unreadable(self) -> None:
+        """On QCA, set_led attempts a PIB read; if the adapter answers nothing it
+        returns False without raising (and never reaches a write)."""
         hp = HomeplugAV("eth0")
         hp._chipset = "qualcomm"
         hp._sock_mx = MagicMock()
         hp._sock_hpav = MagicMock()
-        sends = MagicMock(return_value=[])
+        sends = MagicMock(return_value=[])  # adapter answers nothing
 
         with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
              patch.object(hp, "_send_recv", sends), patch.object(hp, "_close"):
             ok = hp.set_led("EC:08:6B:54:FE:E3", True)
 
         self.assertFalse(ok)
-        sends.assert_not_called()
+        sends.assert_called()  # it tried to read the PIB
+
+
+class TestQcaLedPib(TestCase):
+    """The QCA LED read-modify-write must flip ONLY the 10 LED-table bytes."""
+
+    def test_flips_only_led_bytes(self) -> None:
+        hp = HomeplugAV("eth0")
+        size = _MODULE.QCA_PIB_SIZE
+        chunk = _MODULE.QCA_PIB_CHUNK
+        offsets = _MODULE.QCA_LED_OFFSETS
+        pib = bytearray(size)
+        for i in range(size):
+            pib[i] = i & 0xFF                 # arbitrary content
+        for o in offsets:
+            pib[o] = 0x01                     # LED currently OFF
+        captured = {}
+
+        def fake_write(mac, buf):
+            captured["pib"] = bytes(buf)
+            return True
+
+        def fake_read_chunk(dst, mac, off, clen):
+            return captured["pib"][off:off + clen]
+
+        with patch.object(hp, "_qca_read_pib", return_value=bytes(pib)), \
+             patch.object(hp, "_qca_write_pib", side_effect=fake_write), \
+             patch.object(hp, "_qca_read_chunk", side_effect=fake_read_chunk):
+            ok = hp._set_led_qualcomm("AA:BB:CC:DD:EE:FF", True)   # -> LED ON
+
+        self.assertTrue(ok)
+        written = captured["pib"]
+        for o in offsets:
+            self.assertEqual(written[o], 0x00)          # ON = 0x00
+        changed = [i for i in range(size) if written[i] != pib[i]]
+        self.assertEqual(sorted(changed), sorted(offsets))  # nothing else touched
+
+    def test_aborts_on_unexpected_led_table(self) -> None:
+        """If the LED-table bytes aren't 0x00/0x01, refuse to write."""
+        hp = HomeplugAV("eth0")
+        size = _MODULE.QCA_PIB_SIZE
+        pib = bytearray(size)
+        for o in _MODULE.QCA_LED_OFFSETS:
+            pib[o] = 0x42                     # not a valid table value
+        write = MagicMock()
+        with patch.object(hp, "_qca_read_pib", return_value=bytes(pib)), \
+             patch.object(hp, "_qca_write_pib", write):
+            ok = hp._set_led_qualcomm("AA:BB:CC:DD:EE:FF", True)
+        self.assertFalse(ok)
+        write.assert_not_called()
 
 
 class TestQosReadback(TestCase):

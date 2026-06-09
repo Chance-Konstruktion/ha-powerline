@@ -23,10 +23,12 @@ import asyncio
 import functools
 import logging
 import os
+import random
 import socket
 import struct
 import threading
 import time
+import zlib
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,6 +117,31 @@ VS_RD_MOD_REQ        = 0xA024;  VS_RD_MOD_CNF        = 0xA025  # read module (PI
 # VS_SET_LED_BEHAVIOR (0xA094) exists as a constant in qualcomm.h but has no
 # implementation in open-plc-utils (no payload struct), so we can't use it.
 VS_SET_LED_BEHAVIOR  = 0xA094
+
+# QCA module operation (chunked PIB read/write) used by the QCA7420 firmware.
+# Reverse-engineered from a tpPLC capture (PROTOCOL.md §9): MMV=0x00, MMTYPE
+# 0xA0B0(req)/0xA0B1(cnf), OUI 00:b0:52, no FMI. tpPLC reads the whole PIB in
+# 1400-byte chunks (op 0x0100), then writes it back (open 0x0110, data 0x0111,
+# close 0x0112). LED on/off only flips a 10-byte LED-behavior table; we do a
+# read-modify-write so every other byte (network key, MAC, ...) is written back
+# untouched.
+VS_MOD_OP_REQ = 0xA0B0
+VS_MOD_OP_CNF = 0xA0B1
+QCA_PIB_SIZE  = 0x2370          # 9072 bytes (write-open total length)
+QCA_PIB_CHUNK = 0x0578          # 1400-byte transfer chunks
+# LED-behavior table: 0x01 = LED off, 0x00 = LED on (confirmed by diffing the
+# off/on/off capture; no checksum elsewhere changes for the LED toggle).
+QCA_LED_OFFSETS = (0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25,
+                   0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D)
+# Captured 32-byte module-op header templates; variable fields are patched in:
+#   read : len@17(LE), off@19(LE)
+#   open : token@13(LE), totlen@22(LE), checksum@26(LE u32)
+#   data : token@13(LE), len@22(LE), off@24(LE), data@26
+#   close: token@13(LE)
+_QCA_HDR_READ  = bytes.fromhex("0000000001000012000000000002700000780500000000000000000000000000")
+_QCA_HDR_OPEN  = bytes.fromhex("000000000110008500000000002348000001027000007023000089c580ea0000")
+_QCA_HDR_DATA  = bytes.fromhex("000000000111008f050000000023480000000270000078050000000001000100")
+_QCA_HDR_CLOSE = bytes.fromhex("0000000001120014000000000023480000000000000000000000000000000000")
 # 0xA048 was used by older builds as "VS_NW_STATS" but is not in qualcomm.h and
 # never got a confirmed response; kept only so existing call sites still resolve.
 VS_NW_STATS_REQ = 0xA048;  VS_NW_STATS_CNF = 0xA049
@@ -208,6 +235,21 @@ def build_qca_frame(dst: bytes, src: bytes, mmtype: int,
                     payload: bytes = b"") -> bytes:
     """Build Qualcomm vendor-specific frame (0x88E1 + QCA OUI)."""
     return build_hpav_frame(dst, src, mmtype, QCA_OUI + payload)
+
+def build_qca_mod_frame(dst: bytes, src: bytes, payload: bytes) -> bytes:
+    """Build a QCA module-operation frame (0x88E1, MMTYPE 0xA0B0, OUI 00:b0:52).
+
+    Unlike build_qca_frame() this uses MMV=0x00 and NO fragmentation field —
+    that is exactly what the QCA7420 module read/write protocol uses on the wire.
+    """
+    frame = (
+        dst + src
+        + struct.pack("!H", ETHERTYPE_HPAV)
+        + struct.pack("<BH", 0x00, VS_MOD_OP_REQ)
+        + QCA_OUI
+        + payload
+    )
+    return frame.ljust(ETH_MIN, b"\x00")
 
 def build_mx_frame(dst: bytes, src: bytes, mmtype: int, seq: int = 1,
                    payload: bytes = b"", version: int = 0x02) -> bytes:
@@ -1177,6 +1219,127 @@ class HomeplugAV:
     _LED_AUX_VALUE   = {True: bytes.fromhex("0000"),     False: bytes.fromhex("4700")}
     _LED_OPTS_VALUE  = {True: bytes.fromhex("02a00112"), False: bytes.fromhex("02a00102")}
 
+    # ── QCA (AV500) LED via PIB read-modify-write ──────────
+    # See PROTOCOL.md §9. EXPERIMENTAL: the write-open carries a whole-PIB
+    # checksum we cannot reproduce offline; if the firmware validates it the
+    # write is a harmless no-op (the read-back below then reports failure).
+
+    def _qca_read_chunk(self, dst: bytes, mac: str, offset: int,
+                        clen: int) -> bytes | None:
+        """Read one PIB chunk via module-op read (0xA0B0, op 0x0100)."""
+        hdr = bytearray(_QCA_HDR_READ[:21])
+        struct.pack_into("<H", hdr, 17, clen)
+        struct.pack_into("<H", hdr, 19, offset)
+        frame = build_qca_mod_frame(dst, self._src_mac, bytes(hdr))
+        for mmtype, src, data in self._send_recv(
+                self._sock_hpav, frame, 2.0, expected_src=mac,
+                stop_on=frozenset((VS_MOD_OP_CNF,))):
+            if mmtype != VS_MOD_OP_CNF:
+                continue
+            pl = data[ETH_HDR + 6:]            # after MMV+MMTYPE+OUI
+            # Read CONFIRM packs offset/data one byte earlier than the write
+            # REQUEST: offset@23, data@25 (verified against the capture).
+            if len(pl) < 25:
+                continue
+            if struct.unpack_from("<H", pl, 23)[0] != offset:
+                continue
+            return pl[25:25 + clen]
+        return None
+
+    def _qca_read_pib(self, mac: str) -> bytes | None:
+        """Read the full PIB (chunked). Returns QCA_PIB_SIZE bytes or None."""
+        dst = mac_to_bytes(mac)
+        pib = bytearray()
+        offset = 0
+        while offset < QCA_PIB_SIZE:
+            clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - offset)
+            chunk = self._qca_read_chunk(dst, mac, offset, clen)
+            if not chunk or len(chunk) < clen:
+                _LOGGER.debug("QCA PIB read failed at 0x%04X (got %s)",
+                              offset, len(chunk) if chunk else 0)
+                return None
+            pib += chunk[:clen]
+            offset += clen
+        return bytes(pib)
+
+    def _qca_mod_ack(self, dst: bytes, mac: str, payload: bytes) -> bool:
+        """Send a module-op frame and wait for its 0xA0B1 confirmation."""
+        frame = build_qca_mod_frame(dst, self._src_mac, payload)
+        for mmtype, src, data in self._send_recv(
+                self._sock_hpav, frame, 2.0, expected_src=mac,
+                stop_on=frozenset((VS_MOD_OP_CNF,))):
+            if mmtype == VS_MOD_OP_CNF:
+                return True
+        return False
+
+    def _qca_write_pib(self, mac: str, pib: bytes) -> bool:
+        """Write the full PIB back: open -> data chunks -> close."""
+        dst = mac_to_bytes(mac)
+        token = struct.pack("<H", random.randint(1, 0xFFFE))
+
+        op = bytearray(_QCA_HDR_OPEN)
+        op[13:15] = token
+        struct.pack_into("<H", op, 22, len(pib))
+        struct.pack_into("<I", op, 26, zlib.crc32(pib) & 0xFFFFFFFF)
+        if not self._qca_mod_ack(dst, mac, bytes(op)):
+            _LOGGER.debug("QCA PIB write: no ack to open from %s", mac)
+            return False
+
+        offset = 0
+        while offset < len(pib):
+            clen = min(QCA_PIB_CHUNK, len(pib) - offset)
+            hdr = bytearray(_QCA_HDR_DATA[:26])
+            hdr[13:15] = token
+            struct.pack_into("<H", hdr, 22, clen)
+            struct.pack_into("<H", hdr, 24, offset)
+            if not self._qca_mod_ack(dst, mac, bytes(hdr) + pib[offset:offset + clen]):
+                _LOGGER.debug("QCA PIB write: no ack at 0x%04X from %s", offset, mac)
+                return False
+            offset += clen
+
+        cl = bytearray(_QCA_HDR_CLOSE)
+        cl[13:15] = token
+        return self._qca_mod_ack(dst, mac, bytes(cl))
+
+    def _set_led_qualcomm(self, mac: str, on: bool) -> bool:
+        """Toggle the AV500 LED by flipping the 10-byte LED table in the PIB."""
+        pib = self._qca_read_pib(mac)
+        if not pib or len(pib) != QCA_PIB_SIZE:
+            _LOGGER.debug("QCA LED: could not read PIB from %s "
+                          "(non-QCA adapter or no response)", mac)
+            return False
+
+        # Safety guard: the LED table must currently look like the captured one
+        # (all bytes 0x00/0x01). If not, the offsets may not apply to this
+        # firmware — refuse to write rather than risk corrupting the PIB.
+        current = {pib[o] for o in QCA_LED_OFFSETS}
+        if not current <= {0x00, 0x01}:
+            _LOGGER.warning("QCA LED: unexpected LED-table bytes %s on %s; "
+                            "aborting to avoid PIB corruption",
+                            sorted(current), mac)
+            return False
+
+        value = 0x00 if on else 0x01
+        buf = bytearray(pib)
+        for o in QCA_LED_OFFSETS:
+            buf[o] = value
+        if not self._qca_write_pib(mac, bytes(buf)):
+            return False
+
+        # Verify by re-reading the chunk that holds the LED table.
+        dst = mac_to_bytes(mac)
+        cstart = (min(QCA_LED_OFFSETS) // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
+        clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
+        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+        if chunk and all(chunk[o - cstart] == value for o in QCA_LED_OFFSETS):
+            _LOGGER.info("QCA LED %s confirmed on %s",
+                         "ON" if on else "OFF", mac)
+            return True
+        _LOGGER.warning("QCA LED %s: write sent but not confirmed on %s "
+                        "(firmware may validate the PIB checksum)",
+                        "ON" if on else "OFF", mac)
+        return False
+
     def _set_led_broadcom(self, mac: str, on: bool) -> bool:
         """Set LED via the captured tpPLC Set Parameter + Apply sequence."""
         dst = mac_to_bytes(mac)
@@ -1292,18 +1455,13 @@ class HomeplugAV:
                     self._led_success_macs.add(mac.upper())
                     return True
 
-            # Qualcomm (QCA) has no safe Layer-2 LED command. open-plc-utils
-            # defines VS_SET_LED_BEHAVIOR (0xA094) but never implements it (no
-            # payload struct), and the only working path tpPLC uses is a full
-            # PIB read-modify-write (VS_RD_MOD/VS_WR_MOD), which can lose the
-            # network key if interrupted. We deliberately do not attempt it.
-            if self._chipset == "qualcomm":
-                _LOGGER.info(
-                    "LED control is not available on Qualcomm (QCA) adapter %s: "
-                    "it requires a risky PIB rewrite. Capture tpPLC toggling the "
-                    "LED on this adapter (see PROTOCOL.md) to add safe support.",
-                    mac)
-                return False
+            # Qualcomm (QCA / AV500): LED lives in the PIB. We do a careful
+            # read-modify-write that flips only the 10-byte LED table and writes
+            # every other byte back untouched (see _set_led_qualcomm).
+            if self._chipset in ("qualcomm", "unknown"):
+                if self._set_led_qualcomm(mac, on):
+                    self._led_success_macs.add(mac.upper())
+                    return True
 
             _LOGGER.warning(
                 "LED: no response from %s. "
