@@ -425,3 +425,40 @@ class TestHomeplugSetLed(TestCase):
             result = hp.set_led("AA:BB:CC:DD:EE:FF", True)
 
         self.assertFalse(result)
+
+
+class TestQcaQos(TestCase):
+    """QCA QoS write maintains the XOR checksums to match tpPLC byte-for-byte."""
+
+    def test_gaming_reproduces_captured_checksums(self) -> None:
+        import struct
+        hp = HomeplugAV("eth0")
+        size = _MODULE.QCA_PIB_SIZE
+        qoff = _MODULE.QCA_QOS_OFFSET
+        c0, c1 = _MODULE.QCA_QOS_CKSUM_OFFSETS  # 0x0376, 0x03BE
+        pib = bytearray(size)
+        # "internet" state from the capture: QoS=0x0000, checksum low words
+        # 0x51F7 @0x0376 and 0xB276 @0x03BE.
+        struct.pack_into("<H", pib, qoff, 0x0000)
+        struct.pack_into("<H", pib, c0, 0x51F7)
+        struct.pack_into("<H", pib, c1, 0xB276)
+        captured = {}
+
+        def fake_write(mac, buf):
+            captured["pib"] = bytes(buf)
+            return True
+
+        def fake_read_chunk(dst, mac, off, clen):
+            return captured["pib"][off:off + clen]
+
+        with patch.object(hp, "_qca_read_pib", return_value=bytes(pib)), \
+             patch.object(hp, "_qca_write_pib", side_effect=fake_write), \
+             patch.object(hp, "_qca_read_chunk", side_effect=fake_read_chunk):
+            ok = hp._set_qos_qualcomm("AA:BB:CC:DD:EE:FF", "gaming")
+
+        self.assertTrue(ok)
+        w = captured["pib"]
+        # Match the captured "gaming" bytes exactly.
+        self.assertEqual(struct.unpack_from("<H", w, qoff)[0], 0xFA41)
+        self.assertEqual(struct.unpack_from("<H", w, c0)[0], 0xABB6)
+        self.assertEqual(struct.unpack_from("<H", w, c1)[0], 0x4837)

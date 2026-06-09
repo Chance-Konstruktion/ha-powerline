@@ -35,11 +35,12 @@ class TestQcaNwInfo(TestCase):
         eth = b"\xaa" * 6 + b"\xbb" * 6 + struct.pack("!H", 0x88E1)
         return eth + b"\x01\x39\xa0\x00\x00\xb0\x52" + body
 
-    def test_extracts_tail_rates(self) -> None:
-        # Real capture tail: TX=124 (0x7c), RX=140 (0x8c) as 4-byte LE.
+    def test_extracts_tail_rates_scaled(self) -> None:
+        # Real capture tail: raw TX=124 (0x7c), RX=140 (0x8c) 4-byte LE.
+        # tpPLC displays floor(raw*21/16): 124->162, 140->183.
         body = bytes.fromhex("00003a000001") + b"\x00" * 40 \
             + struct.pack("<II", 124, 140)
-        self.assertEqual(parse_qca_nw_info_cnf(self._frame(body)), (124, 140))
+        self.assertEqual(parse_qca_nw_info_cnf(self._frame(body)), (162, 183))
 
     def test_idle_link_yields_none(self) -> None:
         body = b"\x00" * 60

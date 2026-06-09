@@ -133,6 +133,20 @@ QCA_PIB_CHUNK = 0x0578          # 1400-byte transfer chunks
 # off/on/off capture; no checksum elsewhere changes for the LED toggle).
 QCA_LED_OFFSETS = (0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25,
                    0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D)
+# QoS priority is a 2-byte value in the PIB. Changing it also updates two
+# XOR-checksum fields; because the checksum is XOR-linear we maintain it by
+# XOR-ing the value delta into each field (no need to recompute from scratch).
+# Confirmed by diffing internet/gaming/audio_video/voip captures (QCA7420):
+# e.g. internet->gaming flips 0x0ADE 0000->FA41 and the checksums by the same
+# delta (0x0376 51F7->ABB6, 0x03BE B276->4837) — reproduced byte-for-byte.
+QCA_QOS_OFFSET = 0x0ADE
+QCA_QOS_CKSUM_OFFSETS = (0x0376, 0x03BE)
+QCA_QOS_VALUES = {
+    "internet":    0x0000,
+    "gaming":      0xFA41,
+    "audio_video": 0xFA42,
+    "voip":        0xFA43,
+}
 # Captured 32-byte module-op header templates; variable fields are patched in:
 #   read : len@17(LE), off@19(LE)
 #   open : token@13(LE), totlen@22(LE), checksum@26(LE u32)
@@ -554,7 +568,10 @@ def parse_qca_nw_info_cnf(data: bytes) -> tuple[int, int] | None:
     tx = struct.unpack_from("<I", payload, len(payload) - 8)[0]
     rx = struct.unpack_from("<I", payload, len(payload) - 4)[0]
     if 1 <= tx <= 5000 and 1 <= rx <= 5000:
-        return (tx, rx)
+        # The raw field is the firmware's average PHY data rate; tpPLC displays
+        # floor(raw * 21/16). Apply the same factor so HA matches the app
+        # (verified: 124->162, 140->183, 141->185, 142->186).
+        return (tx * 21 // 16, rx * 21 // 16)
     return None
 
 
@@ -1592,6 +1609,48 @@ class HomeplugAV:
         _LOGGER.warning("QoS: no confirmation from %s for priority '%s'", mac, priority)
         return False
 
+    def _set_qos_qualcomm(self, mac: str, priority: str) -> bool:
+        """Set QoS on a QCA (AV500) adapter via PIB read-modify-write.
+
+        Writes the 2-byte QoS value at QCA_QOS_OFFSET and maintains the two
+        XOR checksums by XOR-ing the value delta into them (see PROTOCOL.md).
+        Reads the device's own PIB first, so the checksum stays correct without
+        recomputing it from scratch.
+        """
+        new = QCA_QOS_VALUES.get(priority)
+        if new is None:
+            _LOGGER.error("Unknown QoS priority: %s", priority)
+            return False
+        pib = self._qca_read_pib(mac)
+        if not pib or len(pib) != QCA_PIB_SIZE:
+            _LOGGER.debug("QCA QoS: could not read PIB from %s", mac)
+            return False
+
+        buf = bytearray(pib)
+        old = struct.unpack_from("<H", buf, QCA_QOS_OFFSET)[0]
+        if old == new:
+            _LOGGER.info("QCA QoS already '%s' on %s", priority, mac)
+            return True
+        delta = old ^ new
+        struct.pack_into("<H", buf, QCA_QOS_OFFSET, new)
+        for coff in QCA_QOS_CKSUM_OFFSETS:
+            cur = struct.unpack_from("<H", buf, coff)[0]
+            struct.pack_into("<H", buf, coff, cur ^ delta)
+
+        if not self._qca_write_pib(mac, bytes(buf)):
+            return False
+
+        # Verify by re-reading the chunk holding the QoS value.
+        dst = mac_to_bytes(mac)
+        cstart = (QCA_QOS_OFFSET // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
+        clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
+        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+        if chunk and struct.unpack_from("<H", chunk, QCA_QOS_OFFSET - cstart)[0] == new:
+            _LOGGER.info("QCA QoS '%s' confirmed on %s", priority, mac)
+            return True
+        _LOGGER.warning("QCA QoS '%s': write not confirmed on %s", priority, mac)
+        return False
+
     @_locked
     def set_qos_priority(self, mac: str, priority: str) -> bool:
         """Set QoS priority on a specific adapter (by MAC)."""
@@ -1602,8 +1661,13 @@ class HomeplugAV:
             except (PermissionError, OSError):
                 return False
 
+            if self._chipset == "qualcomm":
+                return self._set_qos_qualcomm(mac, priority)
             if self._chipset in ("broadcom", "unknown"):
-                return self._set_qos_broadcom(mac, priority)
+                if self._set_qos_broadcom(mac, priority):
+                    return True
+                # An "unknown" chipset might be QCA (no MEDIAXTREAM reply).
+                return self._set_qos_qualcomm(mac, priority)
 
             _LOGGER.warning("QoS not supported for chipset %s", self._chipset)
             return False
