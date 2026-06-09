@@ -270,10 +270,32 @@ Key safety findings:
   (`…7023 0000 89c5 80ea`) is identical for on *and* off — flipping these 10 bytes
   needs no checksum recompute.
 
-⇒ A safe 0.2 implementation replicates tpPLC exactly: **read this device's real
-PIB → flip only those 10 bytes → write the chunks back → commit**. Never write a
-hard-coded PIB. (Power saving and QoS will be decoded the same way from their own
-captures, reusing the module read/write code.)
+⇒ Implemented in **0.1.1** exactly this way: **read this device's real PIB → flip
+only those 10 bytes → write the chunks back → commit**. Never write a hard-coded
+PIB. (Power saving and QoS will reuse the same module read/write code.)
+
+#### Module read/write wire format (0xA0B0/0xA0B1)
+Frame: `eth + MMV(0x00) + MMTYPE(2 LE) + OUI(00:b0:52) + payload` (no FMI).
+The PIB is `0x2370` (9072) bytes, transferred in `0x578` (1400)-byte chunks.
+
+| Op | payload[4:6] | Key fields (payload offsets) |
+|----|--------------|------------------------------|
+| read req   | `01 00` | len@17(LE), off@19(LE) |
+| read cnf   | `01 00` (echo) | len@21(LE), off@**23**(LE), **data@25** |
+| write open | `01 10` | token@13, total-len@22(LE)=`0x2370`, checksum@26(LE u32) |
+| write data | `01 11` | token@13, len@22(LE), off@**24**(LE), **data@26** |
+| write close| `01 12` | token@13 |
+
+> ⚠️ Note the read **confirm** packs offset/data one byte earlier (off@23, data@25)
+> than the write **request** (off@24, data@26).
+
+The `token` is a client-chosen 2-byte transaction id (same across open/data/close).
+The write-open `checksum` is a 32-bit whole-PIB checksum tpPLC computes with a
+**non-standard algorithm** (not crc32/sum32/adler/fletcher) and the device never
+reports it. It is **constant for LED toggles** (LED bytes are outside its coverage)
+but changes for power saving. Since we can't reproduce it offline, 0.1.1 sends a
+best-effort value and **verifies by read-back**: if the firmware rejects a bad
+checksum the toggle is a harmless no-op (reported as failure), never a corruption.
 
 ### How to add more QCA control safely — capture recipe
 The proven method (every Broadcom feature was built this way): capture the
