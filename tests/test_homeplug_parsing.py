@@ -29,25 +29,21 @@ import struct
 
 
 class TestQcaNwInfo(TestCase):
-    """QCA VS_NW_INFO.CNF (0xA039) PHY-rate parsing."""
+    """QCA VS_NW_INFO.CNF (0xA039) PHY-rate parsing (4-byte LE tail)."""
 
     def _frame(self, body: bytes) -> bytes:
         eth = b"\xaa" * 6 + b"\xbb" * 6 + struct.pack("!H", 0x88E1)
         return eth + b"\x01\x39\xa0\x00\x00\xb0\x52" + body
 
-    def test_extracts_rates_after_mac(self) -> None:
-        mac = "EC:08:6B:54:FE:E3"
-        body = b"\x00" * 5 + mac_to_bytes(mac) + b"\x01\x00\x00" \
-            + struct.pack("<HH", 196, 213) + b"\x00" * 4
-        out = parse_qca_nw_info_cnf(self._frame(body), [mac, "EC:08:6B:55:09:3F"])
-        self.assertEqual(out, [{"mac": mac, "plcmac": mac,
-                                "tx_rate": 196, "rx_rate": 213}])
+    def test_extracts_tail_rates(self) -> None:
+        # Real capture tail: TX=124 (0x7c), RX=140 (0x8c) as 4-byte LE.
+        body = bytes.fromhex("00003a000001") + b"\x00" * 40 \
+            + struct.pack("<II", 124, 140)
+        self.assertEqual(parse_qca_nw_info_cnf(self._frame(body)), (124, 140))
 
-    def test_idle_link_yields_no_rate(self) -> None:
-        # No plausible rate pair present -> nothing (not a false positive).
-        mac = "EC:08:6B:54:FE:E3"
-        body = b"\x00" * 5 + mac_to_bytes(mac) + b"\x00" * 12
-        self.assertEqual(parse_qca_nw_info_cnf(self._frame(body), [mac]), [])
+    def test_idle_link_yields_none(self) -> None:
+        body = b"\x00" * 60
+        self.assertIsNone(parse_qca_nw_info_cnf(self._frame(body)))
 
 
 class TestMirrorLinkRate(TestCase):
