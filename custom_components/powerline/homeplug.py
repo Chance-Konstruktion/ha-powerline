@@ -537,6 +537,41 @@ def parse_qca_nw_stats_cnf(data: bytes) -> list[dict]:
     return stations
 
 
+def parse_qca_nw_info_cnf(data: bytes, known_macs: list[str]) -> list[dict]:
+    """Best-effort parse of Qualcomm VS_NW_INFO.CNF (0xA039) PHY rates.
+
+    The confirm lists the network and its stations; each station's average PHY
+    data rates (Mbit/s, 2-byte little-endian) follow its MAC. The exact field
+    offsets vary by firmware, so we locate each known adapter MAC and take the
+    first plausible (10..1500 Mbps) 2-byte LE TX/RX pair that follows it. The
+    full payload is logged at debug so the layout can be confirmed/refined.
+    """
+    payload = data[ETH_HDR:]
+    _LOGGER.debug("QCA VS_NW_INFO payload (%d bytes): %s",
+                  len(payload), payload.hex())
+    out: list[dict] = []
+    seen: set[str] = set()
+    for mac in known_macs:
+        mb = mac_to_bytes(mac)
+        idx = payload.find(mb)
+        while idx >= 0:
+            for p in range(idx + 6, min(idx + 6 + 12, len(payload) - 3)):
+                tx = struct.unpack_from("<H", payload, p)[0]
+                rx = struct.unpack_from("<H", payload, p + 2)[0]
+                if 10 <= tx <= 1500 and 10 <= rx <= 1500:
+                    if mac not in seen:
+                        out.append({"mac": mac, "plcmac": mac,
+                                    "tx_rate": tx, "rx_rate": rx})
+                        seen.add(mac)
+                    idx = -1
+                    break
+            else:
+                idx = payload.find(mb, idx + 1)
+                continue
+            break
+    return out
+
+
 # ══════════════════════════════════════════════════════════
 #  Main Class
 # ══════════════════════════════════════════════════════════
@@ -836,6 +871,38 @@ class HomeplugAV:
         if found:
             self._chipset = "broadcom"
             return True
+
+        # ── Q: Qualcomm VS_NW_INFO (0xA038) — the correct QCA rate/topology MME.
+        # The QCA7420 answers this (confirmed via Diagnose); the old 0xA048 does
+        # not. If an adapter replies, this is a Qualcomm network: read the PHY
+        # rates here and SKIP the slow Broadcom (0x8912) methods below — they
+        # only time out (~40s) on a QCA network.
+        _LOGGER.debug("Trying QCA VS_NW_INFO (0xA038) on 0x88E1...")
+        qca = False
+        macs = list(devices.keys())
+        for mac in macs:
+            dst = mac_to_bytes(mac)
+            frame = build_qca_frame(dst, self._src_mac, VS_NW_INFO_REQ)
+            for mmtype, src, data in self._send_recv(
+                    self._sock_hpav, frame, 1.5, expected_src=mac,
+                    stop_on=frozenset((VS_NW_INFO_CNF,))):
+                if mmtype == VS_NW_INFO_CNF:
+                    self._chipset = "qualcomm"
+                    qca = True
+                    for sta in parse_qca_nw_info_cnf(data, macs):
+                        m, tx, rx = sta["mac"], sta["tx_rate"], sta["rx_rate"]
+                        if (tx or rx) and m in devices:
+                            devices[m]["tx_rate"] = tx
+                            devices[m]["rx_rate"] = rx
+                            self._mirror_link_rate(devices, src, m, tx, rx)
+                            found = True
+                            _LOGGER.info("VS_NW_INFO: %s TX=%d RX=%d", m, tx, rx)
+        if qca:
+            if not found:
+                _LOGGER.info(
+                    "QCA VS_NW_INFO answered but no PHY rate parsed "
+                    "(idle link or unconfirmed layout). Use Diagnose for raw bytes.")
+            return found
 
         # ── A: MX NW_STATS (0xA02C) — primary Broadcom rate method ──
         # This is the dedicated PHY rate request for Broadcom chipsets.
@@ -1690,7 +1757,7 @@ class HomeplugAV:
             resps = self._send_recv(sock, frame, 3.0)
             lines.append(f"Responses: {len(resps)}")
             for mmtype, src, data in resps:
-                plen = min(len(data), ETH_HDR + 60)
+                plen = min(len(data), ETH_HDR + 256)
                 p = data[ETH_HDR:plen]
                 lines.append(
                     f"  MME=0x{mmtype:04X} from={src} "
@@ -1772,7 +1839,7 @@ class HomeplugAV:
             passive = self._listen(sock, 3.0)
             lines.append(f"Frames: {len(passive)}")
             for mmtype, src, data in passive:
-                p = data[ETH_HDR:min(len(data), ETH_HDR+40)]
+                p = data[ETH_HDR:min(len(data), ETH_HDR+256)]
                 lines.append(
                     f"  MME=0x{mmtype:04X} from={src} hex={p.hex()}")
             # Summary

@@ -4,6 +4,22 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-09
+
+### Fixed
+- **Qualcomm (AV500) rates always 0 + ~50s polls.** The rate query used the
+  wrong MME (`0xA048`, which the QCA7420 ignores), so the chipset stayed
+  `unknown` and every poll spent ~50s timing out on Broadcom (`0x8912`) methods.
+  Now the poll tries the **correct `VS_NW_INFO` (`0xA038`)** MME (which the
+  AV500 answers), marks the chipset `qualcomm`, parses the per-station PHY
+  rates, and **skips the Broadcom methods entirely** on a QCA network (poll
+  drops from ~50s to a few seconds). Rate parsing is best-effort and
+  range-validated; the full response is logged for refinement.
+
+### Changed
+- **Diagnose** now dumps full frames (256 bytes instead of 60) so large QCA
+  responses (`VS_NW_INFO`/`VS_NW_INFO_STATS`) are fully visible.
+
 ## [0.1.1] - 2026-06-09
 
 ### Added

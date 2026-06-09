@@ -22,7 +22,32 @@ parse_mx_status_ind = _MODULE.parse_mx_status_ind
 parse_mx_nw_stats_cnf = _MODULE.parse_mx_nw_stats_cnf
 parse_mx_get_param_cnf = _MODULE.parse_mx_get_param_cnf
 decode_phy_rate = _MODULE.decode_phy_rate
+parse_qca_nw_info_cnf = _MODULE.parse_qca_nw_info_cnf
+mac_to_bytes = _MODULE.mac_to_bytes
 HomeplugAV = _MODULE.HomeplugAV
+import struct
+
+
+class TestQcaNwInfo(TestCase):
+    """QCA VS_NW_INFO.CNF (0xA039) PHY-rate parsing."""
+
+    def _frame(self, body: bytes) -> bytes:
+        eth = b"\xaa" * 6 + b"\xbb" * 6 + struct.pack("!H", 0x88E1)
+        return eth + b"\x01\x39\xa0\x00\x00\xb0\x52" + body
+
+    def test_extracts_rates_after_mac(self) -> None:
+        mac = "EC:08:6B:54:FE:E3"
+        body = b"\x00" * 5 + mac_to_bytes(mac) + b"\x01\x00\x00" \
+            + struct.pack("<HH", 196, 213) + b"\x00" * 4
+        out = parse_qca_nw_info_cnf(self._frame(body), [mac, "EC:08:6B:55:09:3F"])
+        self.assertEqual(out, [{"mac": mac, "plcmac": mac,
+                                "tx_rate": 196, "rx_rate": 213}])
+
+    def test_idle_link_yields_no_rate(self) -> None:
+        # No plausible rate pair present -> nothing (not a false positive).
+        mac = "EC:08:6B:54:FE:E3"
+        body = b"\x00" * 5 + mac_to_bytes(mac) + b"\x00" * 12
+        self.assertEqual(parse_qca_nw_info_cnf(self._frame(body), [mac]), [])
 
 
 class TestMirrorLinkRate(TestCase):
