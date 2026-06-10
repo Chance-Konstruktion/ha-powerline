@@ -435,7 +435,7 @@ class TestQcaQos(TestCase):
         hp = HomeplugAV("eth0")
         size = _MODULE.QCA_PIB_SIZE
         qoff = _MODULE.QCA_QOS_OFFSET
-        c0, c1 = _MODULE.QCA_QOS_CKSUM_OFFSETS  # 0x0376, 0x03BE
+        c0, c1 = _MODULE.QCA_CKSUM_OFFSETS  # 0x0376, 0x03BE
         pib = bytearray(size)
         # "internet" state from the capture: QoS=0x0000, checksum low words
         # 0x51F7 @0x0376 and 0xB276 @0x03BE.
@@ -462,3 +462,40 @@ class TestQcaQos(TestCase):
         self.assertEqual(struct.unpack_from("<H", w, qoff)[0], 0xFA41)
         self.assertEqual(struct.unpack_from("<H", w, c0)[0], 0xABB6)
         self.assertEqual(struct.unpack_from("<H", w, c1)[0], 0x4837)
+
+
+class TestQcaPibChecksum(TestCase):
+    """qca_pib_set_byte maintains both XOR checksums per the (o%4)^2 rule."""
+
+    def test_powersave_delta_matches_capture(self) -> None:
+        size = _MODULE.QCA_PIB_SIZE
+        c0, c1 = _MODULE.QCA_CKSUM_OFFSETS
+        buf = bytearray(size)  # all-zero (off state)
+        for off, val in _MODULE.QCA_POWERSAVE_BYTES.items():
+            _MODULE.qca_pib_set_byte(buf, off, val)
+        # Captured power-saving off->on checksum delta is 01 08 97 02 on BOTH.
+        self.assertEqual(bytes(buf[c0:c0 + 4]), bytes([0x01, 0x08, 0x97, 0x02]))
+        self.assertEqual(bytes(buf[c1:c1 + 4]), bytes([0x01, 0x08, 0x97, 0x02]))
+
+    def test_power_saving_qualcomm_flow(self) -> None:
+        hp = HomeplugAV("eth0")
+        size = _MODULE.QCA_PIB_SIZE
+        pib = bytearray(size)
+        captured = {}
+
+        def fake_write(mac, b):
+            captured["pib"] = bytes(b)
+            return True
+
+        def fake_read_chunk(dst, mac, off, clen):
+            return captured["pib"][off:off + clen]
+
+        with patch.object(hp, "_qca_read_pib", return_value=bytes(pib)), \
+             patch.object(hp, "_qca_write_pib", side_effect=fake_write), \
+             patch.object(hp, "_qca_read_chunk", side_effect=fake_read_chunk):
+            ok = hp._set_power_saving_qualcomm("AA:BB:CC:DD:EE:FF", True)
+
+        self.assertTrue(ok)
+        w = captured["pib"]
+        for off, val in _MODULE.QCA_POWERSAVE_BYTES.items():
+            self.assertEqual(w[off], val)

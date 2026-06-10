@@ -4,6 +4,17 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-10
+
+### Added
+- **Qualcomm (AV500) power-saving control.** Decoded from tpPLC captures: power
+  saving sets 5 PIB bytes (`0x2143`=08, `0x2144`=96, `0x21EC`=01, `0x2266`=01,
+  `0x2275`=02; off = all zero) plus the two XOR checksums. Generalized the
+  checksum maintenance into one rule — a byte at offset `o` folds into checksum
+  byte `(o % 4) XOR 2` of both fields — verified against two independent
+  power-saving captures (predicted delta `01 08 97 02` == actual) and reused for
+  QoS. Implemented as a PIB read-modify-write with retried read-back.
+
 ## [0.1.5] - 2026-06-10
 
 ### Fixed

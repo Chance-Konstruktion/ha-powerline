@@ -133,20 +133,24 @@ QCA_PIB_CHUNK = 0x0578          # 1400-byte transfer chunks
 # off/on/off capture; no checksum elsewhere changes for the LED toggle).
 QCA_LED_OFFSETS = (0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25,
                    0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D)
-# QoS priority is a 2-byte value in the PIB. Changing it also updates two
-# XOR-checksum fields; because the checksum is XOR-linear we maintain it by
-# XOR-ing the value delta into each field (no need to recompute from scratch).
-# Confirmed by diffing internet/gaming/audio_video/voip captures (QCA7420):
-# e.g. internet->gaming flips 0x0ADE 0000->FA41 and the checksums by the same
-# delta (0x0376 51F7->ABB6, 0x03BE B276->4837) — reproduced byte-for-byte.
+# Config changes (QoS, power saving) also update two XOR-checksum fields. The
+# checksum is XOR-linear: a PIB byte at offset o folds into checksum byte
+# (o % 4) XOR 2 of BOTH fields. Verified across QoS and power-saving captures
+# (predicted delta 01 08 97 02 == actual). So we maintain the checksum by
+# XOR-ing each changed byte's delta in at the right position — no need to know
+# the algorithm, and it reproduces tpPLC's bytes exactly.
+QCA_CKSUM_OFFSETS = (0x0376, 0x03BE)
+# QoS priority = 2-byte value at 0x0ADE.
 QCA_QOS_OFFSET = 0x0ADE
-QCA_QOS_CKSUM_OFFSETS = (0x0376, 0x03BE)
 QCA_QOS_VALUES = {
     "internet":    0x0000,
     "gaming":      0xFA41,
     "audio_video": 0xFA42,
     "voip":        0xFA43,
 }
+# Power saving: these PIB bytes hold the captured "on" values; "off" = all zero.
+QCA_POWERSAVE_BYTES = {0x2143: 0x08, 0x2144: 0x96,
+                       0x21EC: 0x01, 0x2266: 0x01, 0x2275: 0x02}
 # Captured 32-byte module-op header templates; variable fields are patched in:
 #   read : len@17(LE), off@19(LE)
 #   open : token@13(LE), totlen@22(LE), checksum@26(LE u32)
@@ -573,6 +577,22 @@ def parse_qca_nw_info_cnf(data: bytes) -> tuple[int, int] | None:
         # (verified: 124->162, 140->183, 141->185, 142->186).
         return (tx * 21 // 16, rx * 21 // 16)
     return None
+
+
+def qca_pib_set_byte(buf: bytearray, offset: int, value: int) -> None:
+    """Set a PIB byte and keep the two QCA XOR checksums valid.
+
+    A byte at offset ``o`` folds into checksum byte ``(o % 4) XOR 2`` of both
+    fields (0x0376, 0x03BE) — verified across QoS and power-saving captures, so
+    this reproduces tpPLC's checksum bytes exactly.
+    """
+    old = buf[offset]
+    if old == value:
+        return
+    buf[offset] = value
+    idx = (offset & 3) ^ 2
+    for coff in QCA_CKSUM_OFFSETS:
+        buf[coff + idx] ^= old ^ value
 
 
 # ══════════════════════════════════════════════════════════
@@ -1567,8 +1587,13 @@ class HomeplugAV:
             except (PermissionError, OSError):
                 return False
 
+            if self._chipset == "qualcomm":
+                return self._set_power_saving_qualcomm(mac, on)
             if self._chipset in ("broadcom", "unknown"):
-                return self._set_power_saving_broadcom(mac, on)
+                if self._set_power_saving_broadcom(mac, on):
+                    return True
+                # An "unknown" chipset might be QCA (no MEDIAXTREAM reply).
+                return self._set_power_saving_qualcomm(mac, on)
 
             _LOGGER.warning("Power saving not supported for chipset %s", self._chipset)
             return False
@@ -1647,11 +1672,8 @@ class HomeplugAV:
         if old == new:
             _LOGGER.info("QCA QoS already '%s' on %s", priority, mac)
             return True
-        delta = old ^ new
-        struct.pack_into("<H", buf, QCA_QOS_OFFSET, new)
-        for coff in QCA_QOS_CKSUM_OFFSETS:
-            cur = struct.unpack_from("<H", buf, coff)[0]
-            struct.pack_into("<H", buf, coff, cur ^ delta)
+        qca_pib_set_byte(buf, QCA_QOS_OFFSET, new & 0xFF)
+        qca_pib_set_byte(buf, QCA_QOS_OFFSET + 1, (new >> 8) & 0xFF)
 
         if not self._qca_write_pib(mac, bytes(buf)):
             return False
@@ -1672,6 +1694,41 @@ class HomeplugAV:
                     return True
         _LOGGER.warning("QCA QoS '%s': write not confirmed on %s (read back 0x%04X)",
                         priority, mac, got)
+        return False
+
+    def _set_power_saving_qualcomm(self, mac: str, on: bool) -> bool:
+        """Set power saving on a QCA (AV500) adapter via PIB read-modify-write.
+
+        Writes the captured power-saving bytes (off = all zero) and maintains
+        the two XOR checksums via qca_pib_set_byte. Reproduces tpPLC's bytes.
+        """
+        pib = self._qca_read_pib(mac)
+        if not pib or len(pib) != QCA_PIB_SIZE:
+            _LOGGER.debug("QCA power saving: could not read PIB from %s", mac)
+            return False
+
+        buf = bytearray(pib)
+        for off, on_val in QCA_POWERSAVE_BYTES.items():
+            qca_pib_set_byte(buf, off, on_val if on else 0x00)
+
+        if not self._qca_write_pib(mac, bytes(buf)):
+            return False
+
+        # Verify (with retry) that a flag byte took the expected value.
+        probe = 0x21EC
+        expected = 0x01 if on else 0x00
+        dst = mac_to_bytes(mac)
+        cstart = (probe // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
+        clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
+        for _ in range(4):
+            time.sleep(0.4)
+            chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+            if chunk and len(chunk) > probe - cstart and chunk[probe - cstart] == expected:
+                _LOGGER.info("QCA power saving %s confirmed on %s",
+                             "ON" if on else "OFF", mac)
+                return True
+        _LOGGER.warning("QCA power saving %s: write not confirmed on %s",
+                        "ON" if on else "OFF", mac)
         return False
 
     @_locked

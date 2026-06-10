@@ -307,14 +307,24 @@ checksum the toggle is a harmless no-op (reported as failure), never a corruptio
 | Audio / Video | `0xFA42` |
 | VoIP | `0xFA43` |
 
-Changing it also updates two checksum fields at **`0x0376`** and **`0x03BE`**.
-Diffing the modes shows the checksum is **XOR-linear**: the value delta XORs
-straight into each field, e.g. internet→gaming flips `0x0ADE` `0000`→`FA41` and
-`0x0376` `51F7`→`ABB6`, `0x03BE` `B276`→`4837` (same `0xFA41` delta). So a write
-**reads the device's PIB, sets `0x0ADE`, and XORs the delta into both fields** —
-the checksum stays valid without recomputing it (reproduces the captured bytes
-exactly). The same two fields move for power saving (more bytes, so all 4
-checksum bytes change) — that's the remaining 0.2 work.
+**Power saving** sets 5 PIB bytes (off = all zero):
+
+| Offset | on value |
+|--------|----------|
+| `0x2143` | `0x08` |
+| `0x2144` | `0x96` |
+| `0x21EC` | `0x01` |
+| `0x2266` | `0x01` |
+| `0x2275` | `0x02` |
+
+Both QoS and power saving also update two checksum fields at **`0x0376`** and
+**`0x03BE`**. The checksum is **XOR-linear** with a simple fold: a PIB byte at
+offset `o` XORs into checksum byte **`(o % 4) XOR 2`** of *both* fields. Verified
+across QoS and two power-saving captures (predicted delta `01 08 97 02` == actual
+on both fields). So a config write **reads the device's PIB, sets the bytes, and
+XORs each delta into the checksums at `(o%4)^2`** — no need to know the checksum
+algorithm, and it reproduces tpPLC's bytes exactly. `qca_pib_set_byte()`
+implements this; LED/QoS/power saving all go through the PIB read-modify-write.
 
 **PHY rate** comes from `VS_NW_INFO` (`0xA039`): the responder's average PHY data
 rates are the **last two 4-byte LE** values (TX@end-8, RX@end-4). tpPLC displays
