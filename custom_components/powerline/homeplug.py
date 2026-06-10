@@ -899,6 +899,20 @@ class HomeplugAV:
                         _LOGGER.info("VS_NW_INFO: %s TX=%d RX=%d",
                                      src, rates[0], rates[1])
         if qca:
+            # A device's VS_NW_INFO occasionally reports one direction as 0.
+            # In a 2-adapter network the link is symmetric (my TX = peer RX),
+            # so mirror a peer's rate (swapped) onto an adapter that got none.
+            rated = [(m, d) for m, d in devices.items()
+                     if d.get("tx_rate", 0) or d.get("rx_rate", 0)]
+            if len(rated) == 1 and len(devices) == 2:
+                _, pd = rated[0]
+                for m, d in devices.items():
+                    if not (d.get("tx_rate", 0) or d.get("rx_rate", 0)):
+                        d["tx_rate"] = pd.get("rx_rate", 0)
+                        d["rx_rate"] = pd.get("tx_rate", 0)
+                        found = True
+                        _LOGGER.info("VS_NW_INFO mirror: %s TX=%d RX=%d",
+                                     m, d["tx_rate"], d["rx_rate"])
             if not found:
                 _LOGGER.info(
                     "QCA VS_NW_INFO answered but no PHY rate parsed "
@@ -1394,17 +1408,19 @@ class HomeplugAV:
         if not self._qca_write_pib(mac, bytes(buf)):
             return False
 
-        # Verify by re-reading the chunk that holds the LED table.
+        # The adapter commits the PIB a moment after the close, so retry the
+        # read-back of the chunk that holds the LED table a few times.
         dst = mac_to_bytes(mac)
         cstart = (min(QCA_LED_OFFSETS) // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
         clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
-        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
-        if chunk and all(chunk[o - cstart] == value for o in QCA_LED_OFFSETS):
-            _LOGGER.info("QCA LED %s confirmed on %s",
-                         "ON" if on else "OFF", mac)
-            return True
-        _LOGGER.warning("QCA LED %s: write sent but not confirmed on %s "
-                        "(firmware may validate the PIB checksum)",
+        for _ in range(4):
+            time.sleep(0.4)
+            chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+            if chunk and all(chunk[o - cstart] == value for o in QCA_LED_OFFSETS):
+                _LOGGER.info("QCA LED %s confirmed on %s",
+                             "ON" if on else "OFF", mac)
+                return True
+        _LOGGER.warning("QCA LED %s: write sent but not confirmed on %s",
                         "ON" if on else "OFF", mac)
         return False
 
@@ -1640,15 +1656,22 @@ class HomeplugAV:
         if not self._qca_write_pib(mac, bytes(buf)):
             return False
 
-        # Verify by re-reading the chunk holding the QoS value.
+        # The adapter commits the PIB a moment after the close, so an immediate
+        # read-back can still show the old value. Retry a few times.
         dst = mac_to_bytes(mac)
         cstart = (QCA_QOS_OFFSET // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
         clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
-        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
-        if chunk and struct.unpack_from("<H", chunk, QCA_QOS_OFFSET - cstart)[0] == new:
-            _LOGGER.info("QCA QoS '%s' confirmed on %s", priority, mac)
-            return True
-        _LOGGER.warning("QCA QoS '%s': write not confirmed on %s", priority, mac)
+        got = -1
+        for _ in range(4):
+            time.sleep(0.4)
+            chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+            if chunk and len(chunk) > QCA_QOS_OFFSET - cstart + 1:
+                got = struct.unpack_from("<H", chunk, QCA_QOS_OFFSET - cstart)[0]
+                if got == new:
+                    _LOGGER.info("QCA QoS '%s' confirmed on %s", priority, mac)
+                    return True
+        _LOGGER.warning("QCA QoS '%s': write not confirmed on %s (read back 0x%04X)",
+                        priority, mac, got)
         return False
 
     @_locked

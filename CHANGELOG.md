@@ -4,6 +4,17 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-10
+
+### Fixed
+- **QCA LED/QoS write "not confirmed".** The adapter commits the PIB a moment
+  after the close, so the immediate read-back could still read the old value and
+  report failure even though the write (verified byte-correct + acked) actually
+  applied. The read-back now retries a few times with a short delay.
+- **One adapter showing 0 Mbps.** A QCA `VS_NW_INFO` reply occasionally reports
+  one direction as 0. In a 2-adapter network the link is symmetric, so a peer's
+  rate is now mirrored (swapped) onto an adapter that got none.
+
 ## [0.1.4] - 2026-06-10
 
 ### Added
