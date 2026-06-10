@@ -140,6 +140,10 @@ QCA_LED_OFFSETS = (0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25,
 # XOR-ing each changed byte's delta in at the right position — no need to know
 # the algorithm, and it reproduces tpPLC's bytes exactly.
 QCA_CKSUM_OFFSETS = (0x0376, 0x03BE)
+# The write-open command's 4-byte PIB checksum (which the adapter validates to
+# *apply* the write) equals the 0x0376 field XOR this fixed key. Cracked from
+# LED/QoS/power-saving/start captures (all match).
+QCA_OPEN_CKSUM_KEY = bytes((0x91, 0xCB, 0xAB, 0x39))
 # QoS priority = 2-byte value at 0x0ADE.
 QCA_QOS_OFFSET = 0x0ADE
 QCA_QOS_VALUES = {
@@ -571,12 +575,13 @@ def parse_qca_nw_info_cnf(data: bytes) -> tuple[int, int] | None:
         return None
     tx = struct.unpack_from("<I", payload, len(payload) - 8)[0]
     rx = struct.unpack_from("<I", payload, len(payload) - 4)[0]
-    if 1 <= tx <= 5000 and 1 <= rx <= 5000:
-        # The raw field is the firmware's average PHY data rate; tpPLC displays
-        # floor(raw * 21/16). Apply the same factor so HA matches the app
-        # (verified: 124->162, 140->183, 141->185, 142->186).
-        return (tx * 21 // 16, rx * 21 // 16)
-    return None
+    # Accept a partial reply (one direction may be 0 / idle); the caller fills a
+    # 0 from the peer's complementary direction. The raw field is the firmware's
+    # average PHY rate; tpPLC displays floor(raw * 21/16), so apply the same
+    # factor (verified: 124->162, 140->183, 141->185, 142->186).
+    if tx > 5000 or rx > 5000 or (tx == 0 and rx == 0):
+        return None
+    return (tx * 21 // 16, rx * 21 // 16)
 
 
 def qca_pib_set_byte(buf: bytearray, offset: int, value: int) -> None:
@@ -919,20 +924,18 @@ class HomeplugAV:
                         _LOGGER.info("VS_NW_INFO: %s TX=%d RX=%d",
                                      src, rates[0], rates[1])
         if qca:
-            # A device's VS_NW_INFO occasionally reports one direction as 0.
-            # In a 2-adapter network the link is symmetric (my TX = peer RX),
-            # so mirror a peer's rate (swapped) onto an adapter that got none.
-            rated = [(m, d) for m, d in devices.items()
-                     if d.get("tx_rate", 0) or d.get("rx_rate", 0)]
-            if len(rated) == 1 and len(devices) == 2:
-                _, pd = rated[0]
-                for m, d in devices.items():
-                    if not (d.get("tx_rate", 0) or d.get("rx_rate", 0)):
-                        d["tx_rate"] = pd.get("rx_rate", 0)
-                        d["rx_rate"] = pd.get("tx_rate", 0)
-                        found = True
-                        _LOGGER.info("VS_NW_INFO mirror: %s TX=%d RX=%d",
-                                     m, d["tx_rate"], d["rx_rate"])
+            # In a 2-adapter network the link is symmetric: A.tx == B.rx. A
+            # VS_NW_INFO reply often reports only one direction, so fill each 0
+            # from the peer's complementary value (both ends then agree).
+            if len(devices) == 2:
+                ms = list(devices)
+                a, b = devices[ms[0]], devices[ms[1]]
+                ab = a.get("tx_rate", 0) or b.get("rx_rate", 0)
+                ba = a.get("rx_rate", 0) or b.get("tx_rate", 0)
+                if ab or ba:
+                    a["tx_rate"], a["rx_rate"] = ab, ba
+                    b["tx_rate"], b["rx_rate"] = ba, ab
+                    found = True
             if not found:
                 _LOGGER.info(
                     "QCA VS_NW_INFO answered but no PHY rate parsed "
@@ -1382,7 +1385,13 @@ class HomeplugAV:
         op = bytearray(_QCA_HDR_OPEN)
         op[13:15] = token
         struct.pack_into("<H", op, 22, len(pib))
-        struct.pack_into("<I", op, 26, zlib.crc32(pib) & 0xFFFFFFFF)
+        # The write-open carries a 4-byte PIB checksum the adapter validates to
+        # *activate* (not just store) the change. Cracked from captures (LED, QoS,
+        # power saving, start — all match): it equals the 0x0376 checksum field
+        # XOR a fixed key. Sending a wrong value (we used to send crc32) made the
+        # adapter store the bytes but never apply them.
+        for i in range(4):
+            op[26 + i] = pib[QCA_CKSUM_OFFSETS[0] + i] ^ QCA_OPEN_CKSUM_KEY[i]
         if not self._qca_mod_ack(dst, mac, bytes(op)):
             _LOGGER.debug("QCA PIB write: no ack to open from %s", mac)
             return False

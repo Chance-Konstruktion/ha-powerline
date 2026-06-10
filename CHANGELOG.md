@@ -4,6 +4,20 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-06-10
+
+### Fixed
+- **QCA writes were stored but never applied (LED/QoS/power-saving did nothing).**
+  The write-open command carries a 4-byte PIB checksum the adapter validates to
+  *activate* the change; we were sending `crc32` (wrong), so the AV500 accepted
+  and stored the bytes (read-back even "verified") but never applied them — the
+  LED wouldn't toggle, etc. Cracked the real value from captures: it equals the
+  `0x0376` checksum field **XOR a fixed key** (`91 cb ab 39`), matching LED, QoS,
+  power-saving and start captures exactly. Now computed correctly.
+- **Rate showed 0 when one direction was idle.** `VS_NW_INFO` often reports only
+  one direction; the parser now accepts a partial reply and fills the missing
+  direction from the peer (so HA shows e.g. ~168 instead of 0).
+
 ## [0.1.7] - 2026-06-10
 
 ### Fixed

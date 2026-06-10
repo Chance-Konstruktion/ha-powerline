@@ -499,3 +499,16 @@ class TestQcaPibChecksum(TestCase):
         w = captured["pib"]
         for off, val in _MODULE.QCA_POWERSAVE_BYTES.items():
             self.assertEqual(w[off], val)
+
+
+class TestQcaOpenChecksum(TestCase):
+    """The write-open checksum = 0x0376 field XOR the fixed key (captured)."""
+
+    def test_open_checksum_from_0376(self) -> None:
+        buf = bytearray(_MODULE.QCA_PIB_SIZE)
+        # Captured state: 0x0376 = 180e2bd3 -> open checksum 89c580ea.
+        buf[0x0376:0x037A] = bytes.fromhex("180e2bd3")
+        c0 = _MODULE.QCA_CKSUM_OFFSETS[0]
+        key = _MODULE.QCA_OPEN_CKSUM_KEY
+        got = bytes(buf[c0 + i] ^ key[i] for i in range(4))
+        self.assertEqual(got, bytes.fromhex("89c580ea"))
