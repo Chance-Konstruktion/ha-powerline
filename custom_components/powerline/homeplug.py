@@ -1428,21 +1428,24 @@ class HomeplugAV:
         if not self._qca_write_pib(mac, bytes(buf)):
             return False
 
-        # The adapter commits the PIB a moment after the close, so retry the
-        # read-back of the chunk that holds the LED table a few times.
+        # The adapter acked the open, every data chunk and the close — that is
+        # the same confirmation tpPLC relies on (its captures show no verify
+        # read either). The device can keep serving the OLD PIB image for many
+        # seconds after the write, so a read-back here produces false failures
+        # (hardware-confirmed: writes reported "not confirmed" had actually
+        # persisted). Do one quick read purely for logging.
         dst = mac_to_bytes(mac)
         cstart = (min(QCA_LED_OFFSETS) // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
         clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
-        for _ in range(4):
-            time.sleep(0.4)
-            chunk = self._qca_read_chunk(dst, mac, cstart, clen)
-            if chunk and all(chunk[o - cstart] == value for o in QCA_LED_OFFSETS):
-                _LOGGER.info("QCA LED %s confirmed on %s",
-                             "ON" if on else "OFF", mac)
-                return True
-        _LOGGER.warning("QCA LED %s: write sent but not confirmed on %s",
-                        "ON" if on else "OFF", mac)
-        return False
+        time.sleep(0.4)
+        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+        verified = bool(chunk) and all(
+            chunk[o - cstart] == value for o in QCA_LED_OFFSETS)
+        _LOGGER.info("QCA LED %s written on %s (all chunks acked%s)",
+                     "ON" if on else "OFF", mac,
+                     ", read-back verified" if verified
+                     else "; device still serving old image")
+        return True
 
     def _set_led_broadcom(self, mac: str, on: bool) -> bool:
         """Set LED via the captured tpPLC Set Parameter + Apply sequence."""
@@ -1678,23 +1681,23 @@ class HomeplugAV:
         if not self._qca_write_pib(mac, bytes(buf)):
             return False
 
-        # The adapter commits the PIB a moment after the close, so an immediate
-        # read-back can still show the old value. Retry a few times.
+        # All chunks + close were acked — that is the confirmation tpPLC itself
+        # relies on. The device may keep serving the old PIB image for many
+        # seconds, so a read-back produces false failures (hardware-confirmed:
+        # a "not confirmed" QoS write had actually persisted). Quick read for
+        # logging only.
         dst = mac_to_bytes(mac)
         cstart = (QCA_QOS_OFFSET // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
         clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
-        got = -1
-        for _ in range(4):
-            time.sleep(0.4)
-            chunk = self._qca_read_chunk(dst, mac, cstart, clen)
-            if chunk and len(chunk) > QCA_QOS_OFFSET - cstart + 1:
-                got = struct.unpack_from("<H", chunk, QCA_QOS_OFFSET - cstart)[0]
-                if got == new:
-                    _LOGGER.info("QCA QoS '%s' confirmed on %s", priority, mac)
-                    return True
-        _LOGGER.warning("QCA QoS '%s': write not confirmed on %s (read back 0x%04X)",
-                        priority, mac, got)
-        return False
+        time.sleep(0.4)
+        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+        verified = bool(chunk) and len(chunk) > QCA_QOS_OFFSET - cstart + 1 and \
+            struct.unpack_from("<H", chunk, QCA_QOS_OFFSET - cstart)[0] == new
+        _LOGGER.info("QCA QoS '%s' written on %s (all chunks acked%s)",
+                     priority, mac,
+                     ", read-back verified" if verified
+                     else "; device still serving old image")
+        return True
 
     def _set_power_saving_qualcomm(self, mac: str, on: bool) -> bool:
         """Set power saving on a QCA (AV500) adapter via PIB read-modify-write.
@@ -1714,22 +1717,24 @@ class HomeplugAV:
         if not self._qca_write_pib(mac, bytes(buf)):
             return False
 
-        # Verify (with retry) that a flag byte took the expected value.
+        # All chunks + close acked = accepted (see _set_led_qualcomm). The
+        # read-back is informational only — the device can serve the old PIB
+        # image for a while. (Hardware-confirmed: power saving visibly
+        # throttled the link even when the read-back still showed old bytes.)
         probe = 0x21EC
         expected = 0x01 if on else 0x00
         dst = mac_to_bytes(mac)
         cstart = (probe // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
         clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
-        for _ in range(4):
-            time.sleep(0.4)
-            chunk = self._qca_read_chunk(dst, mac, cstart, clen)
-            if chunk and len(chunk) > probe - cstart and chunk[probe - cstart] == expected:
-                _LOGGER.info("QCA power saving %s confirmed on %s",
-                             "ON" if on else "OFF", mac)
-                return True
-        _LOGGER.warning("QCA power saving %s: write not confirmed on %s",
-                        "ON" if on else "OFF", mac)
-        return False
+        time.sleep(0.4)
+        chunk = self._qca_read_chunk(dst, mac, cstart, clen)
+        verified = bool(chunk) and len(chunk) > probe - cstart and \
+            chunk[probe - cstart] == expected
+        _LOGGER.info("QCA power saving %s written on %s (all chunks acked%s)",
+                     "ON" if on else "OFF", mac,
+                     ", read-back verified" if verified
+                     else "; device still serving old image")
+        return True
 
     @_locked
     def set_qos_priority(self, mac: str, priority: str) -> bool:

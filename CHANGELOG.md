@@ -4,6 +4,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-06-10
+
+### Fixed
+- **QCA LED/QoS/power-saving falsely reported as failed.** Hardware logs proved
+  the PIB writes were accepted and persisted (a "failed" QoS write was still on
+  the device later; power saving visibly throttled the link), but the AV500 can
+  keep serving the *old* PIB image for many seconds, so the read-back
+  verification timed out, reported failure, and Home Assistant reverted the
+  toggle — making working controls feel dead. Success is now determined the
+  same way tpPLC does it: **open + every data chunk + close acknowledged**.
+  The read-back remains as an informational log line only.
+
 ## [0.1.6] - 2026-06-10
 
 ### Added
