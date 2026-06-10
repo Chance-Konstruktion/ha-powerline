@@ -290,12 +290,12 @@ The PIB is `0x2370` (9072) bytes, transferred in `0x578` (1400)-byte chunks.
 > than the write **request** (off@24, data@26).
 
 The `token` is a client-chosen 2-byte transaction id (same across open/data/close).
-The write-open `checksum` is a 32-bit whole-PIB checksum tpPLC computes with a
-**non-standard algorithm** (not crc32/sum32/adler/fletcher) and the device never
-reports it. It is **constant for LED toggles** (LED bytes are outside its coverage)
-but changes for power saving. Since we can't reproduce it offline, 0.1.1 sends a
-best-effort value and **verifies by read-back**: if the firmware rejects a bad
-checksum the toggle is a harmless no-op (reported as failure), never a corruption.
+The write-open `checksum` is the value the adapter validates to **apply** (not
+just store) the write — send a wrong one and the bytes are stored but never take
+effect (LED won't toggle, etc.). **Cracked:** it equals the `0x0376` checksum
+field **XOR `91 cb ab 39`** (matches LED, QoS, power-saving and start captures
+exactly). Since `0x0376` is maintained by `qca_pib_set_byte`, the open checksum
+is computed directly from the PIB being written.
 
 ### Decoded: QoS + PHY rate (QCA7420)
 **QoS** is a 2-byte value in the PIB at **`0x0ADE`** (LE):
