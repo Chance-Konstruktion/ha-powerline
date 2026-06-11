@@ -435,10 +435,10 @@ class TestQcaQos(TestCase):
         hp = HomeplugAV("eth0")
         size = _MODULE.QCA_PIB_SIZE
         qoff = _MODULE.QCA_QOS_OFFSET
-        c0, c1 = _MODULE.QCA_CKSUM_OFFSETS  # 0x0376, 0x03BE
+        c0, c1 = _MODULE.QCA_CKSUM_OFFSETS  # 0x0374, 0x03BC
         pib = bytearray(size)
         # "internet" state from the capture: QoS=0x0000, checksum low words
-        # 0x51F7 @0x0376 and 0xB276 @0x03BE.
+        # 0x51F7 @0x0374 and 0xB276 @0x03BC.
         struct.pack_into("<H", pib, qoff, 0x0000)
         struct.pack_into("<H", pib, c0, 0x51F7)
         struct.pack_into("<H", pib, c1, 0xB276)
@@ -465,7 +465,7 @@ class TestQcaQos(TestCase):
 
 
 class TestQcaPibChecksum(TestCase):
-    """qca_pib_set_byte maintains both XOR checksums per the (o%4)^2 rule."""
+    """qca_pib_set_byte maintains both XOR checksums per the (o % 4) rule."""
 
     def test_powersave_delta_matches_capture(self) -> None:
         size = _MODULE.QCA_PIB_SIZE
@@ -476,6 +476,16 @@ class TestQcaPibChecksum(TestCase):
         # Captured power-saving off->on checksum delta is 01 08 97 02 on BOTH.
         self.assertEqual(bytes(buf[c0:c0 + 4]), bytes([0x01, 0x08, 0x97, 0x02]))
         self.assertEqual(bytes(buf[c1:c1 + 4]), bytes([0x01, 0x08, 0x97, 0x02]))
+
+    def test_qos_gaming_delta_matches_capture(self) -> None:
+        size = _MODULE.QCA_PIB_SIZE
+        c0, c1 = _MODULE.QCA_CKSUM_OFFSETS
+        buf = bytearray(size)  # internet (QoS=0) -> gaming (0xFA41)
+        _MODULE.qca_pib_set_byte(buf, _MODULE.QCA_QOS_OFFSET, 0x41)
+        _MODULE.qca_pib_set_byte(buf, _MODULE.QCA_QOS_OFFSET + 1, 0xFA)
+        # Captured internet->gaming checksum delta is 41 fa 00 00 on BOTH fields.
+        self.assertEqual(bytes(buf[c0:c0 + 4]), bytes([0x41, 0xFA, 0x00, 0x00]))
+        self.assertEqual(bytes(buf[c1:c1 + 4]), bytes([0x41, 0xFA, 0x00, 0x00]))
 
     def test_power_saving_qualcomm_flow(self) -> None:
         hp = HomeplugAV("eth0")
@@ -502,13 +512,53 @@ class TestQcaPibChecksum(TestCase):
 
 
 class TestQcaOpenChecksum(TestCase):
-    """The write-open checksum = 0x0376 field XOR the fixed key (captured)."""
+    """The write-open checksum = ~xorfold32(PIB) (open-plc-utils checksum32)."""
 
-    def test_open_checksum_from_0376(self) -> None:
-        buf = bytearray(_MODULE.QCA_PIB_SIZE)
-        # Captured state: 0x0376 = 180e2bd3 -> open checksum 89c580ea.
-        buf[0x0376:0x037A] = bytes.fromhex("180e2bd3")
-        c0 = _MODULE.QCA_CKSUM_OFFSETS[0]
-        key = _MODULE.QCA_OPEN_CKSUM_KEY
-        got = bytes(buf[c0 + i] ^ key[i] for i in range(4))
-        self.assertEqual(got, bytes.fromhex("89c580ea"))
+    import struct as _struct
+
+    def _xorfold(self, pib: bytes) -> int:
+        fold = 0
+        for i in range(0, len(pib) - 3, 4):
+            fold ^= self._struct.unpack_from("<I", pib, i)[0]
+        return fold & 0xFFFFFFFF
+
+    def test_all_zero_pib(self) -> None:
+        pib = bytes(_MODULE.QCA_PIB_SIZE)            # XOR-fold = 0
+        self.assertEqual(_MODULE.qca_pib_checksum(pib), b"\xff\xff\xff\xff")
+
+    def test_is_complement_of_xorfold(self) -> None:
+        import os
+        pib = os.urandom(_MODULE.QCA_PIB_SIZE)
+        expect = self._struct.pack("<I", (~self._xorfold(pib)) & 0xFFFFFFFF)
+        self.assertEqual(_MODULE.qca_pib_checksum(pib), expect)
+
+    def test_led_toggle_does_not_change_checksum(self) -> None:
+        # Every LED enable byte sits at offset %4 == 3, so flipping 0<->1 on an
+        # even number of them XOR-cancels: the open checksum is invariant for an
+        # LED on/off toggle (exactly what the captures show).
+        pib = bytearray(_MODULE.QCA_PIB_SIZE)
+        base = _MODULE.qca_pib_checksum(bytes(pib))
+        for off in _MODULE.QCA_LED_OFFSETS:
+            self.assertEqual(off & 3, 3)
+            pib[off] = 0x01
+        self.assertEqual(_MODULE.qca_pib_checksum(bytes(pib)), base)
+
+    def test_write_open_frame_carries_the_checksum(self) -> None:
+        # The open frame _qca_write_pib emits must place ~xorfold at bytes 26:30
+        # of the module payload (after MMV+MMTYPE+OUI).
+        hp = HomeplugAV("eth0")
+        import os
+        pib = os.urandom(_MODULE.QCA_PIB_SIZE)
+        seen = {}
+
+        def fake_send(dst, mac, payload):
+            op = (payload[4], payload[5])
+            if op == (0x01, 0x10):
+                seen["open"] = bytes(payload)
+            return b"\x00" * 24  # any non-None ack; close status all-zero
+
+        with patch.object(hp, "_qca_mod_send", side_effect=fake_send), \
+             patch.object(hp, "_qca_mod_ack", return_value=True):
+            hp._qca_write_pib("AA:BB:CC:DD:EE:FF", pib)
+
+        self.assertEqual(seen["open"][26:30], _MODULE.qca_pib_checksum(pib))

@@ -4,6 +4,30 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-06-11
+
+### Fixed
+- **QCA writes are now accepted by *every* adapter (universal open checksum).**
+  The write-open command carries a 4-byte checksum the adapter validates before
+  *applying* a write. The previous value — the `0x0376` section checksum XOR a
+  fixed key (`91 cb ab 39`) — had been cracked from a single adapter and did not
+  generalize: a second AV500 (`55:09:3F`) rejected every write with close status
+  `31 00 30` while its twin (`54:FE:E3`) applied them, even though tpPLC drove
+  both fine. The real value is the open-plc-utils `checksum32`: the bitwise
+  complement of a 32-bit XOR-fold over the **whole PIB** (little-endian words),
+  stored little-endian. It is now computed directly from the PIB being written
+  (`qca_pib_checksum()`) and reproduces tpPLC's bytes for both adapters.
+- **Corrected all QCA PIB offsets to the true tpPLC offsets.** The read parser
+  read the chunk payload at `pl[25]` and the write builder placed it at `pl[26]`
+  — both shifted `+2` from the real offsets (data at `pl[27]`/`pl[28]`). Because
+  the read and write shifts *cancel* for the PIB payload, one adapter appeared to
+  work; only the whole-PIB open checksum exposed the error. All field offsets are
+  now the true offsets, verified byte-identical against captures from **both**
+  adapters: LED `0x1ED3…0x1F6B`, QoS `0x0ADC`, power saving `0x2141/0x2142/0x21EA/
+  0x2264/0x2273`, section checksums `0x0374`/`0x03BC` (XOR-fold into byte `o % 4`).
+- **Real QCA state (LED/QoS/power saving) is read from the corrected offsets**, so
+  Home Assistant shows the adapter's actual current state on both adapters.
+
 ## [0.1.10] - 2026-06-11
 
 ### Fixed
