@@ -1367,15 +1367,19 @@ class HomeplugAV:
             offset += clen
         return bytes(pib)
 
-    def _qca_mod_ack(self, dst: bytes, mac: str, payload: bytes) -> bool:
-        """Send a module-op frame and wait for its 0xA0B1 confirmation."""
+    def _qca_mod_send(self, dst: bytes, mac: str, payload: bytes) -> bytes | None:
+        """Send a module-op frame; return the 0xA0B1 response payload or None."""
         frame = build_qca_mod_frame(dst, self._src_mac, payload)
         for mmtype, src, data in self._send_recv(
                 self._sock_hpav, frame, 2.0, expected_src=mac,
                 stop_on=frozenset((VS_MOD_OP_CNF,))):
             if mmtype == VS_MOD_OP_CNF:
-                return True
-        return False
+                return data[ETH_HDR + 6:]            # payload after MMV+MMTYPE+OUI
+        return None
+
+    def _qca_mod_ack(self, dst: bytes, mac: str, payload: bytes) -> bool:
+        """Send a module-op frame and wait for its 0xA0B1 confirmation."""
+        return self._qca_mod_send(dst, mac, payload) is not None
 
     def _qca_write_pib(self, mac: str, pib: bytes) -> bool:
         """Write the full PIB back: open -> data chunks -> close."""
@@ -1392,9 +1396,14 @@ class HomeplugAV:
         # adapter store the bytes but never apply them.
         for i in range(4):
             op[26 + i] = pib[QCA_CKSUM_OFFSETS[0] + i] ^ QCA_OPEN_CKSUM_KEY[i]
-        if not self._qca_mod_ack(dst, mac, bytes(op)):
+        open_resp = self._qca_mod_send(dst, mac, bytes(op))
+        if open_resp is None:
             _LOGGER.debug("QCA PIB write: no ack to open from %s", mac)
             return False
+        # Diagnostic: the device's status for our (correct-checksum) open. A
+        # healthy accept ends ...0110 0011 ... <token> 00 00 01; a rejected one
+        # carries a non-zero status right after the OUI (e.g. 31 00 30).
+        _LOGGER.info("QCA write: open resp from %s = %s", mac, open_resp[:24].hex())
 
         offset = 0
         while offset < len(pib):
@@ -1410,7 +1419,11 @@ class HomeplugAV:
 
         cl = bytearray(_QCA_HDR_CLOSE)
         cl[13:15] = token
-        return self._qca_mod_ack(dst, mac, bytes(cl))
+        close_resp = self._qca_mod_send(dst, mac, bytes(cl))
+        if close_resp is not None:
+            _LOGGER.info("QCA write: close resp from %s = %s",
+                         mac, close_resp[:24].hex())
+        return close_resp is not None
 
     def _set_led_qualcomm(self, mac: str, on: bool) -> bool:
         """Toggle the AV500 LED by flipping the 10-byte LED table in the PIB."""
