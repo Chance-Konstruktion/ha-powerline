@@ -249,7 +249,7 @@ Capture the official tpPLC app performing an action and compare with
 ## 🗺️ Roadmap
 
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
-- [x] **0.1.x — Qualcomm (QCA / AV500):** LED, QoS, power saving, and PHY rates via the PIB — incl. cracking the XOR checksum (`(o%4)^2` fold) so config writes stay valid ([details](PROTOCOL.md#9--qualcomm-qca--av500--current-state)).
+- [x] **0.1.x — Qualcomm (QCA / AV500):** LED, QoS, power saving, and PHY rates via the PIB — incl. the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter ([details](PROTOCOL.md#9--qualcomm-qca--av500--current-state)).
 - [ ] **0.2 — AV500 100%:** final on-hardware verification of LED/QoS/power-saving/rates + docs polish.
 - [ ] **0.2 — rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate — being addressed alongside the AV500 work.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.

@@ -129,23 +129,23 @@ VS_MOD_OP_REQ = 0xA0B0
 VS_MOD_OP_CNF = 0xA0B1
 QCA_PIB_SIZE  = 0x2370          # 9072 bytes (write-open total length)
 QCA_PIB_CHUNK = 0x0578          # 1400-byte transfer chunks
-# LED-behavior table: 0x01 = LED off, 0x00 = LED on (confirmed by diffing the
-# off/on/off capture; no checksum elsewhere changes for the LED toggle).
-QCA_LED_OFFSETS = (0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25,
-                   0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D)
+# LED-behavior table: each LED is an 8-byte descriptor and byte[3] is the
+# enable flag (0x01 = on, 0x00 = off). tpPLC's "LED off" toggles the enable
+# byte of these 10 activity LEDs (the power LED stays on). Offsets verified
+# byte-for-byte against tpPLC writes to BOTH adapters; the LED region is
+# outside the 0x0374/0x03BC checksum coverage, so toggling it leaves those
+# fields untouched (exactly what tpPLC does).
+QCA_LED_OFFSETS = (0x1ED3, 0x1EFB, 0x1F03, 0x1F1B, 0x1F23,
+                   0x1F2B, 0x1F43, 0x1F4B, 0x1F53, 0x1F6B)
 # Config changes (QoS, power saving) also update two XOR-checksum fields. The
 # checksum is XOR-linear: a PIB byte at offset o folds into checksum byte
-# (o % 4) XOR 2 of BOTH fields. Verified across QoS and power-saving captures
-# (predicted delta 01 08 97 02 == actual). So we maintain the checksum by
-# XOR-ing each changed byte's delta in at the right position — no need to know
-# the algorithm, and it reproduces tpPLC's bytes exactly.
-QCA_CKSUM_OFFSETS = (0x0376, 0x03BE)
-# The write-open command's 4-byte PIB checksum (which the adapter validates to
-# *apply* the write) equals the 0x0376 field XOR this fixed key. Cracked from
-# LED/QoS/power-saving/start captures (all match).
-QCA_OPEN_CKSUM_KEY = bytes((0x91, 0xCB, 0xAB, 0x39))
-# QoS priority = 2-byte value at 0x0ADE.
-QCA_QOS_OFFSET = 0x0ADE
+# (o % 4) of BOTH fields. Verified across every QoS and power-saving capture
+# on both adapters. We maintain the checksum by XOR-ing each changed byte's
+# delta in at the right position — no need to know the algorithm, and it
+# reproduces tpPLC's bytes exactly.
+QCA_CKSUM_OFFSETS = (0x0374, 0x03BC)
+# QoS priority = 2-byte value at 0x0ADC.
+QCA_QOS_OFFSET = 0x0ADC
 QCA_QOS_VALUES = {
     "internet":    0x0000,
     "gaming":      0xFA41,
@@ -153,16 +153,17 @@ QCA_QOS_VALUES = {
     "voip":        0xFA43,
 }
 # Power saving: these PIB bytes hold the captured "on" values; "off" = all zero.
-QCA_POWERSAVE_BYTES = {0x2143: 0x08, 0x2144: 0x96,
-                       0x21EC: 0x01, 0x2266: 0x01, 0x2275: 0x02}
+QCA_POWERSAVE_BYTES = {0x2141: 0x08, 0x2142: 0x96,
+                       0x21EA: 0x01, 0x2264: 0x01, 0x2273: 0x02}
+QCA_POWERSAVE_PROBE = 0x21EA     # one of the bytes above, used for read-back
 # Captured 32-byte module-op header templates; variable fields are patched in:
 #   read : len@17(LE), off@19(LE)
-#   open : token@13(LE), totlen@22(LE), checksum@26(LE u32)
-#   data : token@13(LE), len@22(LE), off@24(LE), data@26
+#   open : token@13(LE), totlen@22(LE u32), checksum@26(LE u32)
 #   close: token@13(LE)
+# The data frame is built directly in _qca_write_pib (its header length depends
+# on the chunk, and the data must sit at byte 28 — see the wire layout there).
 _QCA_HDR_READ  = bytes.fromhex("0000000001000012000000000002700000780500000000000000000000000000")
 _QCA_HDR_OPEN  = bytes.fromhex("000000000110008500000000002348000001027000007023000089c580ea0000")
-_QCA_HDR_DATA  = bytes.fromhex("000000000111008f050000000023480000000270000078050000000001000100")
 _QCA_HDR_CLOSE = bytes.fromhex("0000000001120014000000000023480000000000000000000000000000000000")
 # 0xA048 was used by older builds as "VS_NW_STATS" but is not in qualcomm.h and
 # never got a confirmed response; kept only so existing call sites still resolve.
@@ -584,18 +585,33 @@ def parse_qca_nw_info_cnf(data: bytes) -> tuple[int, int] | None:
     return (tx * 21 // 16, rx * 21 // 16)
 
 
+def qca_pib_checksum(pib: bytes) -> bytes:
+    """The 4-byte PIB checksum the write-open carries to *apply* the change.
+
+    It is the standard open-plc-utils ``checksum32``: the complement of the
+    32-bit XOR-fold of the whole PIB, stored little-endian. Verified against
+    every captured open command on both adapters (LED, QoS, power saving,
+    start). Sending a wrong value makes the adapter store the bytes but never
+    apply them (close returns status ``31 00 30`` instead of ``00 00 00``).
+    """
+    fold = 0
+    for i in range(0, len(pib) - 3, 4):
+        fold ^= struct.unpack_from("<I", pib, i)[0]
+    return struct.pack("<I", (~fold) & 0xFFFFFFFF)
+
+
 def qca_pib_set_byte(buf: bytearray, offset: int, value: int) -> None:
     """Set a PIB byte and keep the two QCA XOR checksums valid.
 
-    A byte at offset ``o`` folds into checksum byte ``(o % 4) XOR 2`` of both
-    fields (0x0376, 0x03BE) — verified across QoS and power-saving captures, so
-    this reproduces tpPLC's checksum bytes exactly.
+    A byte at offset ``o`` folds into checksum byte ``o % 4`` of both fields
+    (0x0374, 0x03BC) — verified across QoS and power-saving captures, so this
+    reproduces tpPLC's checksum bytes exactly.
     """
     old = buf[offset]
     if old == value:
         return
     buf[offset] = value
-    idx = (offset & 3) ^ 2
+    idx = offset & 3
     for coff in QCA_CKSUM_OFFSETS:
         buf[coff + idx] ^= old ^ value
 
@@ -1247,7 +1263,7 @@ class HomeplugAV:
                     qv = struct.unpack_from("<H", pib, QCA_QOS_OFFSET)[0]
                     if qv in qos_rev:
                         states[mac]["qos"] = qos_rev[qv]
-                    states[mac]["power_saving"] = pib[0x21EC] == 0x01
+                    states[mac]["power_saving"] = pib[QCA_POWERSAVE_PROBE] == 0x01
             finally:
                 self._close()
             return states
@@ -1365,13 +1381,13 @@ class HomeplugAV:
             if mmtype != VS_MOD_OP_CNF:
                 continue
             pl = data[ETH_HDR + 6:]            # after MMV+MMTYPE+OUI
-            # Read CONFIRM packs offset/data one byte earlier than the write
-            # REQUEST: offset@23, data@25 (verified against the capture).
-            if len(pl) < 25:
+            # Read CONFIRM layout (verified against tpPLC captures, both
+            # adapters): offset@23 (u32 LE), payload data starts at byte 27.
+            if len(pl) < 27:
                 continue
-            if struct.unpack_from("<H", pl, 23)[0] != offset:
+            if struct.unpack_from("<I", pl, 23)[0] != offset:
                 continue
-            return pl[25:25 + clen]
+            return pl[27:27 + clen]
         return None
 
     def _qca_read_pib(self, mac: str) -> bytes | None:
@@ -1411,30 +1427,34 @@ class HomeplugAV:
 
         op = bytearray(_QCA_HDR_OPEN)
         op[13:15] = token
-        struct.pack_into("<H", op, 22, len(pib))
+        struct.pack_into("<I", op, 22, len(pib))
         # The write-open carries a 4-byte PIB checksum the adapter validates to
-        # *activate* (not just store) the change. Cracked from captures (LED, QoS,
-        # power saving, start — all match): it equals the 0x0376 checksum field
-        # XOR a fixed key. Sending a wrong value (we used to send crc32) made the
-        # adapter store the bytes but never apply them.
-        for i in range(4):
-            op[26 + i] = pib[QCA_CKSUM_OFFSETS[0] + i] ^ QCA_OPEN_CKSUM_KEY[i]
+        # *activate* (not just store) the change: the complement of the PIB's
+        # 32-bit XOR-fold (open-plc-utils checksum32). It is computed per PIB,
+        # so it is correct for every adapter — the previous fixed-key formula
+        # only matched the one adapter it was cracked from, and others rejected
+        # the apply with close status 31 00 30.
+        op[26:30] = qca_pib_checksum(pib)
         open_resp = self._qca_mod_send(dst, mac, bytes(op))
         if open_resp is None:
             _LOGGER.debug("QCA PIB write: no ack to open from %s", mac)
             return False
-        # Diagnostic: the device's status for our (correct-checksum) open. A
-        # healthy accept ends ...0110 0011 ... <token> 00 00 01; a rejected one
-        # carries a non-zero status right after the OUI (e.g. 31 00 30).
         _LOGGER.info("QCA write: open resp from %s = %s", mac, open_resp[:24].hex())
 
+        # Data frame wire layout (verified byte-for-byte against tpPLC, both
+        # adapters): op 0x0111, a 16-bit "payload+23" length at byte 7, the
+        # token at 12, the chunk length at 22, a 32-bit offset at 24, and the
+        # chunk data starting at byte 28.
         offset = 0
         while offset < len(pib):
             clen = min(QCA_PIB_CHUNK, len(pib) - offset)
-            hdr = bytearray(_QCA_HDR_DATA[:26])
-            hdr[13:15] = token
+            hdr = bytearray(28)
+            hdr[4:6] = b"\x01\x11"
+            struct.pack_into("<H", hdr, 7, clen + 23)
+            hdr[13:15] = token            # token format on the wire is 00 XX XX 00
+            hdr[18:22] = b"\x02\x70\x00\x00"
             struct.pack_into("<H", hdr, 22, clen)
-            struct.pack_into("<H", hdr, 24, offset)
+            struct.pack_into("<I", hdr, 24, offset)
             if not self._qca_mod_ack(dst, mac, bytes(hdr) + pib[offset:offset + clen]):
                 _LOGGER.debug("QCA PIB write: no ack at 0x%04X from %s", offset, mac)
                 return False
@@ -1778,7 +1798,7 @@ class HomeplugAV:
         # read-back is informational only — the device can serve the old PIB
         # image for a while. (Hardware-confirmed: power saving visibly
         # throttled the link even when the read-back still showed old bytes.)
-        probe = 0x21EC
+        probe = QCA_POWERSAVE_PROBE
         expected = 0x01 if on else 0x00
         dst = mac_to_bytes(mac)
         cstart = (probe // QCA_PIB_CHUNK) * QCA_PIB_CHUNK

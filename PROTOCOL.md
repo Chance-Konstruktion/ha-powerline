@@ -260,7 +260,7 @@ change** — a LED-behavior table:
 
 | State | Value | PIB offsets |
 |-------|-------|-------------|
-| LED **off** | `0x01` | `0x1ED5, 0x1EFD, 0x1F05, 0x1F1D, 0x1F25, 0x1F2D, 0x1F45, 0x1F4D, 0x1F55, 0x1F6D` |
+| LED **off** | `0x01` | `0x1ED3, 0x1EFB, 0x1F03, 0x1F1B, 0x1F23, 0x1F2B, 0x1F43, 0x1F4B, 0x1F53, 0x1F6B` |
 | LED **on**  | `0x00` | (same offsets) |
 
 Key safety findings:
@@ -281,24 +281,42 @@ The PIB is `0x2370` (9072) bytes, transferred in `0x578` (1400)-byte chunks.
 | Op | payload[4:6] | Key fields (payload offsets) |
 |----|--------------|------------------------------|
 | read req   | `01 00` | len@17(LE), off@19(LE) |
-| read cnf   | `01 00` (echo) | len@21(LE), off@**23**(LE), **data@25** |
+| read cnf   | `01 00` (echo) | len@21(LE), off@**23**(LE u32), **data@27** |
 | write open | `01 10` | token@13, total-len@22(LE)=`0x2370`, checksum@26(LE u32) |
-| write data | `01 11` | token@13, len@22(LE), off@**24**(LE), **data@26** |
+| write data | `01 11` | token@13, len@22(LE), off@**24**(LE u32), **data@28** |
 | write close| `01 12` | token@13 |
 
-> ⚠️ Note the read **confirm** packs offset/data one byte earlier (off@23, data@25)
-> than the write **request** (off@24, data@26).
+> ⚠️ The read **confirm** packs offset/data one byte earlier (off@23, data@27)
+> than the write **request** (off@24, data@28). An earlier revision read data at
+> pl[25] and wrote it at pl[26] — both shifted `+2` from the true offsets — and
+> because the read and write shifts *cancel* for the PIB payload, one adapter
+> (`54:FE:E3`) appeared to work. Only the **open checksum** (computed over the
+> whole PIB) did not cancel, so a second adapter (`55:09:3F`) rejected every
+> write with close status `31 00 30`. The offsets above are the true tpPLC
+> offsets, verified byte-identical against captures from **both** adapters.
 
-The `token` is a client-chosen 2-byte transaction id (same across open/data/close).
+The `token` is a client-chosen 2-byte transaction id (same across open/data/close);
+on the wire it appears as `00 XX XX 00` at payload offset 13.
 The write-open `checksum` is the value the adapter validates to **apply** (not
-just store) the write — send a wrong one and the bytes are stored but never take
-effect (LED won't toggle, etc.). **Cracked:** it equals the `0x0376` checksum
-field **XOR `91 cb ab 39`** (matches LED, QoS, power-saving and start captures
-exactly). Since `0x0376` is maintained by `qca_pib_set_byte`, the open checksum
-is computed directly from the PIB being written.
+just store) the write — send a wrong one and the close confirm returns status
+`31 00 30` and the bytes never take effect (LED won't toggle, etc.); a correct
+one returns `00 00 00`. **Cracked:** it is the open-plc-utils `checksum32` —
+the bitwise complement of a 32-bit XOR-fold over the whole PIB (little-endian
+words), stored little-endian:
+
+```python
+fold = 0
+for i in range(0, len(pib) - 3, 4):
+    fold ^= u32_le(pib, i)
+checksum = (~fold) & 0xFFFFFFFF   # stored LE
+```
+
+This is **universal** (no adapter-specific key) and is computed directly from the
+PIB being written by `qca_pib_checksum()`. The previous `0x0376 XOR 91 cb ab 39`
+formula was an artifact cracked from a single adapter and did not generalize.
 
 ### Decoded: QoS + PHY rate (QCA7420)
-**QoS** is a 2-byte value in the PIB at **`0x0ADE`** (LE):
+**QoS** is a 2-byte value in the PIB at **`0x0ADC`** (LE):
 
 | Mode | value |
 |------|-------|
@@ -311,20 +329,25 @@ is computed directly from the PIB being written.
 
 | Offset | on value |
 |--------|----------|
-| `0x2143` | `0x08` |
-| `0x2144` | `0x96` |
-| `0x21EC` | `0x01` |
-| `0x2266` | `0x01` |
-| `0x2275` | `0x02` |
+| `0x2141` | `0x08` |
+| `0x2142` | `0x96` |
+| `0x21EA` | `0x01` |
+| `0x2264` | `0x01` |
+| `0x2273` | `0x02` |
 
-Both QoS and power saving also update two checksum fields at **`0x0376`** and
-**`0x03BE`**. The checksum is **XOR-linear** with a simple fold: a PIB byte at
-offset `o` XORs into checksum byte **`(o % 4) XOR 2`** of *both* fields. Verified
+Both QoS and power saving also update two checksum fields at **`0x0374`** and
+**`0x03BC`**. These section checksums are **XOR-linear** with a simple fold: a PIB
+byte at offset `o` XORs into checksum byte **`o % 4`** of *both* fields. Verified
 across QoS and two power-saving captures (predicted delta `01 08 97 02` == actual
 on both fields). So a config write **reads the device's PIB, sets the bytes, and
-XORs each delta into the checksums at `(o%4)^2`** — no need to know the checksum
+XORs each delta into the checksums at `o % 4`** — no need to know the checksum
 algorithm, and it reproduces tpPLC's bytes exactly. `qca_pib_set_byte()`
 implements this; LED/QoS/power saving all go through the PIB read-modify-write.
+
+> Note: the 10 LED bytes all sit at offset `o % 4 == 3`, but they fall **outside**
+> the byte range covered by these two section checksums, so LED toggles leave
+> `0x0374`/`0x03BC` unchanged. The whole-PIB **open checksum** (above) still
+> changes on every write and is what the adapter validates before applying.
 
 **PHY rate** comes from `VS_NW_INFO` (`0xA039`): the responder's average PHY data
 rates are the **last two 4-byte LE** values (TX@end-8, RX@end-4). tpPLC displays
