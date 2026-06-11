@@ -4,6 +4,14 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-06-11
+
+### Diagnostics
+- Log the adapter's **open and close responses** for a QCA PIB write. The bytes
+  are stored and read-back-verified but the AV500 doesn't apply LED/power-saving
+  at runtime, so this captures the device's status code (e.g. a non-zero
+  `31 00 30` vs the healthy `00 00 00`) to find why the change isn't activated.
+
 ## [0.1.8] - 2026-06-10
 
 ### Fixed
