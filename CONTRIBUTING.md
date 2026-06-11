@@ -88,7 +88,17 @@ custom_components/powerline/
   config_flow.py    -- Config + Options flow
   const.py          -- Constants, MAC normalization
   coordinator.py    -- DataUpdateCoordinator, state management
-  homeplug.py       -- Raw socket Layer 2 communication (HomePlug AV + MEDIAXTREAM)
+  homeplug/         -- Raw socket Layer 2 communication (HomePlug AV + MEDIAXTREAM)
+    const.py        -- Protocol constants, IDs, @_locked helper
+    frames.py       -- MAC/interface helpers + frame builders
+    parsers.py      -- Confirmation/indication parsers + PIB checksums
+    _base.py        -- _HomeplugBase: dual raw sockets, send/recv, framing
+    discovery.py    -- DiscoveryMixin: discovery + PHY-rate collection
+    state.py        -- StateMixin: read LED/QoS/power-saving state
+    pib.py          -- QcaPibMixin: QCA AV500 PIB read/write
+    control.py      -- ControlMixin: LED/QoS/power-saving actuation
+    diagnostics.py  -- DiagnosticsMixin: human-readable diagnostics
+    core.py         -- HomeplugAV facade + async entry points
   sensor.py         -- TX/RX rate sensors, network overview sensors
   binary_sensor.py  -- Connectivity binary sensor
   switch.py         -- LED + Power Saving switches
