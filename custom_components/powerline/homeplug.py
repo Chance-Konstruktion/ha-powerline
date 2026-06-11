@@ -1229,6 +1229,29 @@ class HomeplugAV:
         """
         states: dict[str, dict] = {mac: {"led": None, "qos": None,
                                           "power_saving": None} for mac in macs}
+
+        # Qualcomm (QCA / AV500): read the real state straight from the PIB.
+        if self._chipset == "qualcomm":
+            try:
+                self._open_hpav()
+            except (PermissionError, OSError):
+                return states
+            qos_rev = {v: k for k, v in QCA_QOS_VALUES.items()}
+            try:
+                for mac in macs:
+                    pib = self._qca_read_pib(mac)
+                    if not pib or len(pib) != QCA_PIB_SIZE:
+                        continue
+                    if {pib[o] for o in QCA_LED_OFFSETS} <= {0x00, 0x01}:
+                        states[mac]["led"] = pib[QCA_LED_OFFSETS[0]] == 0x00
+                    qv = struct.unpack_from("<H", pib, QCA_QOS_OFFSET)[0]
+                    if qv in qos_rev:
+                        states[mac]["qos"] = qos_rev[qv]
+                    states[mac]["power_saving"] = pib[0x21EC] == 0x01
+            finally:
+                self._close()
+            return states
+
         try:
             self._open_mx()
         except (PermissionError, OSError) as e:
@@ -1420,10 +1443,22 @@ class HomeplugAV:
         cl = bytearray(_QCA_HDR_CLOSE)
         cl[13:15] = token
         close_resp = self._qca_mod_send(dst, mac, bytes(cl))
-        if close_resp is not None:
-            _LOGGER.info("QCA write: close resp from %s = %s",
-                         mac, close_resp[:24].hex())
-        return close_resp is not None
+        if close_resp is None:
+            _LOGGER.debug("QCA PIB write: no ack to close from %s", mac)
+            return False
+        # The close applies the write. A healthy apply returns all-zero status;
+        # some adapters reject the apply with a non-zero code (e.g. 31 00 30) --
+        # confirmed on hardware: that adapter's LED/QoS/power-saving never
+        # change. Treat a non-zero status as a real failure.
+        applied = close_resp[:3] == b"\x00\x00\x00"
+        if applied:
+            _LOGGER.info("QCA write applied on %s (close ok)", mac)
+        else:
+            _LOGGER.warning("QCA write REJECTED by %s: close status %s "
+                            "(adapter refused to apply the PIB; try power-cycling "
+                            "it, and disable power saving first)",
+                            mac, close_resp[:6].hex())
+        return applied
 
     def _set_led_qualcomm(self, mac: str, on: bool) -> bool:
         """Toggle the AV500 LED by flipping the 10-byte LED table in the PIB."""
