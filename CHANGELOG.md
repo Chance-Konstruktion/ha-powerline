@@ -4,6 +4,19 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-06-11
+
+### Changed
+- **Internal refactor: the ~2,000-line `homeplug.py` is now a mixin-based package
+  (`homeplug/`).** It splits into `const` / `frames` / `parsers`, a
+  `_HomeplugBase` transport (dual raw sockets, send/recv, framing) and focused
+  mixins — `DiscoveryMixin`, `StateMixin`, `QcaPibMixin`, `ControlMixin`,
+  `DiagnosticsMixin` — composed into the same `HomeplugAV` facade. Purely
+  structural: every function and constant is byte-identical (verified by AST),
+  the public API (`from .homeplug import HomeplugAV, find_interface,
+  is_available, async_discover, async_diagnose`) is unchanged, and all 56 tests
+  pass without changes to their assertions.
+
 ## [0.1.11] - 2026-06-11
 
 ### Fixed

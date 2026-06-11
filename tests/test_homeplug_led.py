@@ -1,20 +1,9 @@
 """Unit tests for defensive LED handling."""
 
-import importlib.util
-from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-_MODULE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "custom_components"
-    / "powerline"
-    / "homeplug.py"
-)
-_SPEC = importlib.util.spec_from_file_location("powerline_homeplug", _MODULE_PATH)
-_MODULE = importlib.util.module_from_spec(_SPEC)
-assert _SPEC and _SPEC.loader
-_SPEC.loader.exec_module(_MODULE)
+from custom_components.powerline import homeplug as _MODULE
 
 HomeplugAV = _MODULE.HomeplugAV
 MX_ACTION_CNF = _MODULE.MX_ACTION_CNF
