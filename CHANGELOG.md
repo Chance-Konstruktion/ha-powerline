@@ -4,6 +4,21 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-06-11
+
+### Fixed
+- **A rejected QCA write is now reported as failed.** The close (apply) response
+  carries a status: a healthy apply is all-zero, but some adapters reject it
+  with a non-zero code (`31 00 30`) and then never change the LED/QoS/power
+  saving — confirmed on hardware (one AV500 applied, its twin rejected every
+  write while tpPLC worked on both). We now treat a non-zero close status as a
+  real failure (logged with a hint to power-cycle the adapter / disable power
+  saving) instead of pretending success.
+- **Real QCA state is now read from the PIB.** On Qualcomm adapters the LED, QoS
+  and power-saving state is read directly from the PIB (LED table, `0x0ADE`,
+  `0x21EC`), so Home Assistant shows the adapter's actual current state instead
+  of a default guess.
+
 ## [0.1.9] - 2026-06-11
 
 ### Diagnostics
