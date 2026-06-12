@@ -59,7 +59,9 @@
       }
     },
     "button": {
-      "diagnose": { "name": "Diagnose" }
+      "diagnose": { "name": "Diagnose" },
+      "all_leds_on": { "name": "All LEDs On" },
+      "all_leds_off": { "name": "All LEDs Off" }
     }
   }
 }

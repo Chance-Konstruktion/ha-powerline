@@ -26,7 +26,30 @@ async def async_setup_entry(
     """Set up diagnostic button."""
     coordinator: TpLinkPowerlineCoordinator = hass.data[DOMAIN][entry.entry_id]
     interface = entry.data.get("interface")
-    async_add_entities([DiagnosticButton(coordinator, interface)])
+    async_add_entities([
+        DiagnosticButton(coordinator, interface),
+        AllLedsButton(coordinator, on=True),
+        AllLedsButton(coordinator, on=False),
+    ])
+
+
+class AllLedsButton(ButtonEntity):
+    """Turn every adapter's LED on or off at once (like tpPLC's all-LED buttons)."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: TpLinkPowerlineCoordinator, on: bool) -> None:
+        self._coordinator = coordinator
+        self._on = on
+        key = "all_leds_on" if on else "all_leds_off"
+        self._attr_translation_key = key
+        self._attr_unique_id = f"tplink_plc_{key}"
+        self._attr_icon = "mdi:led-on" if on else "mdi:led-off"
+        self._attr_device_info = network_device_info()
+
+    async def async_press(self) -> None:
+        """Apply the LED state to every known adapter."""
+        await self._coordinator.async_set_all_leds(self._on)
 
 
 class DiagnosticButton(ButtonEntity):

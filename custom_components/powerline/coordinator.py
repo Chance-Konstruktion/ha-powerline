@@ -206,6 +206,26 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.exception("LED control crashed for %s (on=%s)", mac, on)
             return False
 
+    async def async_set_all_leds(self, on: bool) -> bool:
+        """Turn every adapter's LED on/off at once (tpPLC "all LEDs" buttons).
+
+        Reuses the per-adapter ``async_set_led`` so each adapter takes its own
+        chipset path, then refreshes the LED switch entities. Returns True if at
+        least one adapter applied the change.
+        """
+        macs = list(self.devices.keys())
+        if not macs:
+            _LOGGER.warning("All LEDs %s: no adapters known yet",
+                            "on" if on else "off")
+            return False
+        results = [await self.async_set_led(mac, on) for mac in macs]
+        ok = any(results)
+        _LOGGER.info("All LEDs %s: %d/%d adapters applied",
+                     "on" if on else "off", sum(1 for r in results if r), len(macs))
+        if ok:
+            self.async_update_listeners()
+        return ok
+
     async def async_set_power_saving(self, mac: str, on: bool) -> bool:
         """Set power saving mode on a specific adapter (by MAC)."""
         try:
