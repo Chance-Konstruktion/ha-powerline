@@ -83,7 +83,10 @@ VS_NW_INFO_STATS_REQ = 0xA074;  VS_NW_INFO_STATS_CNF = 0xA075  # extended networ
 VS_RD_MOD_REQ        = 0xA024;  VS_RD_MOD_CNF        = 0xA025  # read module (PIB/MAC) — read-only
 # VS_WR_MOD (0xA020) / VS_MOD_NVM (0xA028) write the PIB. Module codes:
 # VS_MODULE_MAC=1<<0, VS_MODULE_PIB=1<<1, VS_MODULE_FORCE=1<<4. Intentionally
-# NOT used here — a bad PIB write can lose the network key / brick the adapter.
+# NOT used — a bad raw PIB write could lose the network key / brick the adapter.
+# Control instead goes through the chunked module-op path (0xA0B0, below): a
+# read-modify-write of the adapter's own PIB with the universal open checksum,
+# which the firmware rejects cleanly if malformed (never half-applied).
 # VS_SET_LED_BEHAVIOR (0xA094) exists as a constant in qualcomm.h but has no
 # implementation in open-plc-utils (no payload struct), so we can't use it.
 VS_SET_LED_BEHAVIOR  = 0xA094
