@@ -4,6 +4,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-12
+
+### Fixed
+- **"All LEDs Off/On" now matches the physical LEDs on QCA (AV500) adapters.**
+  A QCA adapter can *apply* a LED write but drop the close confirmation, so the
+  per-adapter call reported failure even though the LED changed — the dashboard
+  switch stayed on while the LED was physically off (Broadcom/AV1000 acks
+  reliably, so it was unaffected). The bulk buttons now reflect the requested
+  state for every adapter (like tpPLC) instead of trusting the flaky per-write
+  ack. Individual LED switches are unchanged (they stay honest about a failed
+  write).
+
 ## [0.2.2] - 2026-06-12
 
 ### Changed
