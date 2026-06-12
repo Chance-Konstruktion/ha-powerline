@@ -191,23 +191,27 @@ class ControlMixin:
             except (PermissionError, OSError):
                 return False
 
+            cs = self._mac_chipset(mac)
             # Try Broadcom MEDIAXTREAM first (most common for modern TP-Link)
-            if self._chipset in ("broadcom", "unknown"):
+            if cs in ("broadcom", "unknown"):
                 if self._set_led_broadcom(mac, on):
                     self._led_success_macs.add(mac.upper())
+                    self._mark_chipset(mac, "broadcom")
                     return True
                 # Retry once after short delay (adapter may be busy)
                 time.sleep(0.5)
                 if self._set_led_broadcom(mac, on):
                     self._led_success_macs.add(mac.upper())
+                    self._mark_chipset(mac, "broadcom")
                     return True
 
             # Qualcomm (QCA / AV500): LED lives in the PIB. We do a careful
             # read-modify-write that flips only the 10-byte LED table and writes
             # every other byte back untouched (see _set_led_qualcomm).
-            if self._chipset in ("qualcomm", "unknown"):
+            if cs in ("qualcomm", "unknown"):
                 if self._set_led_qualcomm(mac, on):
                     self._led_success_macs.add(mac.upper())
+                    self._mark_chipset(mac, "qualcomm")
                     return True
 
             _LOGGER.warning(
@@ -230,15 +234,17 @@ class ControlMixin:
             except (PermissionError, OSError):
                 return False
 
-            if self._chipset == "qualcomm":
+            cs = self._mac_chipset(mac)
+            if cs == "qualcomm":
                 return self._set_power_saving_qualcomm(mac, on)
-            if self._chipset in ("broadcom", "unknown"):
+            if cs in ("broadcom", "unknown"):
                 if self._set_power_saving_broadcom(mac, on):
+                    self._mark_chipset(mac, "broadcom")
                     return True
-                # An "unknown" chipset might be QCA (no MEDIAXTREAM reply).
+                # An "unknown" adapter might be QCA (no MEDIAXTREAM reply).
                 return self._set_power_saving_qualcomm(mac, on)
 
-            _LOGGER.warning("Power saving not supported for chipset %s", self._chipset)
+            _LOGGER.warning("Power saving not supported for chipset %s", cs)
             return False
         except Exception as err:
             _LOGGER.exception("Power saving exception for %s: %s", mac, err)
@@ -386,15 +392,17 @@ class ControlMixin:
             except (PermissionError, OSError):
                 return False
 
-            if self._chipset == "qualcomm":
+            cs = self._mac_chipset(mac)
+            if cs == "qualcomm":
                 return self._set_qos_qualcomm(mac, priority)
-            if self._chipset in ("broadcom", "unknown"):
+            if cs in ("broadcom", "unknown"):
                 if self._set_qos_broadcom(mac, priority):
+                    self._mark_chipset(mac, "broadcom")
                     return True
-                # An "unknown" chipset might be QCA (no MEDIAXTREAM reply).
+                # An "unknown" adapter might be QCA (no MEDIAXTREAM reply).
                 return self._set_qos_qualcomm(mac, priority)
 
-            _LOGGER.warning("QoS not supported for chipset %s", self._chipset)
+            _LOGGER.warning("QoS not supported for chipset %s", cs)
             return False
         except Exception as err:
             _LOGGER.exception("QoS exception for %s: %s", mac, err)

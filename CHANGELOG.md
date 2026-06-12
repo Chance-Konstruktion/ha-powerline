@@ -4,6 +4,43 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-12
+
+This release marks **AV500 (Qualcomm QCA7420) control as verified on real
+hardware**: LED, QoS and power saving now apply on **two different AV500
+adapters** with no factory reset, completing dual-chipset (Broadcom + Qualcomm)
+support.
+
+### Highlights
+- **AV500 LED / QoS / power saving confirmed working on two adapters.** The
+  universal open checksum (0.1.11) was the missing piece — both `54:FE:E3` and
+  `55:09:3F` now apply PIB writes and report their correct state, no reset needed.
+- **PIB writes are safe.** Control is a read-modify-write of the adapter's *own*
+  PIB carrying the universal `~xorfold32` open checksum; the frames are
+  byte-identical to tpPLC and a rejected write is detected (close status
+  `31 00 30`) and reverted — it cannot half-apply or brick an adapter. Raw
+  `VS_WR_MOD` / `VS_MOD_NVM` are never sent. See `PROTOCOL.md` §9.
+
+### Fixed
+- **Mixed networks (Broadcom AV1000 + Qualcomm AV500 together) now work.** The
+  chipset used to be detected once for the whole instance, so a network that
+  contained AV500s forced *every* adapter onto the Qualcomm path: an AV1000 then
+  failed to apply LED / QoS / power saving, mis-read its state, and showed no PHY
+  rate. Chipset is now tracked **per adapter (per MAC)** — control, state reads
+  and rate fetching each branch on the individual adapter's protocol, and a
+  not-yet-identified adapter tries both. Rate fetching no longer stops at the
+  first Qualcomm reply: in a mixed network it also runs the Broadcom rate methods
+  for the non-QCA adapters.
+
+### Changed
+- Docs refreshed for the release: `README.md` (AV500 verified, safety note,
+  roadmap), `PROTOCOL.md` §9 (control implemented & verified), and the QCA PIB
+  code comments. `manifest.json` → `0.2.0`.
+
+Includes everything from 0.1.6 – 0.1.12: QCA power-saving control, the
+generalized then **universal** open checksum, corrected PIB offsets, real-state
+reads, and the mixin-based `homeplug/` package refactor.
+
 ## [0.1.12] - 2026-06-11
 
 ### Changed

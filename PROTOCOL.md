@@ -65,7 +65,7 @@ Values from [`qca/open-plc-utils` `mme/qualcomm.h`](https://github.com/qca/open-
 | `0xA024` / `0xA025` | `VS_RD_MOD` | read module (PIB/MAC) — **read, safe** |
 | `0xA020` | `VS_WR_MOD` | **write** module (PIB) — ⚠️ risky |
 | `0xA028` | `VS_MOD_NVM` | commit module to NVM — ⚠️ risky |
-| `0xA0B0` / `0xA0B1` | module read/write (chunked) | what the **QCA7420** firmware actually uses (see §9) — ⚠️ writes the PIB |
+| `0xA0B0` / `0xA0B1` | module read/write (chunked) | what the **QCA7420** firmware actually uses (see §9) — the **verified** LED/QoS/power-saving path (PIB read-modify-write) |
 | `0xA094` | `VS_SET_LED_BEHAVIOR` | declared in `qualcomm.h` but **never implemented** (no payload struct) |
 
 Module codes for `VS_RD_MOD` / `VS_WR_MOD`: `VS_MODULE_MAC = 1<<0`, `VS_MODULE_PIB = 1<<1`, `VS_MODULE_FORCE = 1<<4`.
@@ -218,35 +218,49 @@ State read-back matches the live CAP bytes against these patterns.
 
 ---
 
-## 9 · Qualcomm (QCA / AV500) — current state
+## 9 · Qualcomm (QCA / AV500) — implemented & verified
 
-### What works (read-only, safe)
-Discovery (`CC_DISCOVER_LIST`), online status, firmware (`VS_SW_VER`), and the
-read MMEs in §2 (`VS_NW_INFO`, `VS_LNK_STATS`, `VS_NW_INFO_STATS`). The
-**Diagnose** button now sends all of these to a QCA adapter and dumps the raw
-responses — that output is the starting point for decoding rates on a specific
-QCA7420 firmware.
+### What works
+**Read (safe):** discovery (`CC_DISCOVER_LIST`), online status, firmware
+(`VS_SW_VER`), and the read MMEs in §2 (`VS_NW_INFO`, `VS_LNK_STATS`,
+`VS_NW_INFO_STATS`). The **Diagnose** button sends all of these to a QCA adapter
+and dumps the raw responses.
 
-### Why control (LED / QoS / power saving) isn't implemented
-There is **no safe Layer-2 control command** for these on QCA:
+**Control (verified):** LED, QoS and power saving — applied via a PIB
+read-modify-write and **confirmed applying on two different AV500 adapters**
+(`54:FE:E3` and `55:09:3F`), with no factory reset needed.
 
-- `VS_SET_LED_BEHAVIOR` (`0xA094`) is declared in `qualcomm.h` but **has no
-  implementation** anywhere in open-plc-utils — no payload struct, no tool uses
-  it — so there is nothing to copy and no way to verify a guess.
-- The only path tpPLC actually uses is a full **Parameter Information Block
-  (PIB)** read-modify-write via `VS_RD_MOD` (`0xA024`) → edit → `VS_WR_MOD`
-  (`0xA020`) / `VS_MOD_NVM` (`0xA028`). The PIB signature is visible in a
-  capture:
+### How control works — PIB read-modify-write (safe)
+QCA has no usable single-command control MME: `VS_SET_LED_BEHAVIOR` (`0xA094`)
+is declared in `qualcomm.h` but **has no implementation** in open-plc-utils (no
+payload struct). The only path tpPLC uses is editing the **Parameter Information
+Block (PIB)** — the same path we now reproduce:
 
-  ```
-  PIB-QCA7420-1.1.0.844-01-FINAL-20120919...
-  QCA7420/6410/7000 MAC SW v1.1.0 Rev:01 FINAL
-  Qualcomm Atheros HomePlug AV Device
-  ```
+1. **Read** the adapter's *own* current PIB (chunked `0xA0B0`, op `01 00`).
+2. **Flip only** the bytes that change — the LED table, the QoS word, the
+   power-saving bytes (offsets below) — keeping the two section checksums
+   consistent.
+3. Recompute the **universal open checksum**: `~xorfold32` over the whole PIB
+   (open-plc-utils `checksum32`), which the firmware validates before applying.
+4. **Write** the chunks back (`0xA0B0`, open `01 10` / data `01 11` /
+   close `01 12`) and check the close status (`00 00 00` = applied).
 
-  A faulty / interrupted PIB write can corrupt the config (lose the network key,
-  drop the adapter off the network → factory reset). So QCA control is **not yet
-  implemented**, but a capture (below) shows it is far less risky than feared.
+The captured PIB signature confirms the target:
+
+```
+PIB-QCA7420-1.1.0.844-01-FINAL-20120919...
+QCA7420/6410/7000 MAC SW v1.1.0 Rev:01 FINAL
+Qualcomm Atheros HomePlug AV Device
+```
+
+> 🛡️ **Why this can't brick an adapter.** We never write a hard-coded PIB — only
+> the device's own image with a handful of bytes changed, and the frames are
+> **byte-identical to tpPLC's** (verified against captures from both adapters).
+> Because the open checksum is now correct, a malformed write is cleanly
+> **rejected** (close status `31 00 30`) rather than half-applied, and the
+> integration detects that and reverts the entity. Raw `VS_WR_MOD` (`0xA020`) /
+> `VS_MOD_NVM` (`0xA028`), which *could* corrupt the config, are deliberately
+> **never** sent.
 
 ### Decoded: LED on/off (QCA7420) — captured & diffed
 A tpPLC capture (LED off → on → off) on a QCA7420 reveals the real mechanism.
@@ -270,9 +284,11 @@ Key safety findings:
   (`…7023 0000 89c5 80ea`) is identical for on *and* off — flipping these 10 bytes
   needs no checksum recompute.
 
-⇒ Implemented in **0.1.1** exactly this way: **read this device's real PIB → flip
-only those 10 bytes → write the chunks back → commit**. Never write a hard-coded
-PIB. (Power saving and QoS will reuse the same module read/write code.)
+⇒ Implemented exactly this way: **read this device's real PIB → flip only those
+10 bytes → write the chunks back → commit** — never a hard-coded PIB. Power
+saving and QoS reuse the same module read/write code, and **0.1.11** added the
+universal open checksum (`~xorfold32` of the whole PIB) so writes apply on
+**every** adapter.
 
 #### Module read/write wire format (0xA0B0/0xA0B1)
 Frame: `eth + MMV(0x00) + MMTYPE(2 LE) + OUI(00:b0:52) + payload` (no FMI).

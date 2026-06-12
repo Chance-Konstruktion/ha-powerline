@@ -19,9 +19,12 @@ class QcaPibMixin:
     """QCA AV500 PIB read / write (module-op, read-modify-write)."""
 
     # ── QCA (AV500) LED via PIB read-modify-write ──────────
-    # See PROTOCOL.md §9. EXPERIMENTAL: the write-open carries a whole-PIB
-    # checksum we cannot reproduce offline; if the firmware validates it the
-    # write is a harmless no-op (the read-back below then reports failure).
+    # See PROTOCOL.md §9. Verified working: the write-open carries the universal
+    # open checksum (~xorfold32 of the whole PIB, see qca_pib_checksum) which the
+    # firmware validates before applying. We only ever read this device's own PIB,
+    # flip the bytes that change, and write it back — frames byte-identical to
+    # tpPLC, confirmed applied on two different AV500s. A rejected write is
+    # detected via the close status and reverts the entity (never a brick).
 
     def _qca_read_chunk(self, dst: bytes, mac: str, offset: int,
                         clen: int) -> bytes | None:

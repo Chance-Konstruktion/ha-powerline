@@ -153,7 +153,7 @@ class TestLedEarlyBail(TestCase):
 
     def test_no_response_bails_after_first_write(self) -> None:
         hp = HomeplugAV("eth0")
-        hp._chipset = "broadcom"  # network has a Broadcom adapter
+        hp._chipset_by_mac = {"EC:08:6B:54:FE:E3": "broadcom"}  # this adapter is Broadcom
         hp._sock_mx = MagicMock()
         hp._sock_hpav = MagicMock()
         calls = []
@@ -176,7 +176,7 @@ class TestLedEarlyBail(TestCase):
         """On QCA, set_led attempts a PIB read; if the adapter answers nothing it
         returns False without raising (and never reaches a write)."""
         hp = HomeplugAV("eth0")
-        hp._chipset = "qualcomm"
+        hp._chipset_by_mac = {"EC:08:6B:54:FE:E3": "qualcomm"}
         hp._sock_mx = MagicMock()
         hp._sock_hpav = MagicMock()
         sends = MagicMock(return_value=[])  # adapter answers nothing
@@ -187,6 +187,60 @@ class TestLedEarlyBail(TestCase):
 
         self.assertFalse(ok)
         sends.assert_called()  # it tried to read the PIB
+
+
+class TestMixedNetworkChipset(TestCase):
+    """Per-adapter chipset, not one global guess, drives control + state.
+
+    Regression: a mixed network (AV1000/Broadcom + AV500/Qualcomm) detected the
+    chipset once for the whole instance, so when the AV500s set it to 'qualcomm'
+    the Broadcom AV1000 stopped applying LED/QoS/power-saving and showed no rates.
+    """
+
+    AV1000 = "B0:19:21:F5:DB:A7"   # Broadcom (no QCA reply -> "unknown")
+    AV500 = "EC:08:6B:54:FE:E3"    # Qualcomm
+
+    def test_unknown_adapter_tries_broadcom_even_when_network_is_qca(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._chipset = "qualcomm"                       # global guess (wrong here)
+        hp._chipset_by_mac = {self.AV500: "qualcomm"}  # only the AV500 is known QCA
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_set_led_broadcom", return_value=True) as bc, \
+             patch.object(hp, "_set_led_qualcomm", return_value=False) as qc:
+            ok = hp.set_led(self.AV1000, True)
+        self.assertTrue(ok)
+        bc.assert_called()      # the AV1000 still gets the MEDIAXTREAM path
+        # and once it works the chipset is remembered for next time
+        self.assertEqual("broadcom", hp._mac_chipset(self.AV1000))
+
+    def test_known_qca_adapter_skips_broadcom(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._chipset_by_mac = {self.AV500: "qualcomm"}
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_set_led_broadcom", return_value=False) as bc, \
+             patch.object(hp, "_set_led_qualcomm", return_value=True) as qc:
+            ok = hp.set_led(self.AV500, True)
+        self.assertTrue(ok)
+        bc.assert_not_called()  # QCA adapter never uses the MEDIAXTREAM path
+        qc.assert_called()
+
+    def test_query_states_splits_by_chipset(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._chipset = "qualcomm"
+        hp._chipset_by_mac = {self.AV500: "qualcomm"}  # AV1000 stays "unknown"
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_qca_read_pib", return_value=None) as pib, \
+             patch.object(hp, "_get_param_value", return_value=None) as gp:
+            hp.query_device_states([self.AV500, self.AV1000])
+        pib.assert_called_once_with(self.AV500)         # QCA via PIB
+        mx_macs = {c.args[0] for c in gp.call_args_list}
+        self.assertIn(self.AV1000, mx_macs)             # AV1000 via MEDIAXTREAM
+        self.assertNotIn(self.AV500, mx_macs)
 
 
 class TestQcaLedPib(TestCase):

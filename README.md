@@ -10,11 +10,13 @@ Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` 
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-03A9F4.svg)](https://www.home-assistant.io/)
-[![Release](https://img.shields.io/badge/release-0.1.0-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
+[![Release](https://img.shields.io/badge/release-0.2.0-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
 [![Protocol](https://img.shields.io/badge/Protocol-reverse--engineered-F59E0B.svg)](PROTOCOL.md)
 
-✅ **Verified end-to-end on TP-Link AV1000 (TL-PA7017, BCM60355)** — discovery, TX/RX rates, LED, power saving **and** QoS all confirmed working on real hardware.
+✅ **Verified end-to-end on TP-Link AV1000 (TL-PA7017, BCM60355) and AV500 (QCA7420)** — discovery, TX/RX rates, LED, power saving **and** QoS all confirmed on real hardware, including on **two** AV500 adapters.
+
+> 🛡️ **PIB writes are safe by design.** AV500 LED / QoS / power-saving changes are applied with a *read-modify-write of the adapter's **own** PIB* — never a hard-coded image — carrying the same **universal open checksum** tpPLC uses (`~xorfold32` over the whole PIB). The frames are byte-identical to tpPLC and confirmed applying on two different adapters, and a rejected write is detected from the close status and reverted. Toggling these settings will **not brick** an adapter.
 
 **[Quick Start](#-quick-start)** · **[Features](#-highlights)** · **[How it works](#-how-it-works)** · **[Protocol](PROTOCOL.md)** · **[Troubleshooting](#-troubleshooting)**
 
@@ -249,9 +251,8 @@ Capture the official tpPLC app performing an action and compare with
 ## 🗺️ Roadmap
 
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
-- [x] **0.1.x — Qualcomm (QCA / AV500):** LED, QoS, power saving, and PHY rates via the PIB — incl. the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter ([details](PROTOCOL.md#9--qualcomm-qca--av500--current-state)).
-- [ ] **0.2 — AV500 100%:** final on-hardware verification of LED/QoS/power-saving/rates + docs polish.
-- [ ] **0.2 — rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate — being addressed alongside the AV500 work.
+- [x] **0.2 — Qualcomm / AV500 (verified):** LED, QoS and power saving via the PIB, with the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter — confirmed applying on **two** AV500s, no reset needed ([details](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified)).
+- [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
 
 ---
