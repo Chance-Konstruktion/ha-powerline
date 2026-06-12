@@ -4,6 +4,14 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-12
+
+### Added
+- **"All LEDs On" / "All LEDs Off" buttons** on the network device — mirrors the
+  two buttons in tpPLC. Each loops the existing per-adapter LED control, so it
+  works across mixed networks (every adapter takes its own chipset path), then
+  refreshes the per-adapter LED switches. No new protocol/capture needed.
+
 ## [0.2.0] - 2026-06-12
 
 This release marks **AV500 (Qualcomm QCA7420) control as verified on real

@@ -2,7 +2,7 @@
 
 import types
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # conftest.py installs all HA stubs before this module is collected.
 from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
@@ -68,3 +68,48 @@ class TestCoordinatorLed(IsolatedAsyncioTestCase):
         self.assertFalse(result)
         # State must NOT be updated on timeout
         self.assertNotIn("AA:BB:CC:DD:EE:FF", fake.led_states)
+
+
+class TestCoordinatorAllLeds(IsolatedAsyncioTestCase):
+    async def test_applies_to_every_adapter_and_refreshes(self):
+        fake = types.SimpleNamespace(
+            devices={"AA:BB:CC:DD:EE:01": {}, "AA:BB:CC:DD:EE:02": {}},
+            led_states={},
+            async_set_led=AsyncMock(return_value=True),
+            async_update_listeners=MagicMock(),
+        )
+
+        ok = await TpLinkPowerlineCoordinator.async_set_all_leds(fake, True)
+
+        self.assertTrue(ok)
+        self.assertEqual(2, fake.async_set_led.await_count)
+        fake.async_set_led.assert_any_await("AA:BB:CC:DD:EE:01", True)
+        fake.async_set_led.assert_any_await("AA:BB:CC:DD:EE:02", True)
+        fake.async_update_listeners.assert_called_once()
+
+    async def test_returns_false_and_skips_refresh_without_adapters(self):
+        fake = types.SimpleNamespace(
+            devices={},
+            led_states={},
+            async_set_led=AsyncMock(return_value=True),
+            async_update_listeners=MagicMock(),
+        )
+
+        ok = await TpLinkPowerlineCoordinator.async_set_all_leds(fake, False)
+
+        self.assertFalse(ok)
+        fake.async_set_led.assert_not_awaited()
+        fake.async_update_listeners.assert_not_called()
+
+    async def test_returns_true_if_any_adapter_applies(self):
+        fake = types.SimpleNamespace(
+            devices={"AA:BB:CC:DD:EE:01": {}, "AA:BB:CC:DD:EE:02": {}},
+            led_states={},
+            async_set_led=AsyncMock(side_effect=[False, True]),
+            async_update_listeners=MagicMock(),
+        )
+
+        ok = await TpLinkPowerlineCoordinator.async_set_all_leds(fake, True)
+
+        self.assertTrue(ok)
+        fake.async_update_listeners.assert_called_once()
