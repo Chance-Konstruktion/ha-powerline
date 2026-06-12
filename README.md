@@ -62,11 +62,11 @@ Feature support depends on the **chipset**, and the docs say so plainly — no f
 </tr>
 <tr>
 <td>📈 <b>TX/RX PHY rates</b> — real Mbit/s, shown on both link ends</td>
-<td>💡 <b>LED control</b> — toggle the adapter LED (Broadcom)</td>
+<td>💡 <b>LED control</b> — toggle the adapter LEDs (Broadcom + Qualcomm)</td>
 </tr>
 <tr>
-<td>🔋 <b>Power saving</b> — standby mode on/off (Broadcom)</td>
-<td>🚦 <b>QoS priority</b> — Gaming / VoIP / A-V / Internet (Broadcom)</td>
+<td>🔋 <b>Power saving</b> — standby mode on/off (Broadcom + Qualcomm)</td>
+<td>🚦 <b>QoS priority</b> — Internet / Online Games / Audio-Video / VoIP</td>
 </tr>
 <tr>
 <td>🧩 <b>Dual protocol</b> — auto-detects Broadcom vs Qualcomm</td>
@@ -74,7 +74,7 @@ Feature support depends on the **chipset**, and the docs say so plainly — no f
 </tr>
 </table>
 
-> 💡 **Online status + rates work on every HomePlug AV/AV2 chipset.** LED, power saving and QoS are **Broadcom-only** (they use safe MEDIAXTREAM `Set Parameter` writes). See the [feature matrix](#-supported-hardware).
+> 💡 **Online status + rates work on every HomePlug AV/AV2 chipset.** LED, power saving and QoS work on **both Broadcom** (MEDIAXTREAM `Set Parameter`) **and Qualcomm** (AV500-class, via a safe PIB read-modify-write) — verified on real hardware. See the [feature matrix](#-supported-hardware).
 
 ---
 
@@ -147,6 +147,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | Slowest Link | Sensor | Weakest link rate in the network (Mbit/s) — the actual bottleneck |
 | Network Problem | Binary Sensor (`problem`) | On when a known adapter is offline |
 | Diagnose | Button | Runs a full protocol scan to the log |
+| All LEDs On / Off | Button | Turns every adapter's LED on or off at once (like tpPLC) |
 
 ### Per adapter
 | Entity | Type | Default |
@@ -157,8 +158,15 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | Power Saving | Switch | Disabled |
 | QoS Priority | Select | Disabled |
 
-LED / Power Saving / QoS are disabled by default — enable them per entity if your
-adapter is Broadcom-based.
+**What the controls do** (mirrors the tpPLC app):
+- **LED** — turn the adapter's LEDs on or off.
+- **Power Saving** — reduces the adapter's power consumption when the connected
+  device has been switched off or unplugged for ~5 minutes.
+- **QoS Priority** — choose the traffic type to give the highest priority:
+  **Internet**, **Online Games**, **Audio / Video**, or **Voice over IP**.
+
+LED / Power Saving / QoS are disabled by default — enable them per entity. They
+work on both Broadcom and Qualcomm (AV500) adapters.
 </details>
 
 <details>
