@@ -54,11 +54,12 @@ class DiscoveryMixin:
     def _annotate_capabilities(self, devices: dict[str, dict]) -> None:
         """Attach capability hints per adapter for diagnostics."""
         for mac, dev in devices.items():
-            dev["chipset"] = self._chipset
+            cs = self._mac_chipset(mac)
+            dev["chipset"] = cs if cs != "unknown" else self._chipset
             dev["capabilities"] = {
                 "supports_standard_discovery": True,
-                "supports_vendor_mx": self._chipset == "broadcom",
-                "supports_vendor_qca": self._chipset == "qualcomm",
+                "supports_vendor_mx": cs in ("broadcom", "unknown"),
+                "supports_vendor_qca": cs in ("qualcomm", "unknown"),
                 "supports_rate_polling": (
                     dev.get("tx_rate", 0) > 0 or dev.get("rx_rate", 0) > 0
                 ),
@@ -99,6 +100,7 @@ class DiscoveryMixin:
         for mmtype, src, data in self._send_recv(self._sock_mx, frame, 2.0):
             if mmtype == MX_DISCOVER_CNF:
                 self._chipset = "broadcom"
+                self._mark_chipset(src, "broadcom")
                 devices.setdefault(src, self._new_dev(src))
                 info = parse_mx_discover_cnf(data)
                 if info:
@@ -199,6 +201,7 @@ class DiscoveryMixin:
                     continue
                 m = info["mac"]
                 devices.setdefault(m, self._new_dev(m))
+                self._mark_chipset(m, "broadcom")  # 0x6046 is Broadcom-only
                 if info["tx_rate"] > 0 or info["rx_rate"] > 0:
                     devices[m]["tx_rate"] = info["tx_rate"]
                     devices[m]["rx_rate"] = info["rx_rate"]
@@ -226,6 +229,7 @@ class DiscoveryMixin:
                     stop_on=frozenset((VS_NW_INFO_CNF,))):
                 if mmtype == VS_NW_INFO_CNF:
                     self._chipset = "qualcomm"
+                    self._mark_chipset(src, "qualcomm")
                     qca = True
                     rates = parse_qca_nw_info_cnf(data)
                     if rates and src in devices:
@@ -246,17 +250,28 @@ class DiscoveryMixin:
                     a["tx_rate"], a["rx_rate"] = ab, ba
                     b["tx_rate"], b["rx_rate"] = ba, ab
                     found = True
-            if not found:
-                _LOGGER.info(
-                    "QCA VS_NW_INFO answered but no PHY rate parsed "
-                    "(idle link or unconfirmed layout). Use Diagnose for raw bytes.")
-            return found
+            # Mixed network: adapters that did NOT answer QCA may be Broadcom
+            # (e.g. an AV1000 next to AV500s). Only skip the Broadcom rate methods
+            # below if EVERY adapter is QCA — that keeps a pure-QCA network fast
+            # while letting a mixed network fall through. The unicast loops below
+            # skip the QCA adapters, so this adds no extra timeout for them.
+            non_qca = [m for m in devices if self._mac_chipset(m) != "qualcomm"]
+            if not non_qca:
+                if not found:
+                    _LOGGER.info(
+                        "QCA VS_NW_INFO answered but no PHY rate parsed "
+                        "(idle link or unconfirmed layout). Use Diagnose for raw bytes.")
+                return found
+            _LOGGER.debug("Mixed network: %d non-QCA adapter(s) — also trying "
+                          "Broadcom rate methods", len(non_qca))
 
         # ── A: MX NW_STATS (0xA02C) — primary Broadcom rate method ──
         # This is the dedicated PHY rate request for Broadcom chipsets.
         # Unicast to each adapter, then broadcast as fallback.
         _LOGGER.debug("Trying MX NW_STATS (0xA02C) unicast...")
         for mac in list(devices.keys()):
+            if self._mac_chipset(mac) == "qualcomm":
+                continue  # QCA adapter — answered VS_NW_INFO, skip MEDIAXTREAM
             dst = mac_to_bytes(mac)
             frame = build_mx_frame(dst, self._src_mac,
                                    MX_NW_STATS_REQ,
@@ -265,6 +280,7 @@ class DiscoveryMixin:
                     self._sock_mx, frame, 2.0):
                 if mmtype == MX_NW_STATS_CNF:
                     self._chipset = "broadcom"
+                    self._mark_chipset(src, "broadcom")
                     for sta in parse_mx_nw_stats_cnf(data):
                         m = sta["mac"]
                         tx = sta.get("tx_rate", 0)
@@ -476,8 +492,9 @@ class DiscoveryMixin:
                 continue
             self._info_attempted.add(mac)
             dst = mac_to_bytes(mac)
+            cs = self._mac_chipset(mac)
 
-            if self._chipset in ("broadcom", "unknown"):
+            if cs in ("broadcom", "unknown"):
                 # MX Get Parameter: Manufacturer HFID
                 if not devices[mac].get("model"):
                     frame = build_mx_frame(
@@ -509,7 +526,7 @@ class DiscoveryMixin:
                             if ver:
                                 devices[mac]["firmware_ver"] = ver
 
-            if self._chipset in ("qualcomm", "unknown"):
+            if cs in ("qualcomm", "unknown"):
                 # QCA VS_SW_VER
                 if not devices[mac].get("firmware_ver"):
                     frame = build_qca_frame(dst, self._src_mac, VS_SW_VER_REQ)

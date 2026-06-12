@@ -23,13 +23,31 @@ class _HomeplugBase:
         self._sock_mx: socket.socket | None = None
         self._src_mac = b"\x00" * 6
         self._seq = 1
-        self._chipset = "unknown"  # "broadcom" or "qualcomm"
+        self._chipset = "unknown"  # network-wide hint; per-adapter map below
+        # Per-adapter chipset ("broadcom"/"qualcomm"), learned during discovery.
+        # A network can be MIXED (AV1000/Broadcom + AV500/Qualcomm), so control,
+        # state and rate code must branch per MAC — never on one global guess.
+        self._chipset_by_mac: dict[str, str] = {}
         self._led_success_macs: set[str] = set()
         # MACs whose firmware/model we already tried — avoids re-querying
         # (and timing out on) device info every single poll.
         self._info_attempted: set[str] = set()
         # Serializes the socket-using public methods across executor threads.
         self._lock = threading.RLock()
+
+    def _mac_chipset(self, mac: str) -> str:
+        """Chipset of one adapter: 'broadcom', 'qualcomm', or 'unknown'.
+
+        'unknown' means "not yet identified" — callers should then try both
+        protocols rather than fall back to the (possibly wrong) network-wide
+        ``self._chipset``, which is what broke mixed networks.
+        """
+        return self._chipset_by_mac.get(mac.upper(), "unknown")
+
+    def _mark_chipset(self, mac: str, chipset: str) -> None:
+        """Record a per-adapter chipset once a protocol response identifies it."""
+        if mac:
+            self._chipset_by_mac[mac.upper()] = chipset
 
     def _next_seq(self) -> int:
         s = self._seq

@@ -40,15 +40,23 @@ class StateMixin:
         states: dict[str, dict] = {mac: {"led": None, "qos": None,
                                           "power_saving": None} for mac in macs}
 
+        # Mixed networks: split by per-adapter chipset. Genuine QCA adapters are
+        # identified during discovery (they answer VS_NW_INFO) and read from the
+        # PIB; Broadcom and not-yet-identified ("unknown") adapters use the
+        # MEDIAXTREAM Get Parameter path.
+        qca_macs = [m for m in macs if self._mac_chipset(m) == "qualcomm"]
+        mx_macs = [m for m in macs if self._mac_chipset(m) != "qualcomm"]
+
         # Qualcomm (QCA / AV500): read the real state straight from the PIB.
-        if self._chipset == "qualcomm":
+        if qca_macs:
             try:
                 self._open_hpav()
             except (PermissionError, OSError):
-                return states
+                qca_macs = []
+        if qca_macs:
             qos_rev = {v: k for k, v in QCA_QOS_VALUES.items()}
             try:
-                for mac in macs:
+                for mac in qca_macs:
                     pib = self._qca_read_pib(mac)
                     if not pib or len(pib) != QCA_PIB_SIZE:
                         continue
@@ -60,35 +68,36 @@ class StateMixin:
                     states[mac]["power_saving"] = pib[QCA_POWERSAVE_PROBE] == 0x01
             finally:
                 self._close()
-            return states
 
-        try:
-            self._open_mx()
-        except (PermissionError, OSError) as e:
-            _LOGGER.debug("Cannot open MX socket for state query: %s", e)
-            return states
-        try:
-            for mac in macs:
-                # LED state lives in LED Options (0x003F): byte 3, bit 0x10.
-                # tpPLC capture: ...01 12 = on, ...01 02 = off.
-                led_opt = self._get_param_value(mac, PARAM_LED_OPTIONS)
-                if led_opt and len(led_opt) >= 4:
-                    states[mac]["led"] = bool(led_opt[3] & 0x10)
-                # Power saving = bit 0x8000 of the 0x0029 standby value.
-                ps_val = self._get_param_value(mac, PARAM_POWER_STANDBY)
-                if ps_val and len(ps_val) >= 2:
-                    standby = struct.unpack("<H", ps_val[0:2])[0]
-                    states[mac]["power_saving"] = bool(standby & 0x8000)
-                # QoS = match the priority map's CAP bytes (0x0069) to a mode.
-                qos_table = self._get_param_value(mac, PARAM_QOS_PRIORITY_MAP)
-                if qos_table and len(qos_table) > self._QOS_CAP_OFFSETS[-1]:
-                    caps = bytes(qos_table[o] for o in self._QOS_CAP_OFFSETS)
-                    for mode, pattern in self._QOS_CAP_MAP.items():
-                        if caps == pattern:
-                            states[mac]["qos"] = mode
-                            break
-        finally:
-            self._close()
+        # Broadcom (and unknown): read via MEDIAXTREAM Get Parameter (0xA05C).
+        if mx_macs:
+            try:
+                self._open_mx()
+            except (PermissionError, OSError) as e:
+                _LOGGER.debug("Cannot open MX socket for state query: %s", e)
+                return states
+            try:
+                for mac in mx_macs:
+                    # LED state lives in LED Options (0x003F): byte 3, bit 0x10.
+                    # tpPLC capture: ...01 12 = on, ...01 02 = off.
+                    led_opt = self._get_param_value(mac, PARAM_LED_OPTIONS)
+                    if led_opt and len(led_opt) >= 4:
+                        states[mac]["led"] = bool(led_opt[3] & 0x10)
+                    # Power saving = bit 0x8000 of the 0x0029 standby value.
+                    ps_val = self._get_param_value(mac, PARAM_POWER_STANDBY)
+                    if ps_val and len(ps_val) >= 2:
+                        standby = struct.unpack("<H", ps_val[0:2])[0]
+                        states[mac]["power_saving"] = bool(standby & 0x8000)
+                    # QoS = match the priority map's CAP bytes (0x0069) to a mode.
+                    qos_table = self._get_param_value(mac, PARAM_QOS_PRIORITY_MAP)
+                    if qos_table and len(qos_table) > self._QOS_CAP_OFFSETS[-1]:
+                        caps = bytes(qos_table[o] for o in self._QOS_CAP_OFFSETS)
+                        for mode, pattern in self._QOS_CAP_MAP.items():
+                            if caps == pattern:
+                                states[mac]["qos"] = mode
+                                break
+            finally:
+                self._close()
         return states
 
     def _get_param_value(self, mac: str, param_id: int,

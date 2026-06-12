@@ -21,6 +21,17 @@ support.
   `31 00 30`) and reverted — it cannot half-apply or brick an adapter. Raw
   `VS_WR_MOD` / `VS_MOD_NVM` are never sent. See `PROTOCOL.md` §9.
 
+### Fixed
+- **Mixed networks (Broadcom AV1000 + Qualcomm AV500 together) now work.** The
+  chipset used to be detected once for the whole instance, so a network that
+  contained AV500s forced *every* adapter onto the Qualcomm path: an AV1000 then
+  failed to apply LED / QoS / power saving, mis-read its state, and showed no PHY
+  rate. Chipset is now tracked **per adapter (per MAC)** — control, state reads
+  and rate fetching each branch on the individual adapter's protocol, and a
+  not-yet-identified adapter tries both. Rate fetching no longer stops at the
+  first Qualcomm reply: in a mixed network it also runs the Broadcom rate methods
+  for the non-QCA adapters.
+
 ### Changed
 - Docs refreshed for the release: `README.md` (AV500 verified, safety note,
   roadmap), `PROTOCOL.md` §9 (control implemented & verified), and the QCA PIB
