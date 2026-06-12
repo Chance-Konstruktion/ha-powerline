@@ -51,10 +51,10 @@
       "qos_priority": {
         "name": "QoS Priority",
         "state": {
-          "gaming": "Online Gaming",
+          "gaming": "Online Games",
           "voip": "Voice over IP",
-          "audio_video": "Audio / Video Streaming",
-          "internet": "Internet (Standard)"
+          "audio_video": "Audio / Video",
+          "internet": "Internet"
         }
       }
     },

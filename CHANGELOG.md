@@ -4,6 +4,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-12
+
+### Changed
+- **Docs & labels match the tpPLC wording.** README now describes each control
+  (LED on/off; Power Saving = lower power draw when the attached device has been
+  off/unplugged ~5 min; QoS = pick the highest-priority traffic type) and lists
+  the **All LEDs On/Off** buttons. Corrected the stale "LED/QoS/power-saving are
+  Broadcom-only" notes — these are verified on **Broadcom and Qualcomm** now.
+- **QoS option labels** renamed to the tpPLC terms: *Internet*, *Online Games*
+  (de *Onlinespiele*), *Audio / Video* (de *Audio oder Video*), *Voice over IP*.
+  Option keys are unchanged, so existing automations keep working.
+
 ## [0.2.1] - 2026-06-12
 
 ### Added
