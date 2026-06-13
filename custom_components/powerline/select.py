@@ -1,8 +1,8 @@
 """Select platform for Powerline Network -- QoS priority per adapter.
 
-Sets traffic priority via MEDIAXTREAM MME 0xA058 two-frame sequence.
-Supported priorities: Gaming, VoIP, Audio/Video, Internet.
-Only works on Broadcom-based adapters (e.g. TL-PA7017).
+Broadcom adapters use a MEDIAXTREAM Set Parameter sequence; Qualcomm (QCA /
+AV500) adapters use a PIB read-modify-write. Priorities: Internet, Online Games,
+Audio/Video, Voice over IP. Verified on AV1000 and AV500.
 """
 
 import logging
