@@ -210,21 +210,30 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Turn every adapter's LED on/off at once (tpPLC "all LEDs" buttons).
 
         Reuses the per-adapter ``async_set_led`` so each adapter takes its own
-        chipset path, then refreshes the LED switch entities. Returns True if at
-        least one adapter applied the change.
+        chipset path. A QCA (AV500) adapter can *apply* the write but drop the
+        close confirmation, so ``async_set_led`` may report False even though the
+        LED physically changed (Broadcom/AV1000 acks reliably, hence it was fine).
+        Because this is a deliberate "set them all" action — like tpPLC's button —
+        we reflect the requested state for every adapter and log how many
+        explicitly confirmed. The real state is re-read on the next restart.
         """
         macs = list(self.devices.keys())
         if not macs:
             _LOGGER.warning("All LEDs %s: no adapters known yet",
                             "on" if on else "off")
             return False
-        results = [await self.async_set_led(mac, on) for mac in macs]
-        ok = any(results)
-        _LOGGER.info("All LEDs %s: %d/%d adapters applied",
-                     "on" if on else "off", sum(1 for r in results if r), len(macs))
-        if ok:
-            self.async_update_listeners()
-        return ok
+        confirmed = 0
+        for mac in macs:
+            if await self.async_set_led(mac, on):
+                confirmed += 1
+            # async_set_led already set led_states on a confirmed write; mirror
+            # the requested state for the rest too (apply-but-no-ack is common
+            # on QCA), so the dashboard matches the physical LEDs.
+            self.led_states[mac] = on
+        _LOGGER.info("All LEDs %s: %d/%d adapters confirmed the write",
+                     "on" if on else "off", confirmed, len(macs))
+        self.async_update_listeners()
+        return True
 
     async def async_set_power_saving(self, mac: str, on: bool) -> bool:
         """Set power saving mode on a specific adapter (by MAC)."""

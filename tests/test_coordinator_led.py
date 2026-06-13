@@ -85,6 +85,8 @@ class TestCoordinatorAllLeds(IsolatedAsyncioTestCase):
         self.assertEqual(2, fake.async_set_led.await_count)
         fake.async_set_led.assert_any_await("AA:BB:CC:DD:EE:01", True)
         fake.async_set_led.assert_any_await("AA:BB:CC:DD:EE:02", True)
+        self.assertEqual({"AA:BB:CC:DD:EE:01": True, "AA:BB:CC:DD:EE:02": True},
+                         fake.led_states)
         fake.async_update_listeners.assert_called_once()
 
     async def test_returns_false_and_skips_refresh_without_adapters(self):
@@ -101,15 +103,20 @@ class TestCoordinatorAllLeds(IsolatedAsyncioTestCase):
         fake.async_set_led.assert_not_awaited()
         fake.async_update_listeners.assert_not_called()
 
-    async def test_returns_true_if_any_adapter_applies(self):
+    async def test_reflects_requested_state_even_when_ack_missing(self):
+        # Regression: a QCA (AV500) adapter can apply the LED write but drop the
+        # close ack, so async_set_led returns False even though the LED changed.
+        # The dashboard must still show the requested state for every adapter.
         fake = types.SimpleNamespace(
             devices={"AA:BB:CC:DD:EE:01": {}, "AA:BB:CC:DD:EE:02": {}},
-            led_states={},
-            async_set_led=AsyncMock(side_effect=[False, True]),
+            led_states={"AA:BB:CC:DD:EE:01": True, "AA:BB:CC:DD:EE:02": True},
+            async_set_led=AsyncMock(return_value=False),  # ack missing on both
             async_update_listeners=MagicMock(),
         )
 
-        ok = await TpLinkPowerlineCoordinator.async_set_all_leds(fake, True)
+        ok = await TpLinkPowerlineCoordinator.async_set_all_leds(fake, False)
 
         self.assertTrue(ok)
+        self.assertEqual({"AA:BB:CC:DD:EE:01": False, "AA:BB:CC:DD:EE:02": False},
+                         fake.led_states)
         fake.async_update_listeners.assert_called_once()
