@@ -4,6 +4,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-06-13
+
+### Fixed
+- **Mixed-network PHY rates no longer show 0 Mbit/s on one end.** In a mixed
+  Broadcom + Qualcomm network the QCA "2-adapter symmetric mirror" still fired
+  and gave the Broadcom adapter a *guessed* rate, which then blocked its real
+  `NW_STATS` reading — so the two ends of the same link disagreed (e.g. AV1000
+  TX=300/RX=0 vs AV500 TX=385/RX=11). The symmetric mirror is now restricted to
+  **pure-QCA** networks; in a mixed network the real `NW_STATS` link rate is
+  applied consistently to **both** ends. Pure-Broadcom and pure-QCA behaviour is
+  unchanged.
+
 ## [0.2.5] - 2026-06-13
 
 ### Changed
