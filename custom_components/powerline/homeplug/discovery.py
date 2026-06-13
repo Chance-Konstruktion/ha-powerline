@@ -238,30 +238,33 @@ class DiscoveryMixin:
                         _LOGGER.info("VS_NW_INFO: %s TX=%d RX=%d",
                                      src, rates[0], rates[1])
         if qca:
-            # In a 2-adapter network the link is symmetric: A.tx == B.rx. A
-            # VS_NW_INFO reply often reports only one direction, so fill each 0
-            # from the peer's complementary value (both ends then agree).
-            if len(devices) == 2:
-                ms = list(devices)
-                a, b = devices[ms[0]], devices[ms[1]]
-                ab = a.get("tx_rate", 0) or b.get("rx_rate", 0)
-                ba = a.get("rx_rate", 0) or b.get("tx_rate", 0)
-                if ab or ba:
-                    a["tx_rate"], a["rx_rate"] = ab, ba
-                    b["tx_rate"], b["rx_rate"] = ba, ab
-                    found = True
-            # Mixed network: adapters that did NOT answer QCA may be Broadcom
-            # (e.g. an AV1000 next to AV500s). Only skip the Broadcom rate methods
-            # below if EVERY adapter is QCA — that keeps a pure-QCA network fast
-            # while letting a mixed network fall through. The unicast loops below
-            # skip the QCA adapters, so this adds no extra timeout for them.
+            # Adapters that did NOT answer QCA may be Broadcom (e.g. an AV1000
+            # next to AV500s). Only take the pure-QCA shortcut if EVERY adapter is
+            # QCA; a mixed network falls through to the Broadcom rate methods below
+            # (whose unicast loops skip the QCA adapters, so no extra timeout).
             non_qca = [m for m in devices if self._mac_chipset(m) != "qualcomm"]
             if not non_qca:
+                # Pure QCA. In a 2-adapter link the rate is symmetric: a
+                # VS_NW_INFO reply often reports only one direction, so fill each
+                # 0 from the peer's complementary value (both ends then agree).
+                if len(devices) == 2:
+                    ms = list(devices)
+                    a, b = devices[ms[0]], devices[ms[1]]
+                    ab = a.get("tx_rate", 0) or b.get("rx_rate", 0)
+                    ba = a.get("rx_rate", 0) or b.get("tx_rate", 0)
+                    if ab or ba:
+                        a["tx_rate"], a["rx_rate"] = ab, ba
+                        b["tx_rate"], b["rx_rate"] = ba, ab
+                        found = True
                 if not found:
                     _LOGGER.info(
                         "QCA VS_NW_INFO answered but no PHY rate parsed "
                         "(idle link or unconfirmed layout). Use Diagnose for raw bytes.")
                 return found
+            # Mixed network: do NOT apply the QCA symmetric mirror — it would
+            # guess a rate for the non-QCA adapter and then block its real
+            # NW_STATS reading, leaving the two ends inconsistent (one stuck at
+            # 0 Mbit/s). Fall through so NW_STATS fills the link rate on both ends.
             _LOGGER.debug("Mixed network: %d non-QCA adapter(s) — also trying "
                           "Broadcom rate methods", len(non_qca))
 
