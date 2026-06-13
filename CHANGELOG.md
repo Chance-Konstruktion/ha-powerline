@@ -4,6 +4,12 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Internal
+- **CI added** (no integration change): `validate.yml` (HACS + hassfest),
+  `tests.yml` (pytest on every push/PR), and `release.yml` (auto-builds and
+  attaches `powerline.zip` on each release, per `hacs.json`).
+- Removed the unused `Preview.html` dev helper; expanded `.gitignore`.
+
 ## [0.2.3] - 2026-06-12
 
 ### Fixed

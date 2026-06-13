@@ -1,0 +1,26 @@
+name: Release
+
+# Builds the HACS download artifact (powerline.zip, as declared in hacs.json)
+# from the integration directory and attaches it to the published release.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    name: Build & attach powerline.zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build powerline.zip
+        run: |
+          cd custom_components/powerline
+          zip -r ../../powerline.zip . -x '*__pycache__*'
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: powerline.zip
