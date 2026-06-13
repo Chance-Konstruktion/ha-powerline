@@ -54,6 +54,10 @@ class LedSwitch(CoordinatorEntity[TpLinkPowerlineCoordinator], SwitchEntity):
         self._attr_device_info = device_info
 
     @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.adapter_online(self._mac)
+
+    @property
     def is_on(self) -> bool:
         return self.coordinator.led_states.get(self._mac, True)
 
@@ -86,6 +90,10 @@ class PowerSavingSwitch(CoordinatorEntity[TpLinkPowerlineCoordinator], SwitchEnt
         self._mac = mac
         self._attr_unique_id = f"plc_{mac}_power_saving"
         self._attr_device_info = device_info
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.adapter_online(self._mac)
 
     @property
     def is_on(self) -> bool:

@@ -136,3 +136,29 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
 
         # Second update must not call query_device_states again.
         coord.hp.query_device_states.assert_not_called()
+
+
+class TestAdapterOnline(IsolatedAsyncioTestCase):
+    """adapter_online() drives the per-adapter entity 'available' property."""
+
+    async def test_reflects_last_poll(self):
+        device_a = _make_device(MAC_A)
+        device_b = _make_device(MAC_B)
+        # Only A is seen now; B was known before but is unplugged.
+        coord = _build_coordinator(discover_result=[device_a])
+        _preload(coord, [device_a, device_b])
+
+        await coord._async_update_data()
+
+        self.assertTrue(coord.adapter_online(MAC_A))    # online -> available
+        self.assertFalse(coord.adapter_online(MAC_B))   # offline -> unavailable
+
+    def test_unknown_mac_is_offline(self):
+        coord = _build_coordinator(discover_result=[])
+        self.assertFalse(coord.adapter_online("00:00:00:00:00:00"))
+
+    def test_known_device_without_flag_defaults_online(self):
+        # Before the first poll a device has no _online flag yet.
+        coord = _build_coordinator(discover_result=[])
+        coord.devices = {MAC_A: {"mac": MAC_A}}
+        self.assertTrue(coord.adapter_online(MAC_A))

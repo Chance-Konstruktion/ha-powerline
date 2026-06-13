@@ -66,6 +66,16 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Register callback for when new devices are discovered."""
         self._new_device_callbacks.append(cb)
 
+    def adapter_online(self, mac: str) -> bool:
+        """Whether an adapter answered the most recent poll.
+
+        Per-adapter entities use this for their ``available`` property, so an
+        offline adapter's sensors/controls show "unavailable" instead of stale
+        values. Unknown MACs (not yet polled) default to online.
+        """
+        dev = self.devices.get(mac)
+        return bool(dev.get("_online", True)) if dev else False
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Full discovery + stats every poll cycle."""
         try:

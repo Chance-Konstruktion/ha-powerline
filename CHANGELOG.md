@@ -4,10 +4,21 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-06-13
+
+### Fixed
+- **Offline adapters now show "unavailable" instead of stale rates.** When an
+  adapter is unplugged it is correctly flagged offline, but its TX/RX rate
+  sensors kept displaying the last-seen speed. Every *per-adapter* entity (TX/RX
+  rate, LED, Power Saving, QoS) now reports `unavailable` while the adapter is
+  offline — HA greys it out and leaves a clean gap in history, instead of logging
+  a misleading value. The connectivity binary sensor stays available so it can
+  report "Disconnected", and the network-wide sensors are unaffected.
+
 ### Internal
-- **CI added** (no integration change): `validate.yml` (HACS + hassfest),
-  `tests.yml` (pytest on every push/PR), and `release.yml` (auto-builds and
-  attaches `powerline.zip` on each release, per `hacs.json`).
+- **CI added**: `validate.yml` (HACS + hassfest), `tests.yml` (pytest on every
+  push/PR), and `release.yml` (auto-builds and attaches `powerline.zip` on each
+  release, per `hacs.json`).
 - Removed the unused `Preview.html` dev helper; expanded `.gitignore`.
 
 ## [0.2.3] - 2026-06-12
