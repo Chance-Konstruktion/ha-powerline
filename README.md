@@ -125,17 +125,19 @@ Settings → Devices & Services → Add Integration → "Powerline"
 |---|:---:|:---:|
 | TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** |
 | Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* |
-| Qualcomm **QCA7420** (AV500-class) & other QCA | ✅ | 💡 LED · 🚦 QoS · ⚡ Power Save *(via PIB)* |
+| Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* |
 | FRITZ!Powerline · devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset |
 
-> ✅ = tested & confirmed on real hardware. The **AV1000 (TL-PA7017)** is the
-> reference device: discovery, TX/RX rates, LED, power saving and QoS are all
-> verified end-to-end in 0.1.
+> ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
+> TX/RX rates, LED, power saving and QoS — on the **AV1000 (TL-PA7017)**
+> (Broadcom, since 0.1) and on **two AV500 / QCA7420** adapters (Qualcomm, 0.2).
 
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
-> *Parameter Information Block* and the vendor app only changes them via a full
-> PIB read-modify-write — too risky to replicate, so those controls aren't
-> offered there. Details + capture recipe in [`PROTOCOL.md` §9](PROTOCOL.md#9--qualcomm-qca--av500--current-state).
+> *Parameter Information Block*. We change them exactly the way the vendor app
+> does — a **read-modify-write of the adapter's own PIB** carrying the universal
+> open checksum — verified byte-identical to tpPLC on two adapters, so it applies
+> safely (a rejected write is detected and reverted, never half-applied). Details
+> in [`PROTOCOL.md` §9](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified).
 
 <details>
 <summary><b>📋 Entities created</b></summary>
@@ -239,8 +241,11 @@ adapters are plugged in and paired.
 <details>
 <summary>LED / Power Saving / QoS do nothing</summary>
 
-These are **Broadcom-only**. On a Qualcomm (QCA) adapter the switch will fail
-quickly by design — see the [feature matrix](#-supported-hardware).
+These work on both **Broadcom** (MEDIAXTREAM) and **Qualcomm** (QCA, via the PIB)
+adapters — verified on AV1000 and AV500. If a toggle has no effect: make sure the
+adapter is **online** (an offline adapter shows its controls as *unavailable*),
+and note that other/older chipsets or firmware may not expose these controls.
+See the [feature matrix](#-supported-hardware).
 </details>
 
 <details>

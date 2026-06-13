@@ -4,6 +4,15 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-06-13
+
+### Changed
+- **Docs: mark AV500 (QCA7420) as verified everywhere and remove stale claims.**
+  The Supported-Hardware matrix now shows the QCA7420 LED/QoS/power-saving column
+  as ✅ verified, and the notes/troubleshooting/platform docstrings no longer say
+  Qualcomm control is "not offered / Broadcom-only / too risky" — it's verified on
+  two AV500s. Fixed a dead `PROTOCOL.md` §9 anchor in the README.
+
 ## [0.2.4] - 2026-06-13
 
 ### Fixed

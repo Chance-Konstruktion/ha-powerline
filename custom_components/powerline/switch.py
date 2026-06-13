@@ -1,9 +1,8 @@
 """Switch platform for Powerline Network -- LED & Power Saving control.
 
-Uses MEDIAXTREAM MME 0xA058 for Broadcom adapters (confirmed on TL-PA7017).
-Qualcomm adapters use vendor-specific MMEs on 0x88E1 as fallback.
-
-Note: Experimental -- not all adapters may support these controls over Layer 2.
+Broadcom adapters use the MEDIAXTREAM Set Parameter sequence (0xA058); Qualcomm
+(QCA / AV500) adapters use a PIB read-modify-write on 0x88E1. Verified on
+TL-PA7017 (AV1000) and two QCA7420 (AV500) adapters.
 """
 
 import logging
@@ -77,7 +76,7 @@ class LedSwitch(CoordinatorEntity[TpLinkPowerlineCoordinator], SwitchEntity):
 
 
 class PowerSavingSwitch(CoordinatorEntity[TpLinkPowerlineCoordinator], SwitchEntity):
-    """Power saving mode switch for a single Powerline adapter (Broadcom only)."""
+    """Power saving mode switch for a single Powerline adapter (Broadcom + Qualcomm)."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:leaf"
