@@ -168,6 +168,10 @@ class PlcDeviceTxSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEnt
         self._attr_device_info = device_info
 
     @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.adapter_online(self._mac)
+
+    @property
     def native_value(self) -> int | None:
         rates = (self.coordinator.data or {}).get("plc_rates", {})
         r = rates.get(self._mac)
@@ -188,6 +192,10 @@ class PlcDeviceRxSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEnt
         self._mac = mac
         self._attr_unique_id = f"plc_{mac}_rx"
         self._attr_device_info = device_info
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.adapter_online(self._mac)
 
     @property
     def native_value(self) -> int | None:

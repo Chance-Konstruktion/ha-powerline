@@ -49,6 +49,10 @@ class QosPrioritySelect(CoordinatorEntity[TpLinkPowerlineCoordinator], SelectEnt
         self._attr_device_info = device_info
 
     @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.adapter_online(self._mac)
+
+    @property
     def current_option(self) -> str:
         return self.coordinator.qos_states.get(self._mac, "internet")
 

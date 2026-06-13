@@ -7,6 +7,7 @@
   "documentation": "https://github.com/Chance-Konstruktion/ha-powerline",
   "integration_type": "hub",
   "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Chance-Konstruktion/ha-powerline/issues",
   "requirements": [],
-  "version": "0.2.3"
+  "version": "0.2.4"
 }
