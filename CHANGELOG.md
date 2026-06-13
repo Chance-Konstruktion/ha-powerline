@@ -14,11 +14,15 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   offline — HA greys it out and leaves a clean gap in history, instead of logging
   a misleading value. The connectivity binary sensor stays available so it can
   report "Disconnected", and the network-wide sensors are unaffected.
+- **Options-flow translation:** the *Scan interval* field label now localizes
+  correctly — it was under `options.data` instead of `options.step.init.data`
+  (caught by the new hassfest CI), so it never showed the translated label.
 
 ### Internal
 - **CI added**: `validate.yml` (HACS + hassfest), `tests.yml` (pytest on every
   push/PR), and `release.yml` (auto-builds and attaches `powerline.zip` on each
   release, per `hacs.json`).
+- Added `issue_tracker` to `manifest.json` (required by HACS validation).
 - Removed the unused `Preview.html` dev helper; expanded `.gitignore`.
 
 ## [0.2.3] - 2026-06-12

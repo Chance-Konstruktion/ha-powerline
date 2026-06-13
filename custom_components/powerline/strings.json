@@ -25,11 +25,11 @@
     "step": {
       "init": {
         "title": "Powerline Network Options",
-        "description": "Adjust polling behavior. Changes take effect immediately."
+        "description": "Adjust polling behavior. Changes take effect immediately.",
+        "data": {
+          "scan_interval": "Scan interval (seconds)"
+        }
       }
-    },
-    "data": {
-      "scan_interval": "Scan interval (seconds)"
     }
   },
   "entity": {
