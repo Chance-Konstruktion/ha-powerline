@@ -607,13 +607,12 @@ class TestQcaOpenChecksum(TestCase):
         self.assertEqual(seen["open"][26:30], _MODULE.qca_pib_checksum(pib))
 
 
-class TestFritzPowerline(TestCase):
-    """AVM FRITZ!Powerline (QCA7420 'Custom' firmware) must never be PIB-written.
+from custom_components.powerline.homeplug import fritz as _FRITZ
 
-    Its PIB is a different size (9796 B vs QCA_PIB_SIZE 9072) and its firmware
-    rejects the apply, so the generic QCA read-modify-write is suppressed to
-    avoid truncating/corrupting the adapter's PIB.
-    """
+
+class TestFritzPowerline(TestCase):
+    """AVM FRITZ!Powerline (QCA7420): LED works via a full-size PIB write;
+    QoS / power-saving are not offered (the 510E has no such controls)."""
 
     FRITZ_510E = "5C:49:79:E6:B2:D0"   # AVM OUI 5C:49:79
     QCA_AV500 = "EC:08:6B:54:FE:E3"    # generic Qualcomm
@@ -630,17 +629,59 @@ class TestFritzPowerline(TestCase):
         hp.note_firmware(mac, "FRITZ!Powerline 510E")
         self.assertTrue(hp.is_fritz(mac))
 
-    def test_set_led_on_fritz_never_writes_pib(self) -> None:
+    def test_set_led_on_fritz_uses_full_size_pib_write(self) -> None:
+        """FRITZ LED uses the dedicated full-size path with AVM offsets, keeps
+        the section checksums valid, and never truncates the PIB."""
         hp = HomeplugAV("eth0")
+        size = _FRITZ.AVM_PIB_SIZE
+        pib = bytearray(size)
+        for o in _FRITZ.FRITZ_LED_OFFSETS:
+            pib[o] = _FRITZ.FRITZ_LED_OFF             # currently OFF
+        captured = {}
+
+        def fake_read(mac, size=_MODULE.QCA_PIB_SIZE):
+            captured["read_size"] = size
+            return bytes(pib)
+
+        def fake_write(mac, buf, close_retries=1):
+            captured["written"] = bytes(buf)
+            captured["retries"] = close_retries
+            return True
+
         with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
              patch.object(hp, "_close"), \
+             patch.object(hp, "_qca_read_pib", side_effect=fake_read), \
+             patch.object(hp, "_qca_write_pib", side_effect=fake_write), \
              patch.object(hp, "_set_led_qualcomm") as qc, \
-             patch.object(hp, "_set_led_broadcom") as bc, \
+             patch.object(hp, "_set_led_broadcom") as bc:
+            ok = hp.set_led(self.FRITZ_510E, True)        # -> LED ON
+
+        self.assertTrue(ok)
+        qc.assert_not_called()
+        bc.assert_not_called()
+        self.assertEqual(captured["read_size"], size)     # full AVM size read
+        self.assertGreater(captured["retries"], 1)        # close retried
+        written = captured["written"]
+        self.assertEqual(len(written), size)              # no truncation
+        for o in _FRITZ.FRITZ_LED_OFFSETS:
+            self.assertEqual(written[o], _FRITZ.FRITZ_LED_ON)
+        # only the LED bytes + their two folded checksum bytes changed
+        idx = _FRITZ.FRITZ_LED_OFFSETS[0] & 3
+        cksum = {c + idx for c in _MODULE.QCA_CKSUM_OFFSETS}
+        changed = {i for i in range(size) if written[i] != pib[i]}
+        self.assertEqual(changed, set(_FRITZ.FRITZ_LED_OFFSETS) | cksum)
+
+    def test_set_led_on_fritz_aborts_on_unexpected_led_table(self) -> None:
+        hp = HomeplugAV("eth0")
+        pib = bytearray(_FRITZ.AVM_PIB_SIZE)
+        for o in _FRITZ.FRITZ_LED_OFFSETS:
+            pib[o] = 0x42                                 # not 0x00/0x01
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_qca_read_pib", return_value=bytes(pib)), \
              patch.object(hp, "_qca_write_pib") as wr:
             ok = hp.set_led(self.FRITZ_510E, True)
         self.assertFalse(ok)
-        qc.assert_not_called()
-        bc.assert_not_called()
         wr.assert_not_called()
 
     def test_qos_and_power_saving_on_fritz_never_write_pib(self) -> None:

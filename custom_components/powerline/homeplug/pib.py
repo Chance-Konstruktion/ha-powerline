@@ -1,6 +1,7 @@
 """QCA AV500 PIB access (chunked module-op read/write)."""
 import random
 import struct
+import time
 
 from .const import (
     ETH_HDR,
@@ -48,13 +49,17 @@ class QcaPibMixin:
             return pl[27:27 + clen]
         return None
 
-    def _qca_read_pib(self, mac: str) -> bytes | None:
-        """Read the full PIB (chunked). Returns QCA_PIB_SIZE bytes or None."""
+    def _qca_read_pib(self, mac: str, size: int = QCA_PIB_SIZE) -> bytes | None:
+        """Read the full PIB (chunked). Returns ``size`` bytes or None.
+
+        ``size`` defaults to the generic AV500 PIB length; AVM FRITZ!Powerline
+        adapters pass their larger real size (``AVM_PIB_SIZE``).
+        """
         dst = mac_to_bytes(mac)
         pib = bytearray()
         offset = 0
-        while offset < QCA_PIB_SIZE:
-            clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - offset)
+        while offset < size:
+            clen = min(QCA_PIB_CHUNK, size - offset)
             chunk = self._qca_read_chunk(dst, mac, offset, clen)
             if not chunk or len(chunk) < clen:
                 _LOGGER.debug("QCA PIB read failed at 0x%04X (got %s)",
@@ -78,8 +83,16 @@ class QcaPibMixin:
         """Send a module-op frame and wait for its 0xA0B1 confirmation."""
         return self._qca_mod_send(dst, mac, payload) is not None
 
-    def _qca_write_pib(self, mac: str, pib: bytes) -> bool:
-        """Write the full PIB back: open -> data chunks -> close."""
+    def _qca_write_pib(self, mac: str, pib: bytes,
+                       close_retries: int = 1) -> bool:
+        """Write the full PIB back: open -> data chunks -> close.
+
+        The open length and checksum are derived from ``len(pib)``, so this
+        already handles a non-standard PIB size (e.g. AVM's 9796 bytes).
+        ``close_retries`` re-sends the close if the firmware does not ack it
+        immediately — AVM applies the PIB asynchronously and only acks the
+        close once done (it retries several times in the reference capture).
+        """
         dst = mac_to_bytes(mac)
         token = struct.pack("<H", random.randint(1, 0xFFFE))
 
@@ -120,7 +133,12 @@ class QcaPibMixin:
 
         cl = bytearray(_QCA_HDR_CLOSE)
         cl[13:15] = token
-        close_resp = self._qca_mod_send(dst, mac, bytes(cl))
+        close_resp = None
+        for attempt in range(max(1, close_retries)):
+            close_resp = self._qca_mod_send(dst, mac, bytes(cl))
+            if close_resp is not None:
+                break
+            time.sleep(0.3)
         if close_resp is None:
             _LOGGER.debug("QCA PIB write: no ack to close from %s", mac)
             return False

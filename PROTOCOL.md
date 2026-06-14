@@ -392,72 +392,59 @@ QCA control path can be added here — same as `_set_led_broadcom` / `_set_qos_b
 
 ---
 
-## 9b · FRITZ!Powerline (AVM QCA7420 "Custom" firmware) — special-cased
+## 9b · FRITZ!Powerline (AVM QCA7420 "Custom" firmware)
 
 AVM's FRITZ!Powerline adapters (e.g. **510E**, firmware `1.5.0.2-24`) use a
-Qualcomm **QCA7420** chip, so discovery, online status and PHY rates all work
-via the QCA read MMEs in §9. **Control (LED / QoS / power saving) does *not*
-work** via the PIB read-modify-write, and the generic QCA path is now
-**suppressed** on AVM adapters (`homeplug/fritz.py`). Two firmware differences
-make the PIB write unsafe:
+Qualcomm **QCA7420** chip, so discovery, online status and PHY rates work via the
+QCA read MMEs in §9. **LED control works** via the same PIB read-modify-write as
+§9 — but it needs two AVM-specific adjustments, handled in `homeplug/fritz.py`.
+The 510E has **no QoS and no power-saving** controls (the FRITZ!Powerline app
+only offers LED, restart and reset), so those entities are not created for AVM
+adapters and the corresponding writes are not attempted.
+
+**Why the generic QCA path failed first** (user log: `QCA write REJECTED …
+close status 31 00 5d`):
 
 1. **Different PIB size.** A captured 510E PIB is **9796 bytes** (`0x2644`); the
-   generic AV500 PIB is **9072 bytes** (`0x2370`, `QCA_PIB_SIZE`). The chunked
-   read in `pib.py` reads exactly `QCA_PIB_SIZE` bytes, so on a FRITZ adapter it
-   returns the **first 9072 bytes** of the 9796-byte image and *passes* the size
-   check. A read-modify-write would then write only those 9072 bytes back —
-   **truncating the PIB** — and the fixed LED/QoS/power-saving offsets point at
-   the wrong fields in AVM's larger layout. (The PIB header layout — version
-   `0x0154`, `0x0200`; HFIDs `0x03E4`/`0x0433`; chipset `0x04E4` — matches the
-   generic QCA7420; the extra ~724 bytes are appended.)
-2. **Firmware rejects the apply.** The 510E acks the module-op open and every
-   data chunk, then **rejects the close/apply** with status `31 00 5d 00 00 00`
-   (logged as "QCA write REJECTED"). So even a correctly-sized write never
-   applies.
+   generic AV500 PIB is **9072 bytes** (`0x2370`, `QCA_PIB_SIZE`). The generic
+   read/write used `QCA_PIB_SIZE`, so it read/wrote only the **first 9072 bytes**
+   of the 9796-byte image — truncating the PIB and sending a wrong open
+   length/checksum, which the firmware rejects. The fix reads/writes the
+   adapter's **real size** (`AVM_PIB_SIZE = 0x2644`); the open length and
+   checksum are derived from `len(pib)`, so they come out correct.
+2. **Different LED-table offsets.** AVM's larger PIB lays out **7** LED-enable
+   bytes at `FRITZ_LED_OFFSETS = (0x1ED3, 0x1EFB, 0x1F03, 0x1F0B, 0x1F13,
+   0x1F1B, 0x1F23)` (`0x00` = on, `0x01` = off) — different from the generic
+   `QCA_LED_OFFSETS`. Each change is folded into the two section checksums
+   (`0x0374`/`0x03BC`) via `qca_pib_set_byte`.
+
+(The PIB header layout — version `0x0154`/`0x0200`, HFIDs `0x03E4`/`0x0433`,
+chipset `0x04E4` — matches the generic QCA7420; the extra ~724 bytes are
+appended.)
+
+**Verification.** A capture of the Windows FRITZ!Powerline app toggling the LED
+contains two full `0xA0B0` module-op PIB writes (LED off vs on). Diffing the two
+9796-byte images shows **exactly** the 7 `FRITZ_LED_OFFSETS` (`01`↔`00`) plus the
+two folded checksum bytes `0x0377`/`0x03BF`. Replaying our path on the captured
+"off" image reproduces the app's "on" image **byte-for-byte**, and
+`qca_pib_checksum()` equals the open checksum the app sends (`6950e9ce`). The app
+chose token `9e5bc488`/`d43bc488` at open offset 13; the length `0x2644` sits at
+open offset 22 and the checksum at offset 26 — same layout `pib.py` already uses.
+
+**Asynchronous apply.** Unlike the generic adapters, the AVM firmware acks the
+**close** only once it has finished applying the PIB; in the capture the app
+re-sends the close several times until it gets the `0x0112` confirm (status
+all-zero). `_qca_write_pib(..., close_retries=8)` mirrors this.
 
 **Detection** (`fritz.py`): AVM OUI (`5C:49:79`, …) or an `AVM`/`FRITZ` marker in
-the firmware/HFID string. Detected adapters short-circuit `set_led`,
-`set_qos_priority` and `set_power_saving` with a clear log message instead of
-risking the PIB.
+the firmware/HFID string.
 
-**Feature set.** Per the FRITZ!Powerline app, the 510E exposes only **LED**,
-**restart** and **reset** — there is **no QoS and no power-saving** option. The
-integration therefore does not create a QoS selector or a power-saving switch
-for AVM adapters (`is_avm_device` in `fritz.py`); only the LED switch is kept.
-Restart/reset still need captures before they can be wired up (below).
+### Still open: restart & reset
 
-### How the FRITZ!Powerline app actually controls the LED (capture, not yet decoded)
-
-A capture of the Windows **FRITZ!Powerline** app toggling the 510E LED shows it
-**never rewrites the PIB**. It uses AVM-proprietary vendor MMEs on `0x88E1` with
-the Qualcomm OUI `00:B0:52` that this integration does not yet implement:
-
-| MME (req/cnf) | Observed bytes (after OUI) | Notes |
-|---|---|---|
-| `0xA06C` / `0xA06D` | get: `10` → `00 01 01 02 03`; set: `00 01` → `00 00 01 03` | strongest LED/config candidate |
-| `0xA0D0` / `0xA0D1` | `…` → 201 B (all `00`) | table/status read |
-| `0xA200` / `0xA201` | `06 00 00 00 02` → `02 …` | feature query |
-
-The app's "save" action also sends a large `0xA038` write (`VS_NW_INFO`'s MMTYPE,
-but ~1434 B here) immediately before the single `0xA06C 00 01`. **The LED toggle
-could not be isolated** from the reference capture: the `0xA06C` read-backs are
-constant (`01 02 03`) before and after, and only one write was captured.
-
-### To finish FRITZ support safely — captures still needed
-
-The vision is full per-vendor support (LED on/off, **restart**, **reset**,
-**spectrum/analysis**). To add any of these without guessing at a write that
-could brick the adapter, capture each action **separately** with the FRITZ!
-Powerline app (Wireshark filter `eth.type == 0x88e1`, OUI `00:b0:52`):
-
-1. **LED off**, wait, **LED on** — two captures, so the changing `0xA06C`
-   (or other) value byte can be diffed.
-2. **Restart** and **Reset/factory** — isolate the one-shot MME each sends.
-3. **Spectrum/analysis** — capture the request/stream; likely a tone-map or
-   spectrum-read MME.
-
-Share those and a dedicated AVM control path can be added to `fritz.py`
-alongside the existing detection.
+The 510E also exposes **restart** and **reset** in the app. Those are one-shot
+vendor MMEs not yet captured. To add them, capture each action **separately**
+(Wireshark `eth.type == 0x88e1`, OUI `00:b0:52`) and isolate the single request
+each sends; a dedicated button entity can then call it from `fritz.py`.
 
 ---
 

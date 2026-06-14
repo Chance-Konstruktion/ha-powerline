@@ -191,10 +191,14 @@ class ControlMixin:
             except (PermissionError, OSError):
                 return False
 
-            # FRITZ!Powerline: never run the generic QCA PIB write (wrong size/
-            # layout, and AVM firmware rejects the apply). See fritz.py.
+            # FRITZ!Powerline: dedicated full-size PIB write with AVM-specific
+            # LED offsets (the generic QCA path uses the wrong size/offsets and
+            # the firmware rejects it). See fritz.py.
             if self.is_fritz(mac):
-                self._reject_fritz_pib_write(mac, "LED")
+                if self._set_led_fritz(mac, on):
+                    self._led_success_macs.add(mac.upper())
+                    self._mark_chipset(mac, "qualcomm")
+                    return True
                 return False
 
             cs = self._mac_chipset(mac)
