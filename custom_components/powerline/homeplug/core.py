@@ -10,10 +10,12 @@ from .state import StateMixin
 from .pib import QcaPibMixin
 from .control import ControlMixin
 from .diagnostics import DiagnosticsMixin
+from .fritz import FritzMixin
 
 
 class HomeplugAV(
     _HomeplugBase,
+    FritzMixin,
     DiscoveryMixin,
     StateMixin,
     QcaPibMixin,

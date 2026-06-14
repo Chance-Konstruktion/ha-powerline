@@ -605,3 +605,65 @@ class TestQcaOpenChecksum(TestCase):
             hp._qca_write_pib("AA:BB:CC:DD:EE:FF", pib)
 
         self.assertEqual(seen["open"][26:30], _MODULE.qca_pib_checksum(pib))
+
+
+class TestFritzPowerline(TestCase):
+    """AVM FRITZ!Powerline (QCA7420 'Custom' firmware) must never be PIB-written.
+
+    Its PIB is a different size (9796 B vs QCA_PIB_SIZE 9072) and its firmware
+    rejects the apply, so the generic QCA read-modify-write is suppressed to
+    avoid truncating/corrupting the adapter's PIB.
+    """
+
+    FRITZ_510E = "5C:49:79:E6:B2:D0"   # AVM OUI 5C:49:79
+    QCA_AV500 = "EC:08:6B:54:FE:E3"    # generic Qualcomm
+
+    def test_detects_fritz_by_oui(self) -> None:
+        hp = HomeplugAV("eth0")
+        self.assertTrue(hp.is_fritz(self.FRITZ_510E))
+        self.assertFalse(hp.is_fritz(self.QCA_AV500))
+
+    def test_detects_fritz_by_firmware_string(self) -> None:
+        hp = HomeplugAV("eth0")
+        mac = "AA:BB:CC:DD:EE:FF"            # not an AVM OUI
+        self.assertFalse(hp.is_fritz(mac))
+        hp.note_firmware(mac, "FRITZ!Powerline 510E")
+        self.assertTrue(hp.is_fritz(mac))
+
+    def test_set_led_on_fritz_never_writes_pib(self) -> None:
+        hp = HomeplugAV("eth0")
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_set_led_qualcomm") as qc, \
+             patch.object(hp, "_set_led_broadcom") as bc, \
+             patch.object(hp, "_qca_write_pib") as wr:
+            ok = hp.set_led(self.FRITZ_510E, True)
+        self.assertFalse(ok)
+        qc.assert_not_called()
+        bc.assert_not_called()
+        wr.assert_not_called()
+
+    def test_qos_and_power_saving_on_fritz_never_write_pib(self) -> None:
+        hp = HomeplugAV("eth0")
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_qca_write_pib") as wr:
+            self.assertFalse(hp.set_qos_priority(self.FRITZ_510E, "gaming"))
+            self.assertFalse(hp.set_power_saving(self.FRITZ_510E, True))
+        wr.assert_not_called()
+
+
+class TestAvmDeviceHelper(TestCase):
+    """is_avm_device gates QoS / power-saving entity creation for FRITZ."""
+
+    def test_by_oui(self) -> None:
+        from custom_components.powerline.homeplug.fritz import is_avm_device
+        self.assertTrue(is_avm_device("5C:49:79:E6:B2:D0"))
+        self.assertFalse(is_avm_device("EC:08:6B:54:FE:E3"))
+
+    def test_by_model_or_firmware_string(self) -> None:
+        from custom_components.powerline.homeplug.fritz import is_avm_device
+        mac = "AA:BB:CC:DD:EE:FF"
+        self.assertFalse(is_avm_device(mac, {"model": "TP-LINK Product"}))
+        self.assertTrue(is_avm_device(mac, {"model": "FRITZ!Powerline 510E"}))
+        self.assertTrue(is_avm_device(mac, {"firmware_ver": "AVM Powerline"}))
