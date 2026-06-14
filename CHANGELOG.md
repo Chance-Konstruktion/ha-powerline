@@ -4,6 +4,8 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-14
+
 ### Added
 - **LED control now works on FRITZ!Powerline (AVM QCA7420).** AVM adapters
   (e.g. 510E) use a QCA7420 chip but ship "Custom" firmware with a **larger PIB**
@@ -27,6 +29,9 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 ### Documentation
 - **PROTOCOL.md §9b** documents the FRITZ!Powerline LED path (real PIB size, AVM
   LED offsets, checksum folding, async close) and what restart/reset still need.
+- **README** now lists FRITZ!Powerline in the hardware matrix and is honest about
+  its scope: LED works (byte-verified against the AVM app capture), QoS/power
+  saving are intentionally absent, and restart/reset are still to come.
 
 ## [0.2.6] - 2026-06-13
 
