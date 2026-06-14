@@ -191,6 +191,12 @@ class ControlMixin:
             except (PermissionError, OSError):
                 return False
 
+            # FRITZ!Powerline: never run the generic QCA PIB write (wrong size/
+            # layout, and AVM firmware rejects the apply). See fritz.py.
+            if self.is_fritz(mac):
+                self._reject_fritz_pib_write(mac, "LED")
+                return False
+
             cs = self._mac_chipset(mac)
             # Try Broadcom MEDIAXTREAM first (most common for modern TP-Link)
             if cs in ("broadcom", "unknown"):
@@ -232,6 +238,10 @@ class ControlMixin:
                 self._open_hpav()
                 self._open_mx()
             except (PermissionError, OSError):
+                return False
+
+            if self.is_fritz(mac):
+                self._reject_fritz_pib_write(mac, "power saving")
                 return False
 
             cs = self._mac_chipset(mac)
@@ -390,6 +400,10 @@ class ControlMixin:
                 self._open_hpav()
                 self._open_mx()
             except (PermissionError, OSError):
+                return False
+
+            if self.is_fritz(mac):
+                self._reject_fritz_pib_write(mac, "QoS")
                 return False
 
             cs = self._mac_chipset(mac)

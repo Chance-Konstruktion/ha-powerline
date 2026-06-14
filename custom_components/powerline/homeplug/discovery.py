@@ -542,3 +542,6 @@ class DiscoveryMixin:
                                 ver = data[off+3:off+3+ver_len].decode(
                                     "ascii", errors="ignore").rstrip("\x00")
                                 devices[mac]["firmware_ver"] = ver
+                                # Let FritzMixin recognise AVM "Custom" firmware
+                                # (e.g. "...-CS") on AVM OUIs we don't list.
+                                self.note_firmware(mac, ver)

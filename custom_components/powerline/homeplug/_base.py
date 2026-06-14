@@ -29,6 +29,9 @@ class _HomeplugBase:
         # state and rate code must branch per MAC — never on one global guess.
         self._chipset_by_mac: dict[str, str] = {}
         self._led_success_macs: set[str] = set()
+        # Firmware/HFID strings learned during discovery, used by FritzMixin to
+        # identify AVM "Custom" firmware on AVM OUIs we don't list explicitly.
+        self._fw_hint: dict[str, str] = {}
         # MACs whose firmware/model we already tried — avoids re-querying
         # (and timing out on) device info every single poll.
         self._info_attempted: set[str] = set()
