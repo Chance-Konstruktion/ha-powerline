@@ -4,17 +4,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
-### Fixed
-- **FRITZ!Powerline (AVM QCA7420) no longer risks PIB corruption.** AVM's
-  FRITZ!Powerline adapters (e.g. 510E) use a QCA7420 chip but ship "Custom"
-  firmware with a **larger PIB** (9796 B vs the 9072 B the QCA path assumes) and
-  a firmware that **rejects PIB writes** (close status `31 00 5d`). The generic
-  QCA read-modify-write read only the first 9072 bytes — which *passed* the size
-  check — so a write-back would have truncated the real PIB. A new
-  `homeplug/fritz.py` module now **detects AVM adapters** (by OUI or firmware
-  string) and **suppresses** LED/QoS/power-saving PIB writes on them, logging a
-  clear, actionable message instead of the confusing "QCA write REJECTED /
-  power-cycle" warning. Discovery, status and PHY rates are unaffected.
+### Added
+- **LED control now works on FRITZ!Powerline (AVM QCA7420).** AVM adapters
+  (e.g. 510E) use a QCA7420 chip but ship "Custom" firmware with a **larger PIB**
+  (9796 B vs the 9072 B the generic QCA path assumed) and an **AVM-specific LED
+  table** (7 enable bytes at `0x1ED3 … 0x1F23`). The previous code wrote only the
+  first 9072 bytes with a wrong open length/checksum, which the firmware rejected
+  (`close status 31 00 5d`). A new `homeplug/fritz.py` module reads/writes the
+  adapter's **real PIB size**, flips the AVM LED offsets (keeping the section
+  checksums valid), and retries the asynchronous close — reconstructed
+  **byte-for-byte** from a capture of the AVM app. Detection is by OUI or an
+  `AVM`/`FRITZ` firmware/HFID marker. Discovery, status and PHY rates are
+  unaffected.
 
 ### Changed
 - **No QoS or power-saving entities for FRITZ!Powerline.** Per the FRITZ!
@@ -23,10 +24,9 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   QoS selector or a power-saving switch for AVM adapters (detected by OUI or an
   AVM/FRITZ model/firmware string); the LED switch is still created.
 
-### Added
-- **PROTOCOL.md §9b** documents the FRITZ!Powerline findings: PIB size/layout,
-  the AVM vendor MMEs the FRITZ! app uses (`0xA06C`/`0xA0D0`/`0xA200`), and the
-  captures still needed to add LED/restart/reset/spectrum control safely.
+### Documentation
+- **PROTOCOL.md §9b** documents the FRITZ!Powerline LED path (real PIB size, AVM
+  LED offsets, checksum folding, async close) and what restart/reset still need.
 
 ## [0.2.6] - 2026-06-13
 
