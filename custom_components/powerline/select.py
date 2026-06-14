@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, QOS_OPTIONS, get_mac
 from .coordinator import TpLinkPowerlineCoordinator
+from .homeplug.fritz import is_avm_device
 from .sensor import device_info_for_adapter, setup_dynamic_platform
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +29,10 @@ async def async_setup_entry(
     coordinator: TpLinkPowerlineCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     def _factory(mac: str, dev: dict[str, Any]) -> list[SelectEntity]:
+        # AVM FRITZ!Powerline adapters have no QoS control (only LED, restart
+        # and reset), so don't create a QoS selector for them.
+        if is_avm_device(mac, dev):
+            return []
         return [QosPrioritySelect(coordinator, mac, device_info_for_adapter(mac, dev))]
 
     setup_dynamic_platform(coordinator, async_add_entities, _factory)

@@ -16,6 +16,13 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   clear, actionable message instead of the confusing "QCA write REJECTED /
   power-cycle" warning. Discovery, status and PHY rates are unaffected.
 
+### Changed
+- **No QoS or power-saving entities for FRITZ!Powerline.** Per the FRITZ!
+  Powerline app, these adapters (e.g. 510E) only expose LED, restart and reset —
+  there is no QoS or power-saving option. The integration no longer creates a
+  QoS selector or a power-saving switch for AVM adapters (detected by OUI or an
+  AVM/FRITZ model/firmware string); the LED switch is still created.
+
 ### Added
 - **PROTOCOL.md §9b** documents the FRITZ!Powerline findings: PIB size/layout,
   the AVM vendor MMEs the FRITZ! app uses (`0xA06C`/`0xA0D0`/`0xA200`), and the

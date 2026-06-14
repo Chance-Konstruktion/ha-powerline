@@ -46,6 +46,33 @@ AVM_OUIS = frozenset({
 # "FRITZ!Powerline 510E" / "AVM Powerline 510E".
 AVM_FW_MARKERS = ("FRITZ", "AVM")
 
+# AVM FRITZ!Powerline adapters expose a smaller feature set than the generic
+# QCA/Broadcom adapters: only LED, restart and reset (per the FRITZ!Powerline
+# app). They have NO QoS and NO power-saving controls, so those entities must
+# not be created for them.
+AVM_SUPPORTS_QOS = False
+AVM_SUPPORTS_POWER_SAVING = False
+
+
+def is_avm_mac(mac: str) -> bool:
+    """True if a MAC's OUI belongs to AVM."""
+    return bool(mac) and mac.upper()[0:8] in AVM_OUIS
+
+
+def is_avm_device(mac: str, dev: dict | None = None) -> bool:
+    """True if an adapter is AVM, by OUI or an AVM/FRITZ marker in its strings.
+
+    ``dev`` is a discovery device dict (``model`` / ``firmware_ver``); either
+    may carry "FRITZ!Powerline ..." or "AVM ...". Usable from the entity layer,
+    which has no HomeplugAV instance.
+    """
+    if is_avm_mac(mac):
+        return True
+    if not dev:
+        return False
+    blob = f"{dev.get('model', '')} {dev.get('firmware_ver', '')}".upper()
+    return any(marker in blob for marker in AVM_FW_MARKERS)
+
 
 class FritzMixin:
     """Detect AVM FRITZ!Powerline adapters and keep unsafe PIB writes away."""
@@ -63,7 +90,7 @@ class FritzMixin:
         """
         if not mac:
             return False
-        if mac.upper()[0:8] in AVM_OUIS:
+        if is_avm_mac(mac):
             return True
         fw = (firmware or self._fw_hint.get(mac.upper(), "")).upper()
         return any(marker in fw for marker in AVM_FW_MARKERS)

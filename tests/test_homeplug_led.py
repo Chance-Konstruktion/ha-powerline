@@ -651,3 +651,19 @@ class TestFritzPowerline(TestCase):
             self.assertFalse(hp.set_qos_priority(self.FRITZ_510E, "gaming"))
             self.assertFalse(hp.set_power_saving(self.FRITZ_510E, True))
         wr.assert_not_called()
+
+
+class TestAvmDeviceHelper(TestCase):
+    """is_avm_device gates QoS / power-saving entity creation for FRITZ."""
+
+    def test_by_oui(self) -> None:
+        from custom_components.powerline.homeplug.fritz import is_avm_device
+        self.assertTrue(is_avm_device("5C:49:79:E6:B2:D0"))
+        self.assertFalse(is_avm_device("EC:08:6B:54:FE:E3"))
+
+    def test_by_model_or_firmware_string(self) -> None:
+        from custom_components.powerline.homeplug.fritz import is_avm_device
+        mac = "AA:BB:CC:DD:EE:FF"
+        self.assertFalse(is_avm_device(mac, {"model": "TP-LINK Product"}))
+        self.assertTrue(is_avm_device(mac, {"model": "FRITZ!Powerline 510E"}))
+        self.assertTrue(is_avm_device(mac, {"firmware_ver": "AVM Powerline"}))

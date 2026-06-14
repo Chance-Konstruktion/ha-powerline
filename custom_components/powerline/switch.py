@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, get_mac
 from .coordinator import TpLinkPowerlineCoordinator
+from .homeplug.fritz import is_avm_device
 from .sensor import device_info_for_adapter, setup_dynamic_platform
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,10 +30,12 @@ async def async_setup_entry(
 
     def _factory(mac: str, dev: dict[str, Any]) -> list[SwitchEntity]:
         info = device_info_for_adapter(mac, dev)
-        return [
-            LedSwitch(coordinator, mac, info),
-            PowerSavingSwitch(coordinator, mac, info),
-        ]
+        entities: list[SwitchEntity] = [LedSwitch(coordinator, mac, info)]
+        # AVM FRITZ!Powerline adapters have no power-saving control (only LED,
+        # restart and reset), so don't create a non-functional switch for them.
+        if not is_avm_device(mac, dev):
+            entities.append(PowerSavingSwitch(coordinator, mac, info))
+        return entities
 
     setup_dynamic_platform(coordinator, async_add_entities, _factory)
 

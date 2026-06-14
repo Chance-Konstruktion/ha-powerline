@@ -420,6 +420,12 @@ the firmware/HFID string. Detected adapters short-circuit `set_led`,
 `set_qos_priority` and `set_power_saving` with a clear log message instead of
 risking the PIB.
 
+**Feature set.** Per the FRITZ!Powerline app, the 510E exposes only **LED**,
+**restart** and **reset** — there is **no QoS and no power-saving** option. The
+integration therefore does not create a QoS selector or a power-saving switch
+for AVM adapters (`is_avm_device` in `fritz.py`); only the LED switch is kept.
+Restart/reset still need captures before they can be wired up (below).
+
 ### How the FRITZ!Powerline app actually controls the LED (capture, not yet decoded)
 
 A capture of the Windows **FRITZ!Powerline** app toggling the 510E LED shows it
