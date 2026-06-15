@@ -140,8 +140,9 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > was reconstructed **byte-for-byte from a capture of the FRITZ!Powerline app**
 > (the generic QCA path failed only because of the wrong PIB size/offsets).
 > **QoS and power saving are not offered** because the device itself has no such
-> setting (the FRITZ!Powerline app only exposes LED, restart and reset). Restart
-> and reset are not implemented yet. See [`PROTOCOL.md` §9b](PROTOCOL.md).
+> setting (the FRITZ!Powerline app only exposes LED, restart and reset). A
+> **Restart** button is provided (soft reboot via `VS_RS_DEV`); factory reset is
+> not implemented yet. See [`PROTOCOL.md` §9b](PROTOCOL.md).
 
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
 > *Parameter Information Block*. We change them exactly the way the vendor app
@@ -170,6 +171,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | LED | Switch | Disabled |
 | Power Saving | Switch | Disabled |
 | QoS Priority | Select | Disabled |
+| Restart | Button (`restart`) | FRITZ!Powerline only |
 
 **What the controls do** (mirrors the tpPLC app):
 - **LED** — turn the adapter's LEDs on or off.
@@ -280,8 +282,8 @@ Capture the official tpPLC app performing an action and compare with
 
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
 - [x] **0.2 — Qualcomm / AV500 (verified):** LED, QoS and power saving via the PIB, with the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter — confirmed applying on **two** AV500s, no reset needed ([details](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified)).
-- [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates plus **LED on/off** via AVM's real PIB size and LED offsets (reconstructed byte-for-byte from the FRITZ!Powerline app). QoS/power-saving are intentionally omitted (the device has no such setting).
-- [ ] **FRITZ!Powerline restart & reset:** one-shot AVM vendor MMEs — pending a capture of each action from the FRITZ!Powerline app.
+- [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
+- [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
 

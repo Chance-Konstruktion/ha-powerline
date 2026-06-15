@@ -61,7 +61,8 @@
     "button": {
       "diagnose": { "name": "Diagnose" },
       "all_leds_on": { "name": "All LEDs On" },
-      "all_leds_off": { "name": "All LEDs Off" }
+      "all_leds_off": { "name": "All LEDs Off" },
+      "restart": { "name": "Restart" }
     }
   }
 }

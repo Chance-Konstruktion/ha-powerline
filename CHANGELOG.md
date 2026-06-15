@@ -19,6 +19,13 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   `AVM`/`FRITZ` firmware/HFID marker. Discovery, status and PHY rates are
   unaffected.
 
+- **Restart button for FRITZ!Powerline.** A per-adapter **Restart** button
+  reboots the adapter via the QCA reset MME (`VS_RS_DEV`, `0xA01C` → `0xA01D`),
+  captured from the FRITZ!Powerline app's restart action (empty request,
+  MMV=0x00, QCA OUI). Soft reboot, not a factory reset; the adapter drops offline
+  for a few seconds and the next poll picks it back up. Only created for AVM
+  adapters for now.
+
 ### Changed
 - **No QoS or power-saving entities for FRITZ!Powerline.** Per the FRITZ!
   Powerline app, these adapters (e.g. 510E) only expose LED, restart and reset —

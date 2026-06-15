@@ -17,12 +17,19 @@ from .const import (
     QCA_POWERSAVE_PROBE,
     QCA_QOS_OFFSET,
     QCA_QOS_VALUES,
+    VS_RS_DEV_CNF,
+    VS_RS_DEV_REQ,
     _LOGGER,
     _MX_ACTION_OK,
     _MX_APPLY_OK,
     _locked,
 )
-from .frames import build_mx_frame, build_mx_set_param, mac_to_bytes
+from .frames import (
+    build_mx_frame,
+    build_mx_set_param,
+    build_qca_vs0_frame,
+    mac_to_bytes,
+)
 from .parsers import qca_pib_set_byte
 
 class ControlMixin:
@@ -230,6 +237,38 @@ class ControlMixin:
             return False
         except Exception as err:
             _LOGGER.exception("LED control exception for %s: %s", mac, err)
+            return False
+        finally:
+            self._close()
+
+    @_locked
+    def restart(self, mac: str) -> bool:
+        """Reboot an adapter via the QCA reset MME (VS_RS_DEV, 0xA01C).
+
+        Soft restart — NOT a factory reset. Captured from the FRITZ!Powerline
+        app: an empty 0xA01C request (MMV=0x00, QCA OUI, no payload) is answered
+        with 0xA01D and the adapter reboots. The adapter goes offline for a few
+        seconds; the next poll picks it back up.
+        """
+        try:
+            try:
+                self._open_hpav()
+            except (PermissionError, OSError):
+                return False
+            dst = mac_to_bytes(mac)
+            frame = build_qca_vs0_frame(dst, self._src_mac, VS_RS_DEV_REQ)
+            resp = self._send_recv(self._sock_hpav, frame, 2.0,
+                                   expected_src=mac,
+                                   stop_on=frozenset((VS_RS_DEV_CNF,)))
+            ok = any(m == VS_RS_DEV_CNF for m, _, _ in resp)
+            if ok:
+                _LOGGER.info("Restart command confirmed by %s", mac)
+            else:
+                _LOGGER.warning("Restart: no confirmation from %s "
+                                "(may not support VS_RS_DEV)", mac)
+            return ok
+        except Exception as err:
+            _LOGGER.exception("Restart exception for %s: %s", mac, err)
             return False
         finally:
             self._close()

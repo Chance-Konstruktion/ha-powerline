@@ -77,20 +77,25 @@ def build_qca_frame(dst: bytes, src: bytes, mmtype: int,
     """Build Qualcomm vendor-specific frame (0x88E1 + QCA OUI)."""
     return build_hpav_frame(dst, src, mmtype, QCA_OUI + payload)
 
-def build_qca_mod_frame(dst: bytes, src: bytes, payload: bytes) -> bytes:
-    """Build a QCA module-operation frame (0x88E1, MMTYPE 0xA0B0, OUI 00:b0:52).
+def build_qca_vs0_frame(dst: bytes, src: bytes, mmtype: int,
+                        payload: bytes = b"") -> bytes:
+    """Build a QCA vendor frame with MMV=0x00 and NO fragmentation field.
 
-    Unlike build_qca_frame() this uses MMV=0x00 and NO fragmentation field —
-    that is exactly what the QCA7420 module read/write protocol uses on the wire.
+    Some QCA7420 MMEs (the module read/write 0xA0B0 and the reset 0xA01C) use
+    MMV=0x00 with no FMI on the wire, unlike build_qca_frame() (MMV=0x01 + FMI).
     """
     frame = (
         dst + src
         + struct.pack("!H", ETHERTYPE_HPAV)
-        + struct.pack("<BH", 0x00, VS_MOD_OP_REQ)
+        + struct.pack("<BH", 0x00, mmtype)
         + QCA_OUI
         + payload
     )
     return frame.ljust(ETH_MIN, b"\x00")
+
+def build_qca_mod_frame(dst: bytes, src: bytes, payload: bytes) -> bytes:
+    """Build a QCA module-operation frame (0x88E1, MMTYPE 0xA0B0, OUI 00:b0:52)."""
+    return build_qca_vs0_frame(dst, src, VS_MOD_OP_REQ, payload)
 
 def build_mx_frame(dst: bytes, src: bytes, mmtype: int, seq: int = 1,
                    payload: bytes = b"", version: int = 0x02) -> bytes:
@@ -136,6 +141,7 @@ __all__ = [
     "build_mx_set_param",
     "build_qca_frame",
     "build_qca_mod_frame",
+    "build_qca_vs0_frame",
     "get_iface_mac",
     "mac_to_bytes",
     "mac_to_str",
