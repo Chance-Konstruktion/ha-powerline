@@ -10,7 +10,7 @@ Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` 
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-03A9F4.svg)](https://www.home-assistant.io/)
-[![Release](https://img.shields.io/badge/release-0.2.0-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
+[![Release](https://img.shields.io/badge/release-0.3.0-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
 [![Protocol](https://img.shields.io/badge/Protocol-reverse--engineered-F59E0B.svg)](PROTOCOL.md)
 
@@ -45,7 +45,7 @@ Every vendor command was **reverse-engineered from Wireshark** captures of the o
 <td width="33%" valign="top">
 
 ### 🎯 Honest about chipsets
-Feature support depends on the **chipset**, and the docs say so plainly — no fake "supported" checkmarks.
+Feature support depends on the **chipset** (and on vendor firmware — AVM FRITZ!Powerline gets its [own module](PROTOCOL.md)), and the docs say so plainly — no fake "supported" checkmarks.
 
 </td>
 </tr>
@@ -121,16 +121,28 @@ Settings → Devices & Services → Add Integration → "Powerline"
 
 ## 🧰 Supported Hardware
 
-| Adapter / Chipset | Status & rates | LED · Power Save · QoS |
-|---|:---:|:---:|
-| TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** |
-| Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* |
-| Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* |
-| FRITZ!Powerline · devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset |
+| Adapter / Chipset | Status & rates | LED | Power Save · QoS |
+|---|:---:|:---:|:---:|
+| TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** | ✅ **verified** |
+| Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* | ✅ *(expected)* |
+| Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
+| **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
+| devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
 > TX/RX rates, LED, power saving and QoS — on the **AV1000 (TL-PA7017)**
 > (Broadcom, since 0.1) and on **two AV500 / QCA7420** adapters (Qualcomm, 0.2).
+
+> 🟦 **FRITZ!Powerline (AVM):** these adapters use a QCA7420 chip but ship AVM's
+> own "Custom" firmware, so they get a **dedicated module** (`homeplug/fritz.py`).
+> Discovery, online status and PHY rates work like any QCA adapter. **LED on/off**
+> is implemented via AVM's larger PIB (9796 B) and AVM-specific LED offsets — it
+> was reconstructed **byte-for-byte from a capture of the FRITZ!Powerline app**
+> (the generic QCA path failed only because of the wrong PIB size/offsets).
+> **QoS and power saving are not offered** because the device itself has no such
+> setting (the FRITZ!Powerline app only exposes LED, restart and reset). A
+> **Restart** button is provided (soft reboot via `VS_RS_DEV`); factory reset is
+> not implemented yet. See [`PROTOCOL.md` §9b](PROTOCOL.md).
 
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
 > *Parameter Information Block*. We change them exactly the way the vendor app
@@ -159,6 +171,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | LED | Switch | Disabled |
 | Power Saving | Switch | Disabled |
 | QoS Priority | Select | Disabled |
+| Restart | Button (`restart`) | FRITZ!Powerline only |
 
 **What the controls do** (mirrors the tpPLC app):
 - **LED** — turn the adapter's LEDs on or off.
@@ -168,7 +181,9 @@ Settings → Devices & Services → Add Integration → "Powerline"
   **Internet**, **Online Games**, **Audio / Video**, or **Voice over IP**.
 
 LED / Power Saving / QoS are disabled by default — enable them per entity. They
-work on both Broadcom and Qualcomm (AV500) adapters.
+work on both Broadcom and Qualcomm (AV500) adapters. On **FRITZ!Powerline (AVM)**
+only the **LED** switch is created — those devices have no QoS or power-saving
+setting, so those entities are deliberately omitted.
 </details>
 
 <details>
@@ -245,6 +260,8 @@ These work on both **Broadcom** (MEDIAXTREAM) and **Qualcomm** (QCA, via the PIB
 adapters — verified on AV1000 and AV500. If a toggle has no effect: make sure the
 adapter is **online** (an offline adapter shows its controls as *unavailable*),
 and note that other/older chipsets or firmware may not expose these controls.
+On **FRITZ!Powerline (AVM)** only **LED** is available (the device has no QoS or
+power-saving setting); restart/reset are not implemented yet.
 See the [feature matrix](#-supported-hardware).
 </details>
 
@@ -265,6 +282,8 @@ Capture the official tpPLC app performing an action and compare with
 
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
 - [x] **0.2 — Qualcomm / AV500 (verified):** LED, QoS and power saving via the PIB, with the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter — confirmed applying on **two** AV500s, no reset needed ([details](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified)).
+- [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
+- [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
 

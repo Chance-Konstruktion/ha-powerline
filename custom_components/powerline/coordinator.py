@@ -216,6 +216,21 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.exception("LED control crashed for %s (on=%s)", mac, on)
             return False
 
+    async def async_restart_adapter(self, mac: str) -> bool:
+        """Reboot an adapter (soft restart via VS_RS_DEV)."""
+        try:
+            result = await asyncio.wait_for(
+                self.hass.async_add_executor_job(self.hp.restart, mac),
+                timeout=LED_SET_TIMEOUT,
+            )
+            return result
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Restart timed out for %s", mac)
+            return False
+        except Exception:
+            _LOGGER.exception("Restart crashed for %s", mac)
+            return False
+
     async def async_set_all_leds(self, on: bool) -> bool:
         """Turn every adapter's LED on/off at once (tpPLC "all LEDs" buttons).
 

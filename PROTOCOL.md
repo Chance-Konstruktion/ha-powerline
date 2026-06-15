@@ -439,12 +439,26 @@ all-zero). `_qca_write_pib(..., close_retries=8)` mirrors this.
 **Detection** (`fritz.py`): AVM OUI (`5C:49:79`, …) or an `AVM`/`FRITZ` marker in
 the firmware/HFID string.
 
-### Still open: restart & reset
+### Restart (implemented)
 
-The 510E also exposes **restart** and **reset** in the app. Those are one-shot
-vendor MMEs not yet captured. To add them, capture each action **separately**
-(Wireshark `eth.type == 0x88e1`, OUI `00:b0:52`) and isolate the single request
-each sends; a dedicated button entity can then call it from `fritz.py`.
+The app's **restart** action sends the QCA reset MME `VS_RS_DEV` and the adapter
+reboots. Captured from the 510E:
+
+| | MMV | MMTYPE | OUI | payload |
+|---|---|---|---|---|
+| req | `0x00` | `0xA01C` (LE `1c a0`) | `00 b0 52` | *(empty)* |
+| cnf | `0x00` | `0xA01D` | `00 b0 52` | *(empty)* |
+
+Note MMV is **0x00** with **no FMI** (like the module-op frames), not the
+MMV=0x01+FMI form of `build_qca_frame`. Exposed as a per-adapter **Restart**
+button (`button.py` → `coordinator.async_restart_adapter` → `HomeplugAV.restart`,
+which sends `build_qca_vs0_frame(..., VS_RS_DEV_REQ)` and waits for `0xA01D`).
+This is a **soft reboot, not a factory reset**.
+
+### Still open: reset (factory)
+
+The app's **reset** (factory) action is a separate one-shot MME, not yet
+captured. Capture it alone (`eth.type == 0x88e1`, OUI `00:b0:52`) to add it.
 
 ---
 

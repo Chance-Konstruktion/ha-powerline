@@ -81,6 +81,11 @@ VS_NW_INFO_REQ       = 0xA038;  VS_NW_INFO_CNF       = 0xA039  # network info (+
 VS_LNK_STATS_REQ     = 0xA030;  VS_LNK_STATS_CNF     = 0xA031  # per-link statistics
 VS_NW_INFO_STATS_REQ = 0xA074;  VS_NW_INFO_STATS_CNF = 0xA075  # extended network info/stats
 VS_RD_MOD_REQ        = 0xA024;  VS_RD_MOD_CNF        = 0xA025  # read module (PIB/MAC) — read-only
+# Reset/restart the device (soft reboot — NOT a factory reset). Captured from
+# the FRITZ!Powerline app's "restart" action: an empty VS_RS_DEV request
+# (MMV=0x00, OUI 00:b0:52, no payload) → 0xA01D confirm, then the adapter
+# reboots. Verified on the FRITZ!Powerline 510E (QCA7420).
+VS_RS_DEV_REQ        = 0xA01C;  VS_RS_DEV_CNF        = 0xA01D  # reset/restart device
 # VS_WR_MOD (0xA020) / VS_MOD_NVM (0xA028) write the PIB. Module codes:
 # VS_MODULE_MAC=1<<0, VS_MODULE_PIB=1<<1, VS_MODULE_FORCE=1<<4. Intentionally
 # NOT used — a bad raw PIB write could lose the network key / brick the adapter.
@@ -226,6 +231,8 @@ __all__ = [
     "VS_NW_STATS_REQ",
     "VS_RD_MOD_CNF",
     "VS_RD_MOD_REQ",
+    "VS_RS_DEV_CNF",
+    "VS_RS_DEV_REQ",
     "VS_SET_LED_BEHAVIOR",
     "VS_SW_VER_CNF",
     "VS_SW_VER_REQ",

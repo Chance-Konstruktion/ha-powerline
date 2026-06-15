@@ -708,3 +708,38 @@ class TestAvmDeviceHelper(TestCase):
         self.assertFalse(is_avm_device(mac, {"model": "TP-LINK Product"}))
         self.assertTrue(is_avm_device(mac, {"model": "FRITZ!Powerline 510E"}))
         self.assertTrue(is_avm_device(mac, {"firmware_ver": "AVM Powerline"}))
+
+
+class TestRestart(TestCase):
+    """Adapter restart via VS_RS_DEV (0xA01C), captured from the FRITZ app."""
+
+    MAC = "5C:49:79:E6:B2:D0"
+
+    def test_restart_sends_vs_rs_dev_and_confirms(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._sock_hpav = MagicMock()
+        sent = {}
+
+        def fake_send_recv(sock, frame, timeout=2.0, expected_src=None,
+                           stop_on=None):
+            sent["frame"] = frame
+            return [(_MODULE.VS_RS_DEV_CNF, self.MAC, b"")]
+
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_close"), \
+             patch.object(hp, "_send_recv", side_effect=fake_send_recv):
+            ok = hp.restart(self.MAC)
+
+        self.assertTrue(ok)
+        frame = sent["frame"]
+        # MMV=0x00, MMTYPE 0xA01C (LE), OUI 00:b0:52, empty body
+        self.assertEqual(frame[14], 0x00)
+        self.assertEqual(_struct.unpack("<H", frame[15:17])[0],
+                         _MODULE.VS_RS_DEV_REQ)
+        self.assertEqual(frame[17:20], b"\x00\xb0\x52")
+
+    def test_restart_returns_false_without_confirmation(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._sock_hpav = MagicMock()
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_close"), \
+             patch.object(hp, "_send_recv", return_value=[]):
+            self.assertFalse(hp.restart(self.MAC))

@@ -6,16 +6,23 @@ frame data to the Home Assistant logs for troubleshooting.
 
 import logging
 
-from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from typing import Any
+
+from .const import DOMAIN, get_mac
 from .coordinator import TpLinkPowerlineCoordinator
 from .homeplug import async_diagnose
-from .sensor import network_device_info
+from .homeplug.fritz import is_avm_device
+from .sensor import (
+    device_info_for_adapter,
+    network_device_info,
+    setup_dynamic_platform,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up diagnostic button."""
+    """Set up diagnostic + per-adapter buttons."""
     coordinator: TpLinkPowerlineCoordinator = hass.data[DOMAIN][entry.entry_id]
     interface = entry.data.get("interface")
     async_add_entities([
@@ -31,6 +38,16 @@ async def async_setup_entry(
         AllLedsButton(coordinator, on=True),
         AllLedsButton(coordinator, on=False),
     ])
+
+    # Per-adapter Restart button. Only created for FRITZ!Powerline (AVM), where
+    # the VS_RS_DEV reset is captured and verified; other vendors aren't exposed
+    # until confirmed.
+    def _factory(mac: str, dev: dict[str, Any]) -> list[ButtonEntity]:
+        if not is_avm_device(mac, dev):
+            return []
+        return [RestartButton(coordinator, mac, device_info_for_adapter(mac, dev))]
+
+    setup_dynamic_platform(coordinator, async_add_entities, _factory)
 
 
 class AllLedsButton(ButtonEntity):
@@ -50,6 +67,27 @@ class AllLedsButton(ButtonEntity):
     async def async_press(self) -> None:
         """Apply the LED state to every known adapter."""
         await self._coordinator.async_set_all_leds(self._on)
+
+
+class RestartButton(ButtonEntity):
+    """Reboot a single adapter (soft restart via VS_RS_DEV)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:restart"
+    _attr_translation_key = "restart"
+    _attr_device_class = ButtonDeviceClass.RESTART
+
+    def __init__(self, coordinator: TpLinkPowerlineCoordinator,
+                 mac: str, device_info) -> None:
+        self._coordinator = coordinator
+        self._mac = mac
+        self._attr_unique_id = f"plc_{mac}_restart"
+        self._attr_device_info = device_info
+
+    async def async_press(self) -> None:
+        """Send the restart command to this adapter."""
+        if not await self._coordinator.async_restart_adapter(self._mac):
+            _LOGGER.warning("Restart failed for %s", self._mac)
 
 
 class DiagnosticButton(ButtonEntity):
