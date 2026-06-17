@@ -57,6 +57,9 @@ def setup_dynamic_platform(
     entity_factory(mac, dev_dict) must return a list of entities.
     """
     tracked_macs: set[str] = set()
+    # Share this set with the coordinator so a device deleted from the UI can
+    # be re-created if the adapter is rediscovered later.
+    coordinator.register_tracked_macs(tracked_macs)
 
     def _on_new_devices(devices: list[dict[str, Any]]) -> None:
         new_entities: list = []

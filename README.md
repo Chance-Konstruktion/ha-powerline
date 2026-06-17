@@ -194,6 +194,16 @@ setting, so those entities are deliberately omitted.
 | Option | Default | Range | Description |
 |--------|---------|-------|-------------|
 | Scan interval | 120 s | 10–600 s | Discovery + rate polling interval |
+
+**Removing a single adapter.** Each adapter is its own device, so you don't have
+to delete and re-add the whole integration to get rid of one. Open the adapter's
+device page (**Settings → Devices & Services → Powerline → the adapter**) and use
+the **Delete** button in the device menu. This is handy for an adapter that was
+wrongly detected, or one you've swapped out / replaced — the old entry and all
+its entities are removed, and it won't come back after a restart. The
+**Powerline Network** overview device can't be deleted (it represents the
+integration itself). Note: an adapter that is *still plugged in and reachable*
+will be rediscovered on the next poll — unplug it first, then delete it.
 </details>
 
 ---

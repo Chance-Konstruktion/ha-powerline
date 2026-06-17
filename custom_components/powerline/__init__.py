@@ -17,7 +17,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, NETWORK_DEVICE_ID, PLATFORMS
+from .const import (
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    NETWORK_DEVICE_ID,
+    PLATFORMS,
+    get_mac,
+)
 from .coordinator import TpLinkPowerlineCoordinator
 from .homeplug import is_available
 
@@ -98,6 +105,61 @@ def _cleanup_stale_devices(
         if not any(ident in valid_ids for ident in device.identifiers):
             _LOGGER.info("Removing stale device: %s (%s)", device.name, device.identifiers)
             dev_reg.async_remove_device(device.id)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Let the user delete a single adapter device from the UI.
+
+    Without this, Home Assistant only offers to remove the whole integration.
+    With it, each adapter (its own device) gets a "Delete" button -- handy to
+    clear out a wrongly detected adapter or one that has been swapped/replaced.
+
+    The "Powerline Network" overview device represents the integration itself
+    and cannot be deleted. A deleted adapter is forgotten from the coordinator
+    and dropped from the stored device list so it does not reappear after a
+    restart. If the adapter is still plugged in it will be rediscovered on the
+    next poll -- you can't make Home Assistant forget hardware that is really
+    there; unplug it first, then delete it.
+    """
+    device_macs: set[str] = set()
+    is_network_device = False
+    for domain, identifier in device_entry.identifiers:
+        if domain != DOMAIN:
+            continue
+        if identifier == NETWORK_DEVICE_ID:
+            is_network_device = True
+        else:
+            device_macs.add(identifier)
+
+    # The network overview device is the hub -- removing it makes no sense.
+    if is_network_device:
+        return False
+
+    coordinator: TpLinkPowerlineCoordinator | None = hass.data.get(DOMAIN, {}).get(
+        config_entry.entry_id
+    )
+    if coordinator is not None:
+        for mac in device_macs:
+            coordinator.forget_device(mac)
+
+    # Drop the adapter(s) from the persisted device list so they are not
+    # restored from config on the next start-up.
+    stored = config_entry.data.get("devices", [])
+    remaining = [dev for dev in stored if get_mac(dev) not in device_macs]
+    if len(remaining) != len(stored):
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data={**config_entry.data, "devices": remaining},
+        )
+
+    _LOGGER.info(
+        "Removed Powerline device %s (%s) on user request",
+        device_entry.name,
+        ", ".join(device_macs) or device_entry.identifiers,
+    )
+    return True
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

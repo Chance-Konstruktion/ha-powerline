@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, get_mac
+from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, get_mac, normalize_mac
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +43,10 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.devices: dict[str, dict[str, Any]] = {}
         self._known_macs: set[str] = set()
         self._new_device_callbacks: list[Callable[[list[dict[str, Any]]], None]] = []
+        # Each platform shares the set of MACs it has already created entities
+        # for. forget_device() clears a MAC from all of them so a rediscovered
+        # adapter gets fresh entities instead of being silently skipped.
+        self._tracked_mac_sets: list[set[str]] = []
         self.led_states: dict[str, bool] = {}
         self.power_saving_states: dict[str, bool] = {}
         self.qos_states: dict[str, str] = {}
@@ -65,6 +69,35 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def register_new_device_callback(self, cb: Callable[[list[dict[str, Any]]], None]) -> None:
         """Register callback for when new devices are discovered."""
         self._new_device_callbacks.append(cb)
+
+    def register_tracked_macs(self, tracked: set[str]) -> None:
+        """Register a platform's set of already-created MACs.
+
+        ``forget_device`` clears the MAC from every registered set, so an
+        adapter that was deleted from the UI but is still plugged in gets its
+        entities created again on the next poll.
+        """
+        self._tracked_mac_sets.append(tracked)
+
+    def forget_device(self, mac: str) -> None:
+        """Drop all in-memory state for a single adapter.
+
+        Called when the user deletes a device from the UI. Wipes the cached
+        device, its known-MAC marker and its LED/QoS/power-saving state, and
+        clears it from every platform's tracked-MAC set. The adapter only
+        stays gone for good if it is genuinely offline (wrongly detected,
+        swapped or unplugged) -- a still-present adapter is rediscovered on
+        the next poll, which is the correct behaviour for hardware that's
+        really there.
+        """
+        mac = normalize_mac(mac)
+        self.devices.pop(mac, None)
+        self._known_macs.discard(mac)
+        self.led_states.pop(mac, None)
+        self.power_saving_states.pop(mac, None)
+        self.qos_states.pop(mac, None)
+        for tracked in self._tracked_mac_sets:
+            tracked.discard(mac)
 
     def adapter_online(self, mac: str) -> bool:
         """Whether an adapter answered the most recent poll.
