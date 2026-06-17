@@ -4,6 +4,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [260617] - 2026-06-17
+
+### Changed
+- **Switched to calendar-based release numbers (`YYMMDD`).** Releases are now
+  versioned by date (e.g. `260617` = 2026-06-17) instead of SemVer. This is
+  easier to read at a glance and sorts chronologically. It also fixes update
+  detection for anyone still on the never-published **`4.x` pre-release**:
+  SemVer `0.x` versions were *lower* than the stranded `4.2.0`, so HACS offered
+  no update. A `YYMMDD` number is numerically greater than `4.2.0`, so the
+  update is detected again. The Git tag for each release must match the
+  `manifest.json` version (e.g. tag `260617`).
+
 ### Added
 - **Delete a single adapter from the UI.** Each adapter is already its own
   device; now the integration implements `async_remove_config_entry_device`, so
