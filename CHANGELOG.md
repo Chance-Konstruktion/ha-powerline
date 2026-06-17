@@ -4,6 +4,17 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Delete a single adapter from the UI.** Each adapter is already its own
+  device; now the integration implements `async_remove_config_entry_device`, so
+  every adapter device gets a **Delete** button. You no longer have to remove and
+  re-add the whole integration to clear out a wrongly detected adapter or one you
+  swapped/replaced. A deleted adapter is forgotten from the coordinator and
+  dropped from the stored device list, so it doesn't reappear after a restart.
+  The **Powerline Network** overview device can't be deleted (it represents the
+  integration itself), and an adapter that is still plugged in and reachable is
+  rediscovered on the next poll — unplug it first to remove it for good.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
