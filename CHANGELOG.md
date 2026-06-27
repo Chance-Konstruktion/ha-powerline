@@ -4,6 +4,19 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [260627] - 2026-06-27
+
+### Added
+- **Dedicated HACS info page (`info.md`).** HACS now renders a purpose-built,
+  pure-Markdown info page instead of the HTML-heavy README (`render_readme` is
+  disabled). Same content — highlights, hardware matrix, entities, configuration,
+  requirements and troubleshooting — but rendered cleanly in the HACS frontend.
+
+### Fixed
+- **Corrected `iot_class` to `local_polling`.** The integration polls adapters
+  via a `DataUpdateCoordinator`, so it is a polling integration, not push. Also
+  declared the component `loggers` in the manifest (best practice).
+
 ## [260617] - 2026-06-17
 
 ### Changed
