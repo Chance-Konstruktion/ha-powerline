@@ -179,17 +179,6 @@ logger:
 
 ---
 
-## 🗺️ Roadmap
-
-- [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
-- [x] **0.2 — Qualcomm / AV500 (verified):** LED, QoS and power saving via the PIB, with the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter — confirmed applying on **two** AV500s, no reset needed.
-- [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
-- [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
-- [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
-- [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module.
-
----
-
 ## 🤝 Contributing
 
 PRs welcome — especially Wireshark captures from new adapters. Validate with:
