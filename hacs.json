@@ -1,7 +1,7 @@
 {
   "name": "Powerline Network",
   "homeassistant": "2024.1.0",
-  "render_readme": true,
+  "render_readme": false,
   "zip_release": true,
   "filename": "powerline.zip"
 }
