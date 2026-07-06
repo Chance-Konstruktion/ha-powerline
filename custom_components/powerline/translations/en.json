@@ -28,7 +28,8 @@
         "description": "Adjust polling behavior. Changes take effect immediately.",
         "data": {
           "scan_interval": "Scan interval (seconds)",
-          "sidebar_panel": "Show 'Powerline' sidebar panel (topology view)"
+          "sidebar_panel": "Show 'Powerline' sidebar panel (topology view)",
+          "topology_alerts": "Smart alerts (slow link, adapter added/removed)"
         }
       }
     }

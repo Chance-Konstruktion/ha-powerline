@@ -32,6 +32,9 @@
       this._topology = null;
       this._positions = {}; // mac -> {x, y}
       this._selected = null; // {kind: "node"|"edge", id}
+      this._history = null; // {key, hours, series}
+      this._historyHours = 24;
+      this._historyLoading = false;
       this._timer = null;
       this._lastFetch = 0;
       this._fetchInFlight = false;
@@ -97,6 +100,28 @@
         this._render();
       } finally {
         this._fetchInFlight = false;
+      }
+    }
+
+    async _fetchHistory(edge, hours) {
+      if (!this._hass) return;
+      const key = `${edge.source}|${edge.destination}`;
+      this._historyHours = hours;
+      this._historyLoading = true;
+      this._render();
+      try {
+        const result = await this._hass.callWS({
+          type: "powerline/topology/history",
+          source: edge.source,
+          destination: edge.destination,
+          hours,
+        });
+        this._history = { key, hours, series: result.series || [] };
+      } catch (err) {
+        this._history = { key, hours, series: [] };
+      } finally {
+        this._historyLoading = false;
+        this._render();
       }
     }
 
@@ -237,6 +262,28 @@
           color: var(--secondary-text-color);
         }
         .error { padding: 16px; color: var(--error-color, #e53935); }
+        .analysis {
+          display: flex; flex-wrap: wrap; gap: 4px 16px;
+          padding: 0 16px 8px; font-size: 0.8em;
+          color: var(--secondary-text-color);
+        }
+        .ranges { display: flex; gap: 6px; margin: 8px 0 4px; }
+        .ranges button {
+          border: 1px solid var(--divider-color, #e0e0e0);
+          background: transparent;
+          color: var(--primary-text-color);
+          border-radius: 12px;
+          padding: 2px 10px;
+          font-size: 0.85em;
+          cursor: pointer;
+        }
+        .ranges button.active {
+          background: var(--primary-color, #03a9f4);
+          border-color: var(--primary-color, #03a9f4);
+          color: var(--text-primary-color, #fff);
+        }
+        .spark { width: 100%; height: 70px; display: block; }
+        .spark-empty { font-size: 0.8em; color: var(--secondary-text-color); padding: 4px 0; }
         .empty { padding: 16px; color: var(--secondary-text-color); }
         .legend {
           display: flex; flex-wrap: wrap; gap: 12px;
@@ -258,7 +305,7 @@
       } else if (!this._topology || !this._topology.nodes.length) {
         body = `<div class="empty">No powerline adapters discovered yet.</div>`;
       } else {
-        body = `<div class="graph">${this._renderSvg()}</div>${this._renderLegend()}${this._renderDetails()}`;
+        body = `<div class="graph">${this._renderSvg()}</div>${this._renderLegend()}${this._renderAnalysis()}${this._renderDetails()}`;
       }
 
       this.shadowRoot.innerHTML = `
@@ -362,6 +409,98 @@
       return `<div class="legend">${items}${estimated}</div>`;
     }
 
+    _renderAnalysis() {
+      const analysis = (this._topology && this._topology.analysis) || {};
+      const parts = [];
+      if (analysis.worst_link && analysis.worst_link.average_rate > 0) {
+        const w = analysis.worst_link;
+        parts.push(
+          `<span>🐢 Schwächste: ${this._nodeName(w.source)} ↔ ${this._nodeName(
+            w.destination
+          )} (${w.average_rate} Mbit/s)</span>`
+        );
+      }
+      if (analysis.most_unstable_link) {
+        const u = analysis.most_unstable_link;
+        parts.push(
+          `<span>📉 Instabilste: ${this._nodeName(u.source)} ↔ ${this._nodeName(
+            u.destination
+          )} (±${Math.round(u.instability * 100)}%)</span>`
+        );
+      }
+      if (analysis.offline_adapters && analysis.offline_adapters.length) {
+        parts.push(`<span>🔴 Offline: ${analysis.offline_adapters.length}</span>`);
+      }
+      return parts.length ? `<div class="analysis">${parts.join("")}</div>` : "";
+    }
+
+    _renderHistory(edge) {
+      const key = `${edge.source}|${edge.destination}`;
+      const ranges = [
+        [1, "1 h"],
+        [24, "24 h"],
+        [168, "7 T"],
+        [720, "30 T"],
+      ];
+      const buttons = ranges
+        .map(
+          ([h, label]) =>
+            `<button data-hours="${h}" class="${
+              this._historyHours === h ? "active" : ""
+            }">${label}</button>`
+        )
+        .join("");
+
+      let chart;
+      if (this._historyLoading) {
+        chart = `<div class="spark-empty">Lade Verlauf …</div>`;
+      } else if (!this._history || this._history.key !== key) {
+        chart = `<div class="spark-empty"></div>`;
+      } else if (this._history.series.length < 2) {
+        chart = `<div class="spark-empty">Noch keine Verlaufsdaten für diesen Zeitraum.</div>`;
+      } else {
+        chart = this._renderSparkline(this._history.series);
+      }
+      return `<div class="ranges">${buttons}</div>${chart}`;
+    }
+
+    _renderSparkline(series) {
+      const W = 300;
+      const H = 70;
+      const PAD = 4;
+      const ts = series.map((p) => p.t);
+      const t0 = Math.min(...ts);
+      const t1 = Math.max(...ts);
+      const values = series.map((p) => p.avg);
+      const lo = Math.min(...series.map((p) => (p.min != null ? p.min : p.avg)));
+      const hi = Math.max(...series.map((p) => (p.max != null ? p.max : p.avg)));
+      const x = (t) =>
+        PAD + ((t - t0) / Math.max(1, t1 - t0)) * (W - 2 * PAD);
+      const y = (v) =>
+        H - PAD - ((v - lo) / Math.max(1, hi - lo)) * (H - 2 * PAD - 10);
+
+      const line = series.map((p) => `${x(p.t).toFixed(1)},${y(p.avg).toFixed(1)}`).join(" ");
+      let band = "";
+      if (series.some((p) => p.min != null)) {
+        const upper = series.map((p) => `${x(p.t).toFixed(1)},${y(p.max != null ? p.max : p.avg).toFixed(1)}`);
+        const lower = series
+          .slice()
+          .reverse()
+          .map((p) => `${x(p.t).toFixed(1)},${y(p.min != null ? p.min : p.avg).toFixed(1)}`);
+        band = `<polygon points="${upper.join(" ")} ${lower.join(" ")}" fill="var(--primary-color, #03a9f4)" opacity="0.15"></polygon>`;
+      }
+      const last = series[series.length - 1];
+      return (
+        `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
+        band +
+        `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>` +
+        `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="var(--primary-color, #03a9f4)"></circle>` +
+        `<text x="${PAD}" y="10" font-size="9" fill="var(--secondary-text-color, #666)">max ${hi} Mbit/s</text>` +
+        `<text x="${PAD}" y="${H - PAD - 1}" font-size="9" fill="var(--secondary-text-color, #666)">min ${lo}</text>` +
+        `</svg>`
+      );
+    }
+
     _renderDetails() {
       if (!this._selected) {
         return `<div class="hint">Adapter oder Verbindung anklicken für Details.</div>`;
@@ -401,7 +540,12 @@
             `<tr><td>${this._escape(k)}</td><td>${this._escape(String(v))}</td></tr>`
         )
         .join("");
-      return `<div class="details"><table>${table}</table></div>`;
+      let history = "";
+      if (this._selected.kind === "edge") {
+        const edge = this._topology.edges[this._selected.id];
+        if (edge) history = this._renderHistory(edge);
+      }
+      return `<div class="details"><table>${table}</table>${history}</div>`;
     }
 
     _bindEvents() {
@@ -420,13 +564,24 @@
       this.shadowRoot.querySelectorAll("[data-edge]").forEach((el) => {
         el.addEventListener("click", () => {
           const idx = Number(el.getAttribute("data-edge"));
-          this._selected =
+          const deselect =
             this._selected &&
             this._selected.kind === "edge" &&
-            this._selected.id === idx
-              ? null
-              : { kind: "edge", id: idx };
+            this._selected.id === idx;
+          this._selected = deselect ? null : { kind: "edge", id: idx };
+          this._history = null;
           this._render();
+          if (!deselect) {
+            const edge = this._topology.edges[idx];
+            if (edge) this._fetchHistory(edge, this._historyHours);
+          }
+        });
+      });
+      this.shadowRoot.querySelectorAll(".ranges button").forEach((el) => {
+        el.addEventListener("click", () => {
+          if (!this._selected || this._selected.kind !== "edge") return;
+          const edge = this._topology.edges[this._selected.id];
+          if (edge) this._fetchHistory(edge, Number(el.getAttribute("data-hours")));
         });
       });
     }

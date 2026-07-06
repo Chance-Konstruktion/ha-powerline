@@ -195,6 +195,7 @@ setting, so those entities are deliberately omitted.
 |--------|---------|-------|-------------|
 | Scan interval | 120 s | 10–600 s | Discovery + rate polling interval |
 | Sidebar panel | on | on/off | Show the "Powerline" topology panel in the sidebar |
+| Smart alerts | on | on/off | Notify on slow links and added/removed adapters |
 
 **Removing a single adapter.** Each adapter is its own device, so you don't have
 to delete and re-add the whole integration to get rid of one. Open the adapter's
@@ -238,6 +239,22 @@ refresh_interval: 30           # optional, seconds
   the graph falls back to a star layout with dashed *estimated* edges.
 - **Names** come from the Home Assistant device registry, so renaming an
   adapter ("Wohnzimmer", "Keller") renames its node.
+
+**History & analysis.** The integration keeps a rolling link-rate history —
+raw samples for the last hour, 15-minute aggregates for 30 days, persisted
+across restarts. Click a connection in the graph and pick **1 h / 24 h /
+7 d / 30 d** to see its rate as a sparkline. The analysis line above the
+details names the *slowest* and the *most unstable* connection (rate
+variation over 24 h), so the bottleneck and the flapping link are visible at
+a glance. History is also queryable over websocket
+(`powerline/topology/history`).
+
+**Smart alerts.** Optional persistent notifications (on by default,
+toggleable in the integration options) when something noteworthy happens:
+a connection has been **much slower than usual for 30 minutes** (below 60 %
+of its 24-hour baseline), an **adapter was removed** from the network, or a
+**new adapter** joined. Alerts fire once per incident and re-arm after
+recovery.
 
 Automations can react to topology changes via the `powerline_topology_event`
 event: `adapter_online`, `adapter_offline`, `connection_added`,

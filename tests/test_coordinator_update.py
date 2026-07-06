@@ -52,6 +52,13 @@ def _build_coordinator(discover_result, state_result=None):
     coord.power_saving_states = {}
     coord.qos_states = {}
     coord.topology = TopologyManager()
+    from custom_components.powerline.history import TopologyHistory
+    from custom_components.powerline.alerts import TopologyAlerts
+
+    coord.history = TopologyHistory()
+    coord.alerts = TopologyAlerts()
+    coord.alerts_enabled = True
+    coord.history_store = None
     coord._states_queried = False
     coord.logger = MagicMock()
     return coord

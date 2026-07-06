@@ -87,3 +87,42 @@ class TestTopologyApi(TestCase):
         schema = integration._websocket_get_topology._ws_schema
         self.assertIn("type", schema)
         self.assertIn("entry_id", schema)
+
+
+class TestHistoryApi(TestCase):
+    def test_returns_series_for_edge(self):
+        from datetime import datetime, timedelta, timezone
+
+        from custom_components.powerline.history import TopologyHistory
+
+        mac_a = "AA:BB:CC:DD:EE:01"
+        mac_b = "AA:BB:CC:DD:EE:02"
+        now = datetime(2026, 7, 6, 12, 0, tzinfo=timezone.utc)
+
+        coordinator = _Coordinator(TOPOLOGY)
+        coordinator.history = TopologyHistory()
+        snapshot = {
+            "nodes": [{"mac": mac_a, "online": True}, {"mac": mac_b, "online": True}],
+            "edges": [{"source": mac_a, "destination": mac_b, "average_rate": 500}],
+        }
+        coordinator.history.record(snapshot, now=now - timedelta(minutes=20))
+        coordinator.history.record(snapshot, now=now - timedelta(minutes=10))
+
+        hass = _hass({"entry-1": coordinator})
+        connection = _Connection()
+
+        integration._websocket_get_history(
+            hass,
+            connection,
+            {"id": 11, "source": mac_a, "destination": mac_b, "hours": 24},
+        )
+
+        self.assertEqual(len(connection.results), 1)
+        _, payload = connection.results[0]
+        self.assertEqual(payload["source"], mac_a)
+        self.assertTrue(payload["series"])
+
+    def test_history_schema_declares_fields(self):
+        schema = integration._websocket_get_history._ws_schema
+        for field in ("type", "source", "destination", "hours", "entry_id"):
+            self.assertIn(field, schema)

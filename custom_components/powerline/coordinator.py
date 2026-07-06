@@ -13,7 +13,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .alerts import TopologyAlerts
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, TOPOLOGY_EVENT, get_mac, normalize_mac
+from .history import TopologyHistory
 from .topology import TopologyManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +54,11 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.power_saving_states: dict[str, bool] = {}
         self.qos_states: dict[str, str] = {}
         self.topology = TopologyManager()
+        self.history = TopologyHistory()
+        self.alerts = TopologyAlerts()
+        # Set by __init__.py from the config entry options / HA Store.
+        self.alerts_enabled = True
+        self.history_store = None
 
         self._states_queried = False
 
@@ -222,8 +229,20 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             topology = self.topology.update(
                 self.devices, getattr(self.hp, "plc_links", {})
             )
-            for event in self.topology.drain_events():
+            events = self.topology.drain_events()
+            for event in events:
                 self.hass.bus.async_fire(TOPOLOGY_EVENT, event)
+
+            self.history.record(topology)
+            unstable = self.history.most_unstable()
+            if unstable:
+                topology["analysis"]["most_unstable_link"] = unstable
+            if self.history_store is not None:
+                self.history_store.async_delay_save(self.history.as_dict, 300)
+
+            if self.alerts_enabled:
+                for alert in self.alerts.check(topology, self.history, events):
+                    self._notify_alert(alert)
 
             return {
                 "online": online > 0,
@@ -240,6 +259,59 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.debug("Error polling Powerline adapters: %s", err)
             raise UpdateFailed(f"HomePlug AV error: {err}") from err
+
+    def _adapter_name(self, mac: str) -> str:
+        """Device-registry name for a MAC (user rename wins), else the MAC."""
+        try:
+            from homeassistant.helpers import device_registry as dr
+
+            dev_reg = dr.async_get(self.hass)
+            device = dev_reg.async_get_device(identifiers={(DOMAIN, mac)})
+            if device:
+                return device.name_by_user or device.name or mac
+        except Exception:  # noqa: BLE001 - name lookup must never break polling
+            pass
+        return mac
+
+    def _notify_alert(self, alert: dict[str, Any]) -> None:
+        """Surface a topology alert as a persistent notification."""
+        kind = alert["type"]
+        if kind == "link_slow":
+            source = self._adapter_name(alert["source"])
+            destination = self._adapter_name(alert["destination"])
+            title = "Powerline: link slower than usual"
+            message = (
+                f"The connection **{source} ↔ {destination}** has been much "
+                f"slower than usual for {alert['minutes']} minutes: "
+                f"{alert['average']} Mbit/s (typical: ~{alert['baseline']} Mbit/s)."
+            )
+            notification_id = f"powerline_slow_{alert['source']}_{alert['destination']}"
+        elif kind == "adapter_removed":
+            name = self._adapter_name(alert["mac"])
+            title = "Powerline: adapter removed"
+            message = (
+                f"Adapter **{name}** ({alert['mac']}) has disappeared from the "
+                "powerline network and was removed from the topology."
+            )
+            notification_id = f"powerline_removed_{alert['mac']}"
+        elif kind == "adapter_new":
+            name = self._adapter_name(alert["mac"])
+            title = "Powerline: new adapter"
+            message = f"New adapter **{name}** ({alert['mac']}) joined the powerline network."
+            notification_id = f"powerline_new_{alert['mac']}"
+        else:  # pragma: no cover - defensive against future alert types
+            return
+
+        try:
+            from homeassistant.components.persistent_notification import (
+                async_create,
+            )
+
+            async_create(
+                self.hass, message, title=title, notification_id=notification_id
+            )
+        except Exception:  # noqa: BLE001 - notifications must never break polling
+            _LOGGER.debug("Could not create persistent notification", exc_info=True)
 
     async def async_set_led(self, mac: str, on: bool) -> bool:
         """Set LED on a specific adapter (by MAC)."""
