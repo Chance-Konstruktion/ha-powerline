@@ -2,7 +2,7 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
-## [Unreleased]
+## [260706] - 2026-07-06
 
 ### Added
 - **Link-rate history.** Rolling history per connection — raw samples for the
@@ -21,10 +21,6 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   Adapter names in alerts follow device-registry renames.
 - New topology event `adapter_removed` (fired when an offline adapter ages out
   of the graph after the retention window).
-
-## [260706] - 2026-07-06
-
-### Added
 - **Powerline Mesh Topology.** The integration now builds a live graph of the
   powerline network: adapters as nodes, PLC links as edges. Discovery collects
   real pairwise link measurements (responder→peer PHY rates from
