@@ -3,7 +3,7 @@
   "name": "Powerline Network",
   "codeowners": ["@Chance-Konstruktion"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["http", "websocket_api", "frontend"],
   "documentation": "https://github.com/Chance-Konstruktion/ha-powerline",
   "integration_type": "hub",
   "iot_class": "local_polling",

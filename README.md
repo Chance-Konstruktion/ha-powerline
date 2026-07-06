@@ -208,6 +208,40 @@ will be rediscovered on the next poll — unplug it first, then delete it.
 
 ---
 
+## 🕸️ Topology Card
+
+The integration builds a live mesh graph of your powerline network — every
+adapter as a node, every PLC link as an edge coloured by link quality — and
+ships a Lovelace card to display it. The card is registered automatically;
+just add it to any dashboard:
+
+```yaml
+type: custom:powerline-topology-card
+title: Powerline Mesh          # optional
+refresh_interval: 30           # optional, seconds
+```
+
+- **Colours**: link > 700 Mbit/s 🟢 · 400–700 🟡 · 150–400 🟠 · < 150 🔴;
+  line width scales with speed. Online adapters are green, offline red, and
+  the network's Central Coordinator (CCo) is marked with a dashed ring.
+- **Click** an adapter for MAC, model, firmware, chipset, role and status;
+  click a connection for TX/RX/average rates and when they were measured.
+- **Honest data**: edges from real pairwise measurements are drawn solid.
+  Where the protocol only exposes each adapter's own rate (some chipsets),
+  the graph falls back to a star layout with dashed *estimated* edges.
+- **Names** come from the Home Assistant device registry, so renaming an
+  adapter ("Wohnzimmer", "Keller") renames its node.
+
+Automations can react to topology changes via the `powerline_topology_event`
+event: `adapter_online`, `adapter_offline`, `connection_added`,
+`connection_lost` and `link_rate_changed` (rate changes are noise-filtered —
+only ≥ 10 % moves or a colour-class change fire an event). The raw graph is
+available over websocket as `powerline/topology` returning
+`{nodes, edges, analysis}`, where `analysis` names the worst link, the best
+adapter, and any offline or newly discovered adapters.
+
+---
+
 ## 📦 Requirements
 
 **Raw socket access (`CAP_NET_RAW`)** + a **wired Ethernet** path to an adapter.
@@ -293,6 +327,7 @@ Capture the official tpPLC app performing an action and compare with
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
 - [x] **0.2 — Qualcomm / AV500 (verified):** LED, QoS and power saving via the PIB, with the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter — confirmed applying on **two** AV500s, no reset needed ([details](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified)).
 - [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
+- [x] **Topology card:** live mesh graph (nodes/edges/analysis) with a bundled Lovelace card, topology events on the HA bus and a `powerline/topology` websocket API — see the **Topology Card** section above.
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.

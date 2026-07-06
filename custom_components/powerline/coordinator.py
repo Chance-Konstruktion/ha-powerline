@@ -13,7 +13,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, get_mac, normalize_mac
+from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, TOPOLOGY_EVENT, get_mac, normalize_mac
+from .topology import TopologyManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.led_states: dict[str, bool] = {}
         self.power_saving_states: dict[str, bool] = {}
         self.qos_states: dict[str, str] = {}
+        self.topology = TopologyManager()
 
         self._states_queried = False
 
@@ -217,6 +219,12 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # that we have seen before is currently offline.
             network_problem = online == 0 or online < total
 
+            topology = self.topology.update(
+                self.devices, getattr(self.hp, "plc_links", {})
+            )
+            for event in self.topology.drain_events():
+                self.hass.bus.async_fire(TOPOLOGY_EVENT, event)
+
             return {
                 "online": online > 0,
                 "plc_devices": self.devices,
@@ -226,6 +234,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "slowest_link": slowest[0] if slowest else None,
                 "slowest_link_mac": slowest[1] if slowest else None,
                 "network_problem": network_problem,
+                "topology": topology,
             }
 
         except Exception as err:
