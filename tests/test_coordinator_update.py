@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 # conftest.py installs all HA stubs before this module is collected.
 from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
-from custom_components.powerline.const import get_mac
+from custom_components.powerline.const import TOPOLOGY_EVENT, get_mac
 from custom_components.powerline.topology import TopologyManager
 
 # Use uppercase MACs so get_mac() normalisation is a no-op.
@@ -18,8 +18,16 @@ def _make_device(mac, tx=100, rx=50):
     return {"mac": mac, "tx_rate": tx, "rx_rate": rx}
 
 
+class _NoopBus:
+    def async_fire(self, event_type, event_data):
+        pass
+
+
 class _FakeHass:
     """Minimal hass stub that runs executor jobs synchronously."""
+
+    def __init__(self):
+        self.bus = _NoopBus()
 
     async def async_add_executor_job(self, func, *args):
         # Simply call the (possibly mocked) function; MagicMock.return_value is returned.
@@ -164,3 +172,26 @@ class TestAdapterOnline(IsolatedAsyncioTestCase):
         coord = _build_coordinator(discover_result=[])
         coord.devices = {MAC_A: {"mac": MAC_A}}
         self.assertTrue(coord.adapter_online(MAC_A))
+
+
+class _FakeBus:
+    def __init__(self):
+        self.events = []
+
+    def async_fire(self, event_type, event_data):
+        self.events.append((event_type, event_data))
+
+
+class TestTopologyEvents(IsolatedAsyncioTestCase):
+    async def test_fires_topology_events_after_update(self):
+        device = _make_device(MAC_A)
+        coord = _build_coordinator(discover_result=[device])
+        coord.hass.bus = _FakeBus()
+
+        await coord._async_update_data()
+
+        self.assertEqual(len(coord.hass.bus.events), 1)
+        event_type, event_data = coord.hass.bus.events[0]
+        self.assertEqual(event_type, TOPOLOGY_EVENT)
+        self.assertEqual(event_data["event"], "adapter_online")
+        self.assertEqual(event_data["mac"], MAC_A)

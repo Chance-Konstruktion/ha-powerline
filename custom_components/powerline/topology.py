@@ -57,6 +57,12 @@ class TopologyManager:
 
         return self.as_dict()
 
+    def drain_events(self) -> list[dict[str, Any]]:
+        """Return pending topology events and clear the queue."""
+        events = self.events
+        self.events = []
+        return events
+
     def as_dict(self) -> dict[str, list[dict[str, Any]]]:
         """Return the topology API payload."""
         return {

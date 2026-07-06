@@ -109,3 +109,14 @@ def test_detects_new_lost_and_rate_change_events():
     event_names = [event["event"] for event in manager.events]
     assert "adapter_offline" in event_names
     assert "connection_lost" in event_names
+
+
+def test_drain_events_returns_and_clears_pending_events():
+    manager = TopologyManager()
+    now = datetime(2026, 7, 6, 12, 0, tzinfo=timezone.utc)
+
+    manager.update({MAC_A: {"mac": MAC_A}}, now=now)
+
+    events = manager.drain_events()
+    assert [event["event"] for event in events] == ["adapter_online"]
+    assert manager.drain_events() == []

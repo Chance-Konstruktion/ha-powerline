@@ -25,6 +25,7 @@ QOS_OPTIONS = [QOS_PRIORITY_GAMING, QOS_PRIORITY_VOIP, QOS_PRIORITY_AV, QOS_PRIO
 # Network-wide device identifier
 NETWORK_DEVICE_ID = "powerline_network"
 NETWORK_DEVICE_NAME = "Powerline Network"
+TOPOLOGY_EVENT = "powerline_topology_event"
 
 
 @lru_cache(maxsize=128)
