@@ -28,7 +28,16 @@ NETWORK_DEVICE_NAME = "Powerline Network"
 
 # Topology (mesh graph) support
 TOPOLOGY_EVENT = "powerline_topology_event"
-TOPOLOGY_CARD_URL = "/powerline/powerline-topology-card.js"
+# The whole frontend/ directory is served here, so the panel module can
+# import the card module with a relative path.
+FRONTEND_BASE_URL = "/powerline_frontend"
+TOPOLOGY_CARD_URL = f"{FRONTEND_BASE_URL}/powerline-topology-card.js"
+TOPOLOGY_PANEL_URL = f"{FRONTEND_BASE_URL}/powerline-topology-panel.js"
+
+# Sidebar panel (toggleable via the options flow)
+CONF_SIDEBAR_PANEL = "sidebar_panel"
+DEFAULT_SIDEBAR_PANEL = True
+PANEL_URL_PATH = "powerline"
 
 
 @lru_cache(maxsize=128)

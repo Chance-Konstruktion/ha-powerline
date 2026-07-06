@@ -4,6 +4,32 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [260706] - 2026-07-06
+
+### Added
+- **Powerline Mesh Topology.** The integration now builds a live graph of the
+  powerline network: adapters as nodes, PLC links as edges. Discovery collects
+  real pairwise link measurements (responder→peer PHY rates from
+  NW_STATS/LINK_STATS/NW_INFO confirms) and detects the network's Central
+  Coordinator (CCo) via MX NW_INFO. Where the protocol exposes no pairwise
+  data, the graph falls back to honestly flagged *estimated* edges.
+- **Lovelace card `powerline-topology-card`.** Auto-registered as a frontend
+  resource — add it to any dashboard without manual resource setup.
+  Force-directed layout, link-quality colours (>700 green / 400–700 yellow /
+  150–400 orange / <150 red), line width by speed, dashed estimated links,
+  CCo highlight, click details for adapters and connections, live refresh.
+- **Sidebar panel "Powerline".** Full-page topology view with its own entry in
+  the sidebar (icon `mdi:lan`), enabled by default and toggleable in the
+  integration options — changes apply immediately, no restart needed.
+- **Topology events** on the Home Assistant bus (`powerline_topology_event`):
+  `adapter_online`, `adapter_offline`, `connection_added`, `connection_lost`
+  and `link_rate_changed` (noise-filtered: only ≥10 % moves or a colour-class
+  change fire). Ready for automations like "Verbindung Wohnzimmer ↔ Keller ist
+  deutlich langsamer".
+- **Websocket API `powerline/topology`** returning `{nodes, edges, analysis}`,
+  where `analysis` names the worst link, the best adapter, and offline or
+  newly discovered adapters. Node names follow device-registry renames.
+
 ## [260627] - 2026-06-27
 
 ### Added

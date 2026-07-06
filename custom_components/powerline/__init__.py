@@ -23,11 +23,16 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
     CONF_SCAN_INTERVAL,
+    CONF_SIDEBAR_PANEL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SIDEBAR_PANEL,
     DOMAIN,
+    FRONTEND_BASE_URL,
     NETWORK_DEVICE_ID,
+    PANEL_URL_PATH,
     PLATFORMS,
     TOPOLOGY_CARD_URL,
+    TOPOLOGY_PANEL_URL,
     get_mac,
 )
 from .coordinator import TpLinkPowerlineCoordinator
@@ -39,6 +44,8 @@ _LOGGER = logging.getLogger(__name__)
 # registered exactly once, no matter how many config entries exist.
 _DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
 _DATA_FRONTEND_REGISTERED = f"{DOMAIN}_frontend_registered"
+_DATA_FRONTEND_VERSION = f"{DOMAIN}_frontend_version"
+_DATA_PANEL_REGISTERED = f"{DOMAIN}_panel_registered"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -73,6 +80,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _register_websocket_api(hass)
     await _register_frontend(hass)
+    _async_update_panel(
+        hass, entry.options.get(CONF_SIDEBAR_PANEL, DEFAULT_SIDEBAR_PANEL)
+    )
 
     # Clean up stale/duplicate device entries from the registry
     _cleanup_stale_devices(hass, entry, coordinator)
@@ -142,21 +152,21 @@ def _display_name(hass: HomeAssistant, mac: str) -> str | None:
 
 
 async def _register_frontend(hass: HomeAssistant) -> None:
-    """Serve the topology card JS and load it on every dashboard (once)."""
+    """Serve the frontend dir and load the card on every dashboard (once)."""
     if hass.data.get(_DATA_FRONTEND_REGISTERED):
         return
     hass.data[_DATA_FRONTEND_REGISTERED] = True
 
-    card_path = Path(__file__).parent / "frontend" / "powerline-topology-card.js"
+    frontend_dir = Path(__file__).parent / "frontend"
     try:
         from homeassistant.components.http import StaticPathConfig
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(TOPOLOGY_CARD_URL, str(card_path), False)]
+            [StaticPathConfig(FRONTEND_BASE_URL, str(frontend_dir), False)]
         )
     except ImportError:
         # HA < 2024.7 has no StaticPathConfig
-        hass.http.register_static_path(TOPOLOGY_CARD_URL, str(card_path), False)
+        hass.http.register_static_path(FRONTEND_BASE_URL, str(frontend_dir), False)
 
     version = "0"
     try:
@@ -166,10 +176,40 @@ async def _register_frontend(hass: HomeAssistant) -> None:
         version = integration.version or version
     except Exception:  # pragma: no cover - version only busts browser cache
         pass
+    hass.data[_DATA_FRONTEND_VERSION] = version
 
     from homeassistant.components.frontend import add_extra_js_url
 
     add_extra_js_url(hass, f"{TOPOLOGY_CARD_URL}?v={version}")
+
+
+def _async_update_panel(hass: HomeAssistant, enabled: bool) -> None:
+    """Add or remove the 'Powerline' sidebar panel to match the option."""
+    from homeassistant.components import frontend
+
+    registered = bool(hass.data.get(_DATA_PANEL_REGISTERED))
+    if enabled and not registered:
+        version = hass.data.get(_DATA_FRONTEND_VERSION, "0")
+        frontend.async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title="Powerline",
+            sidebar_icon="mdi:lan",
+            frontend_url_path=PANEL_URL_PATH,
+            config={
+                "_panel_custom": {
+                    "name": "powerline-topology-panel",
+                    "module_url": f"{TOPOLOGY_PANEL_URL}?v={version}",
+                    "embed_iframe": False,
+                    "trust_external": False,
+                }
+            },
+            require_admin=False,
+        )
+        hass.data[_DATA_PANEL_REGISTERED] = True
+    elif not enabled and registered:
+        frontend.async_remove_panel(hass, PANEL_URL_PATH)
+        hass.data[_DATA_PANEL_REGISTERED] = False
 
 
 def _migrate_old_status_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -265,11 +305,15 @@ async def async_remove_config_entry_device(
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update -- adjust scan interval dynamically."""
+    """Handle options update -- apply scan interval and panel setting live."""
     coordinator: TpLinkPowerlineCoordinator = hass.data[DOMAIN][entry.entry_id]
     new_interval = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
     coordinator.update_interval = timedelta(seconds=new_interval)
     _LOGGER.info("Powerline scan interval updated to %ds", new_interval)
+
+    _async_update_panel(
+        hass, entry.options.get(CONF_SIDEBAR_PANEL, DEFAULT_SIDEBAR_PANEL)
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -277,4 +321,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        if not hass.data[DOMAIN]:
+            # Last entry gone — take the sidebar panel down with it.
+            _async_update_panel(hass, False)
     return unload_ok

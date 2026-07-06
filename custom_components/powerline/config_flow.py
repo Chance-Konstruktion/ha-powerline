@@ -18,7 +18,9 @@ except ImportError:
 
 from .const import (
     CONF_SCAN_INTERVAL,
+    CONF_SIDEBAR_PANEL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SIDEBAR_PANEL,
     DOMAIN,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
@@ -138,6 +140,9 @@ class TpLinkPowerlineOptionsFlow(OptionsFlow):
         current_interval = int(
             self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
+        current_panel = bool(
+            self.config_entry.options.get(CONF_SIDEBAR_PANEL, DEFAULT_SIDEBAR_PANEL)
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -146,7 +151,8 @@ class TpLinkPowerlineOptionsFlow(OptionsFlow):
                     vol.Required(CONF_SCAN_INTERVAL, default=current_interval): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
-                    )
+                    ),
+                    vol.Required(CONF_SIDEBAR_PANEL, default=current_panel): bool,
                 }
             ),
         )
