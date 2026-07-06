@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 # conftest.py installs all HA stubs before this module is collected.
 from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
 from custom_components.powerline.const import get_mac
+from custom_components.powerline.topology import TopologyManager
 
 # Use uppercase MACs so get_mac() normalisation is a no-op.
 MAC_A = "AA:BB:CC:DD:EE:01"
@@ -38,6 +39,7 @@ def _build_coordinator(discover_result, state_result=None):
     coord.led_states = {}
     coord.power_saving_states = {}
     coord.qos_states = {}
+    coord.topology = TopologyManager()
     coord._states_queried = False
     coord.logger = MagicMock()
     return coord

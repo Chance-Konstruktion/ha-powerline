@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, get_mac, normalize_mac
+from .topology import TopologyManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.led_states: dict[str, bool] = {}
         self.power_saving_states: dict[str, bool] = {}
         self.qos_states: dict[str, str] = {}
+        self.topology = TopologyManager()
 
         self._states_queried = False
 
@@ -226,6 +228,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "slowest_link": slowest[0] if slowest else None,
                 "slowest_link_mac": slowest[1] if slowest else None,
                 "network_problem": network_problem,
+                "topology": self.topology.update(self.devices),
             }
 
         except Exception as err:
