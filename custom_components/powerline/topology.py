@@ -13,20 +13,24 @@ DEFAULT_OFFLINE_RETENTION_SECONDS = 3600
 class TopologyManager:
     """Build and track the Powerline network graph."""
 
-    def __init__(self, offline_retention_seconds: int = DEFAULT_OFFLINE_RETENTION_SECONDS) -> None:
+    def __init__(
+        self, offline_retention_seconds: int = DEFAULT_OFFLINE_RETENTION_SECONDS
+    ) -> None:
         self._offline_retention_seconds = offline_retention_seconds
         self._nodes: dict[str, dict[str, Any]] = {}
         self._edges: dict[tuple[str, str], dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
+        self._new_adapters: list[str] = []
 
     def update(
         self,
         devices: dict[str, dict[str, Any]],
         now: datetime | None = None,
-    ) -> dict[str, list[dict[str, Any]]]:
+    ) -> dict[str, Any]:
         """Update the graph from the latest adapter inventory."""
         timestamp = now or datetime.now(UTC)
         seen_macs: set[str] = set()
+        new_adapters: list[str] = []
 
         for dev in devices.values():
             mac = get_mac(dev)
@@ -36,6 +40,7 @@ class TopologyManager:
             node = self._node_from_device(mac, dev, timestamp)
             previous = self._nodes.get(mac)
             if previous is None:
+                new_adapters.append(mac)
                 self._record_event("adapter_online", timestamp, mac=mac)
             elif not previous.get("online", True):
                 self._record_event("adapter_online", timestamp, mac=mac)
@@ -51,6 +56,8 @@ class TopologyManager:
             if (timestamp - last_update).total_seconds() > self._offline_retention_seconds:
                 self._nodes.pop(mac)
 
+        self._new_adapters = sorted(new_adapters)
+
         old_edges = self._edges
         self._edges = self._build_edges(devices, seen_macs, timestamp)
         self._record_edge_changes(old_edges, self._edges, timestamp)
@@ -63,12 +70,40 @@ class TopologyManager:
         self.events = []
         return events
 
-    def as_dict(self) -> dict[str, list[dict[str, Any]]]:
+    def as_dict(self) -> dict[str, Any]:
         """Return the topology API payload."""
+        nodes = [dict(node) for _, node in sorted(self._nodes.items())]
+        edges = [dict(edge) for _, edge in sorted(self._edges.items())]
         return {
-            "nodes": [dict(node) for _, node in sorted(self._nodes.items())],
-            "edges": [dict(edge) for _, edge in sorted(self._edges.items())],
+            "nodes": nodes,
+            "edges": edges,
+            "analysis": self._analysis(nodes, edges),
         }
+
+    def _analysis(
+        self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        offline = sorted(node["mac"] for node in nodes if not node["online"])
+        worst = min(edges, key=lambda edge: edge["average_rate"], default=None)
+        online = [node["mac"] for node in nodes if node["online"]]
+        best = self._best_adapter(online, edges)
+        return {
+            "worst_link": dict(worst) if worst else None,
+            "best_adapter": best,
+            "offline_adapters": offline,
+            "new_adapters": list(self._new_adapters),
+        }
+
+    @staticmethod
+    def _best_adapter(online_macs: list[str], edges: list[dict[str, Any]]) -> str | None:
+        if not online_macs:
+            return None
+        scores = {mac: 0 for mac in online_macs}
+        for edge in edges:
+            average = edge["average_rate"]
+            scores[edge["source"]] = max(scores.get(edge["source"], 0), average)
+            scores[edge["destination"]] = max(scores.get(edge["destination"], 0), average)
+        return max(sorted(scores), key=lambda mac: scores[mac])
 
     def _node_from_device(
         self, mac: str, dev: dict[str, Any], timestamp: datetime
@@ -79,7 +114,9 @@ class TopologyManager:
             "manufacturer": dev.get("manufacturer") or MANUFACTURER,
             "model": dev.get("model") or "",
             "firmware": dev.get("firmware") or dev.get("firmware_ver") or "",
-            "hardware_revision": dev.get("hardware_revision") or dev.get("hw_revision") or "",
+            "hardware_revision": dev.get("hardware_revision")
+            or dev.get("hw_revision")
+            or "",
             "role": self._role(dev),
             "online": bool(dev.get("_online", True)),
             "last_update": timestamp.isoformat(),

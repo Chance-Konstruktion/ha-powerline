@@ -68,6 +68,21 @@ def test_builds_nodes_and_edges_from_devices():
                 "timestamp": "2026-07-06T12:00:00+00:00",
             }
         ],
+        "analysis": {
+            "worst_link": {
+                "source": MAC_A,
+                "destination": MAC_B,
+                "tx_phy_rate": 720,
+                "rx_phy_rate": 610,
+                "average_rate": 665,
+                "link_quality": "yellow",
+                "errors": 2,
+                "timestamp": "2026-07-06T12:00:00+00:00",
+            },
+            "best_adapter": MAC_A,
+            "offline_adapters": [],
+            "new_adapters": [MAC_A, MAC_B],
+        },
     }
 
 
@@ -120,3 +135,28 @@ def test_drain_events_returns_and_clears_pending_events():
     events = manager.drain_events()
     assert [event["event"] for event in events] == ["adapter_online"]
     assert manager.drain_events() == []
+
+
+def test_topology_analysis_identifies_bottleneck_best_and_offline():
+    manager = TopologyManager()
+    first = datetime(2026, 7, 6, 12, 0, tzinfo=timezone.utc)
+    second = datetime(2026, 7, 6, 12, 1, tzinfo=timezone.utc)
+
+    manager.update(
+        {
+            MAC_A: {"mac": MAC_A, "role": "CCo", "tx_rate": 720, "rx_rate": 680},
+            MAC_B: {"mac": MAC_B, "tx_rate": 180, "rx_rate": 160},
+        },
+        now=first,
+    )
+    topology = manager.update(
+        {MAC_A: {"mac": MAC_A, "role": "CCo", "tx_rate": 720, "rx_rate": 680}},
+        now=second,
+    )
+
+    assert topology["analysis"] == {
+        "worst_link": None,
+        "best_adapter": MAC_A,
+        "offline_adapters": [MAC_B],
+        "new_adapters": [],
+    }
