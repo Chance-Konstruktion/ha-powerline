@@ -91,6 +91,31 @@ if "homeassistant.components.websocket_api" not in sys.modules:
     sys.modules["homeassistant.components"].websocket_api = ws
 
 
+# -- homeassistant.components.frontend -----------------------------------------
+if "homeassistant.components.frontend" not in sys.modules:
+    fe = types.ModuleType("homeassistant.components.frontend")
+
+    def async_register_built_in_panel(hass, component_name, **kwargs):
+        if not hasattr(hass, "registered_panels"):
+            hass.registered_panels = {}
+        hass.registered_panels[kwargs.get("frontend_url_path")] = kwargs
+
+    def async_remove_panel(hass, frontend_url_path):
+        if hasattr(hass, "registered_panels"):
+            hass.registered_panels.pop(frontend_url_path, None)
+
+    def add_extra_js_url(hass, url, es5=False):
+        if not hasattr(hass, "extra_js_urls"):
+            hass.extra_js_urls = []
+        hass.extra_js_urls.append(url)
+
+    fe.async_register_built_in_panel = async_register_built_in_panel
+    fe.async_remove_panel = async_remove_panel
+    fe.add_extra_js_url = add_extra_js_url
+    sys.modules["homeassistant.components.frontend"] = fe
+    sys.modules["homeassistant.components"].frontend = fe
+
+
 # -- homeassistant.helpers (parent package) -----------------------------------
 if "homeassistant.helpers" not in sys.modules:
     helpers = types.ModuleType("homeassistant.helpers")

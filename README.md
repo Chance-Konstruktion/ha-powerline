@@ -10,7 +10,7 @@ Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` 
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-03A9F4.svg)](https://www.home-assistant.io/)
-[![Release](https://img.shields.io/badge/release-260627-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
+[![Release](https://img.shields.io/badge/release-260706-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
 [![Protocol](https://img.shields.io/badge/Protocol-reverse--engineered-F59E0B.svg)](PROTOCOL.md)
 
@@ -194,6 +194,7 @@ setting, so those entities are deliberately omitted.
 | Option | Default | Range | Description |
 |--------|---------|-------|-------------|
 | Scan interval | 120 s | 10–600 s | Discovery + rate polling interval |
+| Sidebar panel | on | on/off | Show the "Powerline" topology panel in the sidebar |
 
 **Removing a single adapter.** Each adapter is its own device, so you don't have
 to delete and re-add the whole integration to get rid of one. Open the adapter's
@@ -212,8 +213,14 @@ will be rediscovered on the next poll — unplug it first, then delete it.
 
 The integration builds a live mesh graph of your powerline network — every
 adapter as a node, every PLC link as an edge coloured by link quality — and
-ships a Lovelace card to display it. The card is registered automatically;
-just add it to any dashboard:
+shows it in two places:
+
+- **Sidebar panel "Powerline"** (icon `mdi:lan`) — registered automatically,
+  full-page topology view. Can be turned off under **Settings → Devices &
+  Services → Powerline → Configure** ("Show 'Powerline' sidebar panel");
+  the change applies immediately, no restart needed.
+- **Lovelace card** — for your own dashboards. The card resource is
+  registered automatically; just add the card:
 
 ```yaml
 type: custom:powerline-topology-card

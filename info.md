@@ -30,6 +30,18 @@ Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` 
 | 📈 **TX/RX PHY rates** — real Mbit/s, shown on both link ends | 💡 **LED control** — toggle the adapter LEDs (Broadcom + Qualcomm) |
 | 🔋 **Power saving** — standby mode on/off (Broadcom + Qualcomm) | 🚦 **QoS priority** — Internet / Online Games / Audio-Video / VoIP |
 | 🧩 **Dual protocol** — auto-detects Broadcom vs Qualcomm | 🛠️ **Diagnostic button** — full protocol scan to the log |
+| 🕸️ **Mesh topology** — live network graph: Lovelace card + sidebar panel | 📣 **Topology events** — adapter online/offline, link rate changes |
+
+### 🕸️ Topology view
+
+The integration draws your powerline network as a live mesh graph — adapters
+as nodes, links coloured by quality (>700 🟢 · 400–700 🟡 · 150–400 🟠 · <150 🔴),
+click any adapter or connection for details. Two ways to see it:
+
+- **Sidebar panel "Powerline"** — added automatically; can be disabled in the
+  integration options.
+- **Lovelace card** — add `type: custom:powerline-topology-card` to any
+  dashboard (the resource is registered automatically).
 
 > 💡 **Online status + rates work on every HomePlug AV/AV2 chipset.** LED, power saving and QoS work on **both Broadcom** (MEDIAXTREAM `Set Parameter`) **and Qualcomm** (AV500-class, via a safe PIB read-modify-write) — verified on real hardware. See the feature matrix below.
 
@@ -131,6 +143,7 @@ LED / Power Saving / QoS are disabled by default — enable them per entity. The
 | Option | Default | Range | Description |
 |--------|---------|-------|-------------|
 | Scan interval | 120 s | 10–600 s | Discovery + rate polling interval |
+| Sidebar panel | on | on/off | Show the "Powerline" topology panel in the sidebar |
 
 **Removing a single adapter.** Each adapter is its own device, so you don't have to delete and re-add the whole integration to get rid of one. Open the adapter's device page (**Settings → Devices & Services → Powerline → the adapter**) and use the **Delete** button in the device menu. This is handy for an adapter that was wrongly detected, or one you've swapped out / replaced — the old entry and all its entities are removed, and it won't come back after a restart. The **Powerline Network** overview device can't be deleted (it represents the integration itself). Note: an adapter that is *still plugged in and reachable* will be rediscovered on the next poll — unplug it first, then delete it.
 

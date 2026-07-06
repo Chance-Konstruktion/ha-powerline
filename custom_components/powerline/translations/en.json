@@ -27,7 +27,8 @@
         "title": "Powerline Network Options",
         "description": "Adjust polling behavior. Changes take effect immediately.",
         "data": {
-          "scan_interval": "Scan interval (seconds)"
+          "scan_interval": "Scan interval (seconds)",
+          "sidebar_panel": "Show 'Powerline' sidebar panel (topology view)"
         }
       }
     }

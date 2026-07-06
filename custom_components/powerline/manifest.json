@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/Chance-Konstruktion/ha-powerline/issues",
   "loggers": ["custom_components.powerline"],
   "requirements": [],
-  "version": "260627"
+  "version": "260706"
 }

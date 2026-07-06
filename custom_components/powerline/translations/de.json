@@ -27,7 +27,8 @@
         "title": "Powerline Netzwerk Optionen",
         "description": "Polling-Verhalten anpassen. \u00c4nderungen werden sofort wirksam.",
         "data": {
-          "scan_interval": "Scan-Intervall (Sekunden)"
+          "scan_interval": "Scan-Intervall (Sekunden)",
+          "sidebar_panel": "Seitenleisten-Eintrag „Powerline“ anzeigen (Topologie-Ansicht)"
         }
       }
     }
