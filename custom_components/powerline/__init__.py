@@ -13,6 +13,7 @@ Requires: CAP_NET_RAW capability or running HA as root.
 import logging
 from datetime import timedelta
 
+from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -60,6 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _migrate_old_status_entities(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _register_websocket_api(hass)
 
     # Clean up stale/duplicate device entries from the registry
     _cleanup_stale_devices(hass, entry, coordinator)
@@ -68,6 +70,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
+
+
+def _register_websocket_api(hass: HomeAssistant) -> None:
+    """Register the Powerline topology websocket command."""
+    websocket_api.async_register_command(
+        hass,
+        websocket_api.websocket_command({"type": f"{DOMAIN}/topology"})(
+            _websocket_get_topology
+        ),
+    )
+
+
+def _websocket_get_topology(
+    hass: HomeAssistant, connection: object, msg: dict[str, object]
+) -> None:
+    """Return the current topology payload for a config entry."""
+    entry_id = msg.get("entry_id")
+    coordinators = hass.data.get(DOMAIN, {})
+    coordinator = coordinators.get(entry_id)
+    if coordinator is None:
+        connection.send_error(
+            msg["id"], "not_found", "Powerline config entry not found"
+        )
+        return
+
+    connection.send_result(msg["id"], coordinator.data["topology"])
 
 
 def _migrate_old_status_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:

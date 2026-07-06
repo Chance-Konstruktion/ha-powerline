@@ -47,6 +47,30 @@ if "homeassistant.core" not in sys.modules:
     sys.modules["homeassistant.core"] = core
 
 
+# -- homeassistant.components.websocket_api -----------------------------------
+if "homeassistant.components" not in sys.modules:
+    components = types.ModuleType("homeassistant.components")
+    components.__path__ = []
+    sys.modules["homeassistant.components"] = components
+
+if "homeassistant.components.websocket_api" not in sys.modules:
+    ws = types.ModuleType("homeassistant.components.websocket_api")
+
+    def websocket_command(schema):
+        def decorator(func):
+            func._ws_schema = schema
+            return func
+        return decorator
+
+    def async_register_command(hass, command):
+        hass.registered_websocket_command = command
+
+    ws.websocket_command = websocket_command
+    ws.async_register_command = async_register_command
+    sys.modules["homeassistant.components.websocket_api"] = ws
+    sys.modules["homeassistant.components"].websocket_api = ws
+
+
 # -- homeassistant.helpers (parent package) -----------------------------------
 if "homeassistant.helpers" not in sys.modules:
     helpers = types.ModuleType("homeassistant.helpers")
