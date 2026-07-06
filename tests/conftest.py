@@ -61,6 +61,10 @@ except ImportError:
 
     _vol.Required = _VolMarker
     _vol.Optional = _VolMarker
+    _vol.All = lambda *validators: validators
+    _vol.Coerce = lambda target: target
+    _vol.Range = lambda **kwargs: kwargs
+    _vol.Schema = lambda schema, **kwargs: schema
     sys.modules["voluptuous"] = _vol
 
 
@@ -114,6 +118,44 @@ if "homeassistant.components.frontend" not in sys.modules:
     fe.add_extra_js_url = add_extra_js_url
     sys.modules["homeassistant.components.frontend"] = fe
     sys.modules["homeassistant.components"].frontend = fe
+
+
+# -- homeassistant.components.persistent_notification ---------------------------
+if "homeassistant.components.persistent_notification" not in sys.modules:
+    pn = types.ModuleType("homeassistant.components.persistent_notification")
+
+    def pn_async_create(hass, message, title=None, notification_id=None):
+        if not hasattr(hass, "notifications"):
+            hass.notifications = []
+        hass.notifications.append(
+            {"message": message, "title": title, "notification_id": notification_id}
+        )
+
+    pn.async_create = pn_async_create
+    sys.modules["homeassistant.components.persistent_notification"] = pn
+    sys.modules["homeassistant.components"].persistent_notification = pn
+
+
+# -- homeassistant.helpers.storage ---------------------------------------------
+if "homeassistant.helpers.storage" not in sys.modules:
+    storage = types.ModuleType("homeassistant.helpers.storage")
+
+    class Store:  # pragma: no cover - simple in-memory stand-in
+        def __init__(self, hass, version, key):
+            self.key = key
+            self.saved = None
+
+        async def async_load(self):
+            return None
+
+        async def async_save(self, data):
+            self.saved = data
+
+        def async_delay_save(self, data_func, delay=0):
+            self.saved = data_func()
+
+    storage.Store = Store
+    sys.modules["homeassistant.helpers.storage"] = storage
 
 
 # -- homeassistant.helpers (parent package) -----------------------------------

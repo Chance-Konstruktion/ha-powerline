@@ -24,8 +24,10 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from .const import (
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
+    CONF_TOPOLOGY_ALERTS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SIDEBAR_PANEL,
+    DEFAULT_TOPOLOGY_ALERTS,
     DOMAIN,
     FRONTEND_BASE_URL,
     NETWORK_DEVICE_ID,
@@ -67,6 +69,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = TpLinkPowerlineCoordinator(
         hass, interface, initial_devices, scan_interval=scan_interval
     )
+    coordinator.alerts_enabled = bool(
+        entry.options.get(CONF_TOPOLOGY_ALERTS, DEFAULT_TOPOLOGY_ALERTS)
+    )
+
+    # Restore link-rate history (survives restarts, ~30 days of aggregates)
+    try:
+        from homeassistant.helpers.storage import Store
+
+        store = Store(hass, 1, f"{DOMAIN}.topology_history")
+        coordinator.history.restore(await store.async_load())
+        coordinator.history_store = store
+    except ImportError:  # pragma: no cover - Store exists in every real HA
+        pass
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -94,11 +109,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def _register_websocket_api(hass: HomeAssistant) -> None:
-    """Register the topology websocket command (once)."""
+    """Register the topology websocket commands (once)."""
     if hass.data.get(_DATA_WS_REGISTERED):
         return
     hass.data[_DATA_WS_REGISTERED] = True
     websocket_api.async_register_command(hass, _websocket_get_topology)
+    websocket_api.async_register_command(hass, _websocket_get_history)
+
+
+def _get_coordinator(hass: HomeAssistant, msg: dict):
+    """Resolve the coordinator for a websocket message (entry_id optional)."""
+    coordinators = hass.data.get(DOMAIN, {})
+    entry_id = msg.get("entry_id")
+    if entry_id:
+        return coordinators.get(entry_id)
+    return next(iter(coordinators.values()), None)
 
 
 @websocket_api.websocket_command(
@@ -117,13 +142,7 @@ def _websocket_get_topology(
     names are enriched from the device registry so user renames ("Wohnzimmer")
     show up in the graph instead of raw MACs.
     """
-    coordinators = hass.data.get(DOMAIN, {})
-    entry_id = msg.get("entry_id")
-    if entry_id:
-        coordinator = coordinators.get(entry_id)
-    else:
-        coordinator = next(iter(coordinators.values()), None)
-
+    coordinator = _get_coordinator(hass, msg)
     if coordinator is None:
         connection.send_error(
             msg["id"], "not_found", "Powerline config entry not found"
@@ -137,6 +156,40 @@ def _websocket_get_topology(
         for node in topology.get("nodes", [])
     ]
     connection.send_result(msg["id"], topology)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/topology/history",
+        vol.Required("source"): str,
+        vol.Required("destination"): str,
+        vol.Optional("hours"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=744)),
+        vol.Optional("entry_id"): str,
+    }
+)
+@callback
+def _websocket_get_history(
+    hass: HomeAssistant, connection, msg: dict
+) -> None:
+    """Return the link-rate history of one edge (raw ≤1h, else 15-min buckets)."""
+    coordinator = _get_coordinator(hass, msg)
+    if coordinator is None:
+        connection.send_error(
+            msg["id"], "not_found", "Powerline config entry not found"
+        )
+        return
+
+    hours = float(msg.get("hours", 24))
+    series = coordinator.history.series(msg["source"], msg["destination"], hours)
+    connection.send_result(
+        msg["id"],
+        {
+            "source": msg["source"],
+            "destination": msg["destination"],
+            "hours": hours,
+            "series": series,
+        },
+    )
 
 
 def _display_name(hass: HomeAssistant, mac: str) -> str | None:
@@ -313,6 +366,9 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
     _async_update_panel(
         hass, entry.options.get(CONF_SIDEBAR_PANEL, DEFAULT_SIDEBAR_PANEL)
+    )
+    coordinator.alerts_enabled = bool(
+        entry.options.get(CONF_TOPOLOGY_ALERTS, DEFAULT_TOPOLOGY_ALERTS)
     )
 
 

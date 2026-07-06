@@ -4,6 +4,24 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Link-rate history.** Rolling history per connection — raw samples for the
+  last hour, 15-minute aggregates for 30 days — persisted across restarts via
+  the HA Store. New websocket command `powerline/topology/history` returns the
+  series; the topology card shows it as a sparkline with 1 h / 24 h / 7 d /
+  30 d ranges when a connection is selected.
+- **Instability analysis.** The analysis payload now names the *most unstable*
+  connection (rate variation over 24 h, combining bucket-to-bucket variation
+  and in-bucket swing); the card surfaces slowest/most-unstable/offline in a
+  compact analysis line.
+- **Smart alerts** (optional, on by default, new options-flow switch):
+  persistent notifications when a connection has been much slower than its
+  24-hour baseline for 30 minutes (with hysteresis so alerts don't flap),
+  when an adapter is removed from the topology, and when a new adapter joins.
+  Adapter names in alerts follow device-registry renames.
+- New topology event `adapter_removed` (fired when an offline adapter ages out
+  of the graph after the retention window).
+
 ## [260706] - 2026-07-06
 
 ### Added

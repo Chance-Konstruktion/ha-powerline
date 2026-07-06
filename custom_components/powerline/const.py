@@ -39,6 +39,10 @@ CONF_SIDEBAR_PANEL = "sidebar_panel"
 DEFAULT_SIDEBAR_PANEL = True
 PANEL_URL_PATH = "powerline"
 
+# Smart topology alerts (persistent notifications, toggleable)
+CONF_TOPOLOGY_ALERTS = "topology_alerts"
+DEFAULT_TOPOLOGY_ALERTS = True
+
 
 @lru_cache(maxsize=128)
 def normalize_mac(mac: str) -> str:

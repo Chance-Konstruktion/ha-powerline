@@ -86,6 +86,7 @@ class TopologyManager:
                 timestamp - last_update
             ).total_seconds() > self._offline_retention_seconds:
                 self._nodes.pop(mac)
+                self._record_event("adapter_removed", timestamp, mac=mac)
 
         self._new_adapters = sorted(new_adapters)
 
