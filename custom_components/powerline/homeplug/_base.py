@@ -35,6 +35,15 @@ class _HomeplugBase:
         # MACs whose firmware/model we already tried — avoids re-querying
         # (and timing out on) device info every single poll.
         self._info_attempted: set[str] = set()
+        # MACs whose network role (CCo MAC) we already queried this session,
+        # and the CCo MAC each adapter reported.
+        self._roles_attempted: set[str] = set()
+        self._cco_by_mac: dict[str, str] = {}
+        # Directed per-link PHY rates learned during the last discover():
+        # {(responder_mac, peer_mac): {"tx_rate": int, "rx_rate": int}}.
+        # NW_STATS replies carry the responder's rate to each peer, which is
+        # the only true pairwise link data the protocol exposes.
+        self.plc_links: dict[tuple[str, str], dict[str, int]] = {}
         # Serializes the socket-using public methods across executor threads.
         self._lock = threading.RLock()
 

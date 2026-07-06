@@ -51,6 +51,21 @@ class DiscoveryMixin:
         return {"mac": mac, "plcmac": mac, "model": "",
                 "firmware_ver": "", "tx_rate": 0, "rx_rate": 0}
 
+    def _note_link(self, responder: str, peer: str, tx: int, rx: int) -> None:
+        """Record one directed link measurement responder→peer.
+
+        NW_STATS-style confirms list the responder's PHY rate towards each
+        peer station, so (responder, peer) pairs are real pairwise link data
+        — the basis for the topology graph's edges.
+        """
+        if not responder or not peer or responder.upper() == peer.upper():
+            return
+        if tx <= 0 and rx <= 0:
+            return
+        self.plc_links[(responder.upper(), peer.upper())] = {
+            "tx_rate": tx, "rx_rate": rx,
+        }
+
     def _annotate_capabilities(self, devices: dict[str, dict]) -> None:
         """Attach capability hints per adapter for diagnostics."""
         for mac, dev in devices.items():
@@ -81,6 +96,7 @@ class DiscoveryMixin:
             return []
 
         devices: dict[str, dict] = {}
+        self.plc_links = {}
 
         # Step 1: CC_DISCOVER_LIST on 0x88E1 (works on ALL chipsets)
         frame = build_hpav_frame(BROADCAST_MAC, self._src_mac,
@@ -122,6 +138,9 @@ class DiscoveryMixin:
 
         # Step 4: Get firmware/model info
         self._fetch_device_info(devices)
+
+        # Step 5: Network role (CCo MAC) for the topology graph
+        self._fetch_network_roles(devices)
         self._annotate_capabilities(devices)
 
         self._close()
@@ -293,6 +312,7 @@ class DiscoveryMixin:
                             devices[m]["tx_rate"] = tx
                             devices[m]["rx_rate"] = rx
                             self._mirror_link_rate(devices, src, m, tx, rx)
+                            self._note_link(src, m, tx, rx)
                             found = True
                             _LOGGER.info("NW_STATS unicast: "
                                          "%s TX=%d RX=%d", m, tx, rx)
@@ -315,6 +335,7 @@ class DiscoveryMixin:
                             devices[m]["tx_rate"] = tx
                             devices[m]["rx_rate"] = rx
                             self._mirror_link_rate(devices, src, m, tx, rx)
+                            self._note_link(src, m, tx, rx)
                             found = True
                             _LOGGER.info("NW_STATS broadcast: "
                                          "%s TX=%d RX=%d", m, tx, rx)
@@ -341,6 +362,7 @@ class DiscoveryMixin:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx
                             devices[m]["rx_rate"] = rx
+                            self._note_link(src, m, tx, rx)
                             found = True
                             _LOGGER.info("LINK_STATS: "
                                          "%s TX=%d RX=%d", m, tx, rx)
@@ -388,6 +410,7 @@ class DiscoveryMixin:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx
                             devices[m]["rx_rate"] = rx
+                            self._note_link(src, m, tx, rx)
                             found = True
                             _LOGGER.info("NW_INFO unicast: "
                                          "%s TX=%d RX=%d", m, tx, rx)
@@ -412,6 +435,7 @@ class DiscoveryMixin:
                         devices.setdefault(m, self._new_dev(m))
                         devices[m]["tx_rate"] = tx
                         devices[m]["rx_rate"] = rx
+                        self._note_link(src, m, tx, rx)
                         found = True
 
         if found:
@@ -430,6 +454,7 @@ class DiscoveryMixin:
                     if m in devices:
                         devices[m]["tx_rate"] = sta["tx_rate"]
                         devices[m]["rx_rate"] = sta["rx_rate"]
+                        self._note_link(src, m, sta["tx_rate"], sta["rx_rate"])
                         found = True
             elif mmtype not in (0x6046, CC_DISCOVER_LIST_REQ,
                                 0xA000):
@@ -483,6 +508,43 @@ class DiscoveryMixin:
                         "but values TX=%d RX=%d look wrong",
                         mac, idx, tx, rx)
         return found
+
+    # ── Network Roles (CCo detection) ─────────────────────
+
+    def _fetch_network_roles(self, devices: dict) -> None:
+        """Learn each network's Central Coordinator via MX NW_INFO (0xA028).
+
+        The confirm's network block carries the CCo MAC, which the topology
+        graph uses to mark the root adapter. Queried once per adapter per
+        session — roles only change on re-pairing or power cycling, and the
+        unicast times out on adapters that don't implement the MME.
+        Qualcomm-only adapters don't answer 0x8912 at all, so they are
+        skipped; their role stays unknown.
+        """
+        for mac in list(devices.keys()):
+            if self._mac_chipset(mac) == "qualcomm":
+                continue
+            if mac in self._roles_attempted:
+                # Keep the previously learned value visible on the fresh dict.
+                continue
+            self._roles_attempted.add(mac)
+            dst = mac_to_bytes(mac)
+            frame = build_mx_frame(dst, self._src_mac, MX_NW_INFO_REQ,
+                                   seq=self._next_seq(), payload=b"\x00\x01")
+            for mmtype, src, data in self._send_recv(self._sock_mx, frame, 1.5):
+                if mmtype != MX_NW_INFO_CNF:
+                    continue
+                info = parse_mx_nw_info_cnf(data)
+                for nw in info.get("networks", []):
+                    cco = (nw.get("cco_mac") or "").upper()
+                    if cco and cco != "00:00:00:00:00:00":
+                        self._cco_by_mac[src.upper()] = cco
+                        _LOGGER.debug("NW_INFO roles: %s reports CCo=%s",
+                                      src, cco)
+        for mac, dev in devices.items():
+            cco = self._cco_by_mac.get(mac.upper())
+            if cco:
+                dev["cco_mac"] = cco
 
     # ── Device Info ───────────────────────────────────────
 

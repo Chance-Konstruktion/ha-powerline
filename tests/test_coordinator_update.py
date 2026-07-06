@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 
 # conftest.py installs all HA stubs before this module is collected.
 from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
-from custom_components.powerline.const import get_mac
+from custom_components.powerline.const import TOPOLOGY_EVENT, get_mac
+from custom_components.powerline.topology import TopologyManager
 
 # Use uppercase MACs so get_mac() normalisation is a no-op.
 MAC_A = "AA:BB:CC:DD:EE:01"
@@ -17,8 +18,19 @@ def _make_device(mac, tx=100, rx=50):
     return {"mac": mac, "tx_rate": tx, "rx_rate": rx}
 
 
+class _FakeBus:
+    def __init__(self):
+        self.events = []
+
+    def async_fire(self, event_type, event_data):
+        self.events.append((event_type, event_data))
+
+
 class _FakeHass:
     """Minimal hass stub that runs executor jobs synchronously."""
+
+    def __init__(self):
+        self.bus = _FakeBus()
 
     async def async_add_executor_job(self, func, *args):
         # Simply call the (possibly mocked) function; MagicMock.return_value is returned.
@@ -32,12 +44,14 @@ def _build_coordinator(discover_result, state_result=None):
     coord.hp = MagicMock()
     coord.hp.discover.return_value = discover_result
     coord.hp.query_device_states.return_value = state_result or {}
+    coord.hp.plc_links = {}
     coord.devices = {}
     coord._known_macs = set()
     coord._new_device_callbacks = []
     coord.led_states = {}
     coord.power_saving_states = {}
     coord.qos_states = {}
+    coord.topology = TopologyManager()
     coord._states_queried = False
     coord.logger = MagicMock()
     return coord
@@ -162,3 +176,37 @@ class TestAdapterOnline(IsolatedAsyncioTestCase):
         coord = _build_coordinator(discover_result=[])
         coord.devices = {MAC_A: {"mac": MAC_A}}
         self.assertTrue(coord.adapter_online(MAC_A))
+
+
+class TestTopology(IsolatedAsyncioTestCase):
+    """The coordinator exposes the topology payload and fires its events."""
+
+    async def test_update_returns_topology_payload(self):
+        devices = [_make_device(MAC_A), _make_device(MAC_B)]
+        coord = _build_coordinator(discover_result=devices)
+        coord.hp.plc_links = {
+            (MAC_A, MAC_B): {"tx_rate": 720, "rx_rate": 610},
+        }
+
+        data = await coord._async_update_data()
+
+        topology = data["topology"]
+        self.assertEqual([n["mac"] for n in topology["nodes"]], [MAC_A, MAC_B])
+        self.assertEqual(len(topology["edges"]), 1)
+        edge = topology["edges"][0]
+        self.assertEqual(edge["tx_phy_rate"], 720)
+        self.assertEqual(edge["rx_phy_rate"], 610)
+        self.assertFalse(edge["estimated"])
+
+    async def test_fires_topology_events_after_update(self):
+        device = _make_device(MAC_A)
+        coord = _build_coordinator(discover_result=[device])
+
+        await coord._async_update_data()
+
+        events = coord.hass.bus.events
+        self.assertEqual(len(events), 1)
+        event_type, event_data = events[0]
+        self.assertEqual(event_type, TOPOLOGY_EVENT)
+        self.assertEqual(event_data["event"], "adapter_online")
+        self.assertEqual(event_data["mac"], MAC_A)

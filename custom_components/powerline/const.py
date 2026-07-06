@@ -26,6 +26,10 @@ QOS_OPTIONS = [QOS_PRIORITY_GAMING, QOS_PRIORITY_VOIP, QOS_PRIORITY_AV, QOS_PRIO
 NETWORK_DEVICE_ID = "powerline_network"
 NETWORK_DEVICE_NAME = "Powerline Network"
 
+# Topology (mesh graph) support
+TOPOLOGY_EVENT = "powerline_topology_event"
+TOPOLOGY_CARD_URL = "/powerline/powerline-topology-card.js"
+
 
 @lru_cache(maxsize=128)
 def normalize_mac(mac: str) -> str:

@@ -12,9 +12,13 @@ Requires: CAP_NET_RAW capability or running HA as root.
 
 import logging
 from datetime import timedelta
+from pathlib import Path
 
+import voluptuous as vol
+
+from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -23,12 +27,18 @@ from .const import (
     DOMAIN,
     NETWORK_DEVICE_ID,
     PLATFORMS,
+    TOPOLOGY_CARD_URL,
     get_mac,
 )
 from .coordinator import TpLinkPowerlineCoordinator
 from .homeplug import is_available
 
 _LOGGER = logging.getLogger(__name__)
+
+# hass.data flags so the websocket command and the card resource are
+# registered exactly once, no matter how many config entries exist.
+_DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
+_DATA_FRONTEND_REGISTERED = f"{DOMAIN}_frontend_registered"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -61,6 +71,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _register_websocket_api(hass)
+    await _register_frontend(hass)
+
     # Clean up stale/duplicate device entries from the registry
     _cleanup_stale_devices(hass, entry, coordinator)
 
@@ -68,6 +81,95 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
+
+
+def _register_websocket_api(hass: HomeAssistant) -> None:
+    """Register the topology websocket command (once)."""
+    if hass.data.get(_DATA_WS_REGISTERED):
+        return
+    hass.data[_DATA_WS_REGISTERED] = True
+    websocket_api.async_register_command(hass, _websocket_get_topology)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/topology",
+        vol.Optional("entry_id"): str,
+    }
+)
+@callback
+def _websocket_get_topology(
+    hass: HomeAssistant, connection, msg: dict
+) -> None:
+    """Return the current topology payload ({nodes, edges, analysis}).
+
+    Without entry_id the first (usually only) config entry is used. Node
+    names are enriched from the device registry so user renames ("Wohnzimmer")
+    show up in the graph instead of raw MACs.
+    """
+    coordinators = hass.data.get(DOMAIN, {})
+    entry_id = msg.get("entry_id")
+    if entry_id:
+        coordinator = coordinators.get(entry_id)
+    else:
+        coordinator = next(iter(coordinators.values()), None)
+
+    if coordinator is None:
+        connection.send_error(
+            msg["id"], "not_found", "Powerline config entry not found"
+        )
+        return
+
+    data = coordinator.data or {}
+    topology = dict(data.get("topology") or {"nodes": [], "edges": [], "analysis": {}})
+    topology["nodes"] = [
+        {**node, "name": _display_name(hass, node["mac"]) or node["name"]}
+        for node in topology.get("nodes", [])
+    ]
+    connection.send_result(msg["id"], topology)
+
+
+def _display_name(hass: HomeAssistant, mac: str) -> str | None:
+    """The adapter's device-registry name (user rename wins), if known."""
+    try:
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get_device(identifiers={(DOMAIN, mac)})
+    except AttributeError:
+        return None
+    if device is None:
+        return None
+    return device.name_by_user or device.name
+
+
+async def _register_frontend(hass: HomeAssistant) -> None:
+    """Serve the topology card JS and load it on every dashboard (once)."""
+    if hass.data.get(_DATA_FRONTEND_REGISTERED):
+        return
+    hass.data[_DATA_FRONTEND_REGISTERED] = True
+
+    card_path = Path(__file__).parent / "frontend" / "powerline-topology-card.js"
+    try:
+        from homeassistant.components.http import StaticPathConfig
+
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(TOPOLOGY_CARD_URL, str(card_path), False)]
+        )
+    except ImportError:
+        # HA < 2024.7 has no StaticPathConfig
+        hass.http.register_static_path(TOPOLOGY_CARD_URL, str(card_path), False)
+
+    version = "0"
+    try:
+        from homeassistant.loader import async_get_integration
+
+        integration = await async_get_integration(hass, DOMAIN)
+        version = integration.version or version
+    except Exception:  # pragma: no cover - version only busts browser cache
+        pass
+
+    from homeassistant.components.frontend import add_extra_js_url
+
+    add_extra_js_url(hass, f"{TOPOLOGY_CARD_URL}?v={version}")
 
 
 def _migrate_old_status_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
