@@ -22,25 +22,91 @@
     unknown: "#9e9e9e",
   };
 
-  // Human-readable German role labels. "CCo" (Central Coordinator) is the
-  // adapter that coordinates the powerline network; "Zentrale" is far easier
-  // to grasp than the HomePlug acronym.
-  const ROLE_LABELS = {
-    CCo: "Zentrale (Koordinator)",
-    Station: "Teilnehmer",
-    unknown: "unbekannt",
-  };
-  // Short badge shown under the coordinator node in the graph.
-  const ROLE_BADGE = { CCo: "Zentrale" };
-
-  // Human-readable German quality labels shown in the details table instead
-  // of the raw colour keys returned by the backend.
-  const QUALITY_LABELS = {
-    green: "sehr gut",
-    yellow: "gut",
-    orange: "mittelmäßig",
-    red: "schlecht",
-    unknown: "unbekannt",
+  // All user-facing strings, keyed by language. The card follows Home
+  // Assistant's UI language (this._hass.language): German when it starts with
+  // "de", English otherwise. Plain-language role/quality labels replace the
+  // raw HomePlug acronyms and colour keys returned by the backend.
+  const STRINGS = {
+    de: {
+      role_CCo: "Zentrale (Koordinator)",
+      role_Station: "Teilnehmer",
+      role_unknown: "unbekannt",
+      badge_CCo: "Zentrale",
+      quality_green: "sehr gut",
+      quality_yellow: "gut",
+      quality_orange: "mittelmäßig",
+      quality_red: "schlecht",
+      quality_unknown: "unbekannt",
+      legend_estimated: "gestrichelt = geschätzt",
+      history_loading: "Lade Verlauf …",
+      history_empty: "Noch keine Verlaufsdaten für diesen Zeitraum.",
+      hint_click: "Adapter oder Verbindung anklicken für Details.",
+      empty: "Noch keine Powerline-Adapter erkannt.",
+      name: "Name",
+      mac: "MAC",
+      model: "Modell",
+      firmware: "Firmware",
+      manufacturer: "Hersteller",
+      chipset: "Chipsatz",
+      role: "Rolle",
+      status: "Status",
+      online: "online",
+      offline: "offline",
+      last_update: "Letztes Update",
+      connection: "Verbindung",
+      average: "Durchschnitt",
+      quality: "Qualität",
+      note: "Hinweis",
+      note_estimated: "geschätzt (keine paarweise Messung)",
+      analysis_worst: "Schwächste",
+      analysis_unstable: "Instabilste",
+      analysis_offline: "Offline",
+      settings: "Einstellungen",
+      info: "Info:",
+      run: "Ausführen",
+      range_168: "7 T",
+      range_720: "30 T",
+    },
+    en: {
+      role_CCo: "Coordinator",
+      role_Station: "Station",
+      role_unknown: "unknown",
+      badge_CCo: "Coordinator",
+      quality_green: "very good",
+      quality_yellow: "good",
+      quality_orange: "fair",
+      quality_red: "poor",
+      quality_unknown: "unknown",
+      legend_estimated: "dashed = estimated",
+      history_loading: "Loading history …",
+      history_empty: "No history data for this range yet.",
+      hint_click: "Click an adapter or connection for details.",
+      empty: "No powerline adapters discovered yet.",
+      name: "Name",
+      mac: "MAC",
+      model: "Model",
+      firmware: "Firmware",
+      manufacturer: "Manufacturer",
+      chipset: "Chipset",
+      role: "Role",
+      status: "Status",
+      online: "online",
+      offline: "offline",
+      last_update: "Last update",
+      connection: "Connection",
+      average: "Average",
+      quality: "Quality",
+      note: "Note",
+      note_estimated: "estimated (no pairwise measurement)",
+      analysis_worst: "Weakest",
+      analysis_unstable: "Most unstable",
+      analysis_offline: "Offline",
+      settings: "Settings",
+      info: "Info:",
+      run: "Run",
+      range_168: "7 d",
+      range_720: "30 d",
+    },
   };
 
   const VIEW_W = 600;
@@ -412,7 +478,7 @@
           this._error
         )}</div>`;
       } else if (!this._topology || !this._topology.nodes.length) {
-        body = `<div class="empty">No powerline adapters discovered yet.</div>`;
+        body = `<div class="empty">${this._escape(this._t("empty"))}</div>`;
       } else {
         body = `<div class="graph">${this._renderSvg()}</div>${this._renderLegend()}${this._renderAnalysis()}${this._renderDetails()}`;
       }
@@ -510,7 +576,7 @@
             ` stroke="var(--card-background-color, #fff)" stroke-width="2"></circle>`
         );
         const label = node.name === node.mac ? this._shortMac(node.mac) : node.name;
-        const sub = ROLE_BADGE[node.role] || "";
+        const sub = node.role === "CCo" ? this._t("badge_CCo") : "";
         parts.push(this._nodeLabelSvg(p, cx, cy, label, sub));
         parts.push(`</g>`);
       });
@@ -529,7 +595,7 @@
         .map(([c, l]) => `<span style="--dot:${c}">${l}</span>`)
         .join("");
       const estimated = (this._topology.edges || []).some((e) => e.estimated)
-        ? `<span style="--dot:transparent">gestrichelt = geschätzt</span>`
+        ? `<span style="--dot:transparent">${this._escape(this._t("legend_estimated"))}</span>`
         : "";
       return `<div class="legend">${items}${estimated}</div>`;
     }
@@ -540,7 +606,7 @@
       if (analysis.worst_link && analysis.worst_link.average_rate > 0) {
         const w = analysis.worst_link;
         parts.push(
-          `<span>🐢 Schwächste: ${this._nodeName(w.source)} ↔ ${this._nodeName(
+          `<span>🐢 ${this._t("analysis_worst")}: ${this._nodeName(w.source)} ↔ ${this._nodeName(
             w.destination
           )} (${w.average_rate} Mbit/s)</span>`
         );
@@ -548,13 +614,13 @@
       if (analysis.most_unstable_link) {
         const u = analysis.most_unstable_link;
         parts.push(
-          `<span>📉 Instabilste: ${this._nodeName(u.source)} ↔ ${this._nodeName(
+          `<span>📉 ${this._t("analysis_unstable")}: ${this._nodeName(u.source)} ↔ ${this._nodeName(
             u.destination
           )} (±${Math.round(u.instability * 100)}%)</span>`
         );
       }
       if (analysis.offline_adapters && analysis.offline_adapters.length) {
-        parts.push(`<span>🔴 Offline: ${analysis.offline_adapters.length}</span>`);
+        parts.push(`<span>🔴 ${this._t("analysis_offline")}: ${analysis.offline_adapters.length}</span>`);
       }
       return parts.length ? `<div class="analysis">${parts.join("")}</div>` : "";
     }
@@ -564,8 +630,8 @@
       const ranges = [
         [1, "1 h"],
         [24, "24 h"],
-        [168, "7 T"],
-        [720, "30 T"],
+        [168, this._t("range_168")],
+        [720, this._t("range_720")],
       ];
       const buttons = ranges
         .map(
@@ -578,11 +644,11 @@
 
       let chart;
       if (this._historyLoading) {
-        chart = `<div class="spark-empty">Lade Verlauf …</div>`;
+        chart = `<div class="spark-empty">${this._escape(this._t("history_loading"))}</div>`;
       } else if (!this._history || this._history.key !== key) {
         chart = `<div class="spark-empty"></div>`;
       } else if (this._history.series.length < 2) {
-        chart = `<div class="spark-empty">Noch keine Verlaufsdaten für diesen Zeitraum.</div>`;
+        chart = `<div class="spark-empty">${this._escape(this._t("history_empty"))}</div>`;
       } else {
         chart = this._renderSparkline(this._history.series);
       }
@@ -643,7 +709,7 @@
 
     _renderDetails() {
       if (!this._selected) {
-        return `<div class="hint">Adapter oder Verbindung anklicken für Details.</div>`;
+        return `<div class="hint">${this._escape(this._t("hint_click"))}</div>`;
       }
       // Each row is [key, value, isHtml?]. When isHtml is true the value is
       // treated as trusted markup (used for the coloured quality label).
@@ -654,29 +720,29 @@
           (n) => n.mac === this._selected.id
         );
         if (!node) return "";
-        rows.push(["Name", node.name]);
-        rows.push(["MAC", node.mac]);
-        if (node.model) rows.push(["Modell", node.model]);
-        if (node.firmware) rows.push(["Firmware", node.firmware]);
-        if (node.manufacturer) rows.push(["Hersteller", node.manufacturer]);
-        if (node.chipset) rows.push(["Chipsatz", node.chipset]);
-        rows.push(["Rolle", ROLE_LABELS[node.role] || node.role]);
-        rows.push(["Status", node.online ? "online" : "offline"]);
-        rows.push(["Letztes Update", this._formatTime(node.last_update)]);
+        rows.push([this._t("name"), node.name]);
+        rows.push([this._t("mac"), node.mac]);
+        if (node.model) rows.push([this._t("model"), node.model]);
+        if (node.firmware) rows.push([this._t("firmware"), node.firmware]);
+        if (node.manufacturer) rows.push([this._t("manufacturer"), node.manufacturer]);
+        if (node.chipset) rows.push([this._t("chipset"), node.chipset]);
+        rows.push([this._t("role"), this._roleLabel(node.role)]);
+        rows.push([this._t("status"), node.online ? this._t("online") : this._t("offline")]);
+        rows.push([this._t("last_update"), this._formatTime(node.last_update)]);
         controls = this._renderAdapterControls(node.mac);
       } else {
         const edge = this._topology.edges[this._selected.id];
         if (!edge) return "";
         rows.push([
-          "Verbindung",
+          this._t("connection"),
           `${this._nodeName(edge.source)} ↔ ${this._nodeName(edge.destination)}`,
         ]);
         rows.push(["TX", `${edge.tx_phy_rate} Mbit/s`]);
         rows.push(["RX", `${edge.rx_phy_rate} Mbit/s`]);
-        rows.push(["Durchschnitt", `${edge.average_rate} Mbit/s`]);
-        rows.push(["Qualität", this._qualityLabelHtml(edge.link_quality), true]);
-        if (edge.estimated) rows.push(["Hinweis", "geschätzt (keine paarweise Messung)"]);
-        rows.push(["Letztes Update", this._formatTime(edge.timestamp)]);
+        rows.push([this._t("average"), `${edge.average_rate} Mbit/s`]);
+        rows.push([this._t("quality"), this._qualityLabelHtml(edge.link_quality), true]);
+        if (edge.estimated) rows.push([this._t("note"), this._t("note_estimated")]);
+        rows.push([this._t("last_update"), this._formatTime(edge.timestamp)]);
       }
       const table = rows
         .map(
@@ -693,7 +759,7 @@
       }
       // For an adapter the controls sit above the info block (as requested);
       // the "Info:" heading only appears when controls precede the table.
-      const infoTitle = controls ? `<div class="info-title">Info:</div>` : "";
+      const infoTitle = controls ? `<div class="info-title">${this._escape(this._t("info"))}</div>` : "";
       return `<div class="details">${controls}${infoTitle}<table>${table}</table>${history}</div>`;
     }
 
@@ -910,12 +976,36 @@
       }
     }
 
-    // Coloured German quality label (e.g. "sehr gut") for the details table.
+    // ── i18n ───────────────────────────────────────────────
+    // Follow Home Assistant's UI language: German for "de*", English otherwise.
+    _lang() {
+      const l = (this._hass && this._hass.language) || "en";
+      return String(l).toLowerCase().startsWith("de") ? "de" : "en";
+    }
+
+    _t(key) {
+      const lang = this._lang();
+      const table = STRINGS[lang] || STRINGS.en;
+      return table[key] != null ? table[key] : STRINGS.en[key] != null ? STRINGS.en[key] : key;
+    }
+
+    _roleLabel(role) {
+      const key = "role_" + role;
+      const label = this._t(key);
+      return label === key ? role : label;
+    }
+
+    _qualityText(quality) {
+      const key = "quality_" + quality;
+      const label = this._t(key);
+      return label === key ? this._t("quality_unknown") : label;
+    }
+
+    // Coloured plain-language quality label for the details table.
     _qualityLabelHtml(quality) {
-      const label = QUALITY_LABELS[quality] || QUALITY_LABELS.unknown;
       const color = QUALITY_COLORS[quality] || QUALITY_COLORS.unknown;
       return `<span class="quality-dot" style="--dot:${color}"></span>${this._escape(
-        label
+        this._qualityText(quality)
       )}`;
     }
 
@@ -1024,11 +1114,11 @@
             `<div class="${rowCls}"><span class="label">${label}</span>` +
             `<button class="control-btn" data-press="${this._escape(
               e.entity_id
-            )}"${unavailable ? " disabled" : ""}>Ausführen</button></div>`
+            )}"${unavailable ? " disabled" : ""}>${this._escape(this._t("run"))}</button></div>`
           );
         })
         .join("");
-      return `<div class="controls"><div class="controls-title">Einstellungen</div>${rows}</div>`;
+      return `<div class="controls"><div class="controls-title">${this._escape(this._t("settings"))}</div>${rows}</div>`;
     }
 
     _escape(text) {
