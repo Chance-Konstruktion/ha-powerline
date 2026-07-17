@@ -97,7 +97,9 @@ class TestHistoryApi(TestCase):
 
         mac_a = "AA:BB:CC:DD:EE:01"
         mac_b = "AA:BB:CC:DD:EE:02"
-        now = datetime(2026, 7, 6, 12, 0, tzinfo=timezone.utc)
+        # The websocket handler queries relative to the real current time,
+        # so the recorded samples must be anchored to it as well.
+        now = datetime.now(timezone.utc)
 
         coordinator = _Coordinator(TOPOLOGY)
         coordinator.history = TopologyHistory()

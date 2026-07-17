@@ -529,7 +529,6 @@
         `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>` +
         `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="var(--primary-color, #03a9f4)"></circle>` +
         `<text x="${PAD}" y="10" font-size="9" fill="var(--secondary-text-color, #666)">Max ${hi} Mbit/s</text>` +
-        `<text x="${PAD}" y="${H - PAD - 1}" font-size="9" fill="var(--secondary-text-color, #666)">Min ${lo} Mbit/s</text>` +
         `</svg>`
       );
     }
