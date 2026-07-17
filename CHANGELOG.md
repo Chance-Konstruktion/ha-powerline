@@ -2,6 +2,28 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [260717] - 2026-07-17
+
+### Added
+- **Adapter controls in the topology card.** Selecting an adapter now lists its
+  controllable entities (LED and power-saving toggles, QoS priority selector,
+  restart button) directly in the card, driven via Home Assistant services. The
+  controls sit above the info block.
+- **Live sparkline readout.** Hovering the link-rate chart shows the value and
+  time at the pointer position; the range maximum is shown only when the pointer
+  is outside the chart.
+
+### Changed
+- **Readable link-rate label.** The "Max … Mbit/s" label moved out of the
+  horizontally-stretched SVG into a legible HTML overlay, and its font is
+  slightly larger.
+- **Plain-language labels.** Link quality now reads *sehr gut / gut /
+  mittelmäßig / schlecht* (with a colour dot) instead of the raw colour key, and
+  the adapter role shows *Zentrale (Koordinator)* / *Teilnehmer* instead of the
+  HomePlug acronyms *CCo* / *Station*.
+- **Typography tweaks.** Larger info/detail text, smaller adapter name labels in
+  the graph.
+
 ## [260706] - 2026-07-06
 
 ### Added
