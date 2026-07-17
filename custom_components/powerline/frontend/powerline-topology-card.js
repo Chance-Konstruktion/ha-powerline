@@ -43,7 +43,8 @@
 
     setConfig(config) {
       this._config = {
-        title: config.title || "Powerline Mesh",
+        // title: "" hides the header entirely (used by the full-page panel)
+        title: config.title === undefined ? "Powerline Mesh" : config.title,
         entry_id: config.entry_id || undefined,
         refresh_interval: Math.max(5, Number(config.refresh_interval) || 30),
       };
@@ -203,8 +204,8 @@
         macs.forEach((m) => {
           pos[m].x += Math.max(-8, Math.min(8, force[m].x)) * cool;
           pos[m].y += Math.max(-8, Math.min(8, force[m].y)) * cool;
-          pos[m].x = Math.max(45, Math.min(VIEW_W - 45, pos[m].x));
-          pos[m].y = Math.max(40, Math.min(VIEW_H - 45, pos[m].y));
+          pos[m].x = Math.max(60, Math.min(VIEW_W - 60, pos[m].x));
+          pos[m].y = Math.max(55, Math.min(VIEW_H - 60, pos[m].y));
         });
       }
       this._positions = pos;
@@ -231,19 +232,29 @@
           fill: var(--secondary-text-color, #666);
           text-anchor: middle;
           pointer-events: none;
+          paint-order: stroke;
+          stroke: var(--card-background-color, #fff);
+          stroke-width: 3.5px;
+          stroke-linejoin: round;
         }
         .node { cursor: pointer; }
         .node-label {
           font: 12px sans-serif;
           fill: var(--primary-text-color, #212121);
-          text-anchor: middle;
           pointer-events: none;
+          paint-order: stroke;
+          stroke: var(--card-background-color, #fff);
+          stroke-width: 3.5px;
+          stroke-linejoin: round;
         }
         .node-sub {
           font: 10px sans-serif;
           fill: var(--secondary-text-color, #666);
-          text-anchor: middle;
           pointer-events: none;
+          paint-order: stroke;
+          stroke: var(--card-background-color, #fff);
+          stroke-width: 3px;
+          stroke-linejoin: round;
         }
         .selected-ring { fill: none; stroke: var(--primary-color, #03a9f4); stroke-width: 2.5; }
         .cco-ring { fill: none; stroke: var(--primary-color, #03a9f4); stroke-width: 1.5; stroke-dasharray: 3 2; }
@@ -283,6 +294,12 @@
           color: var(--text-primary-color, #fff);
         }
         .spark { width: 100%; height: 70px; display: block; }
+        .spark text {
+          paint-order: stroke;
+          stroke: var(--card-background-color, #fff);
+          stroke-width: 3px;
+          stroke-linejoin: round;
+        }
         .spark-empty { font-size: 0.8em; color: var(--secondary-text-color); padding: 4px 0; }
         .empty { padding: 16px; color: var(--secondary-text-color); }
         .legend {
@@ -308,10 +325,13 @@
         body = `<div class="graph">${this._renderSvg()}</div>${this._renderLegend()}${this._renderAnalysis()}${this._renderDetails()}`;
       }
 
+      const header = this._config.title
+        ? `<div class="header">${this._escape(this._config.title)}</div>`
+        : "";
       this.shadowRoot.innerHTML = `
         <style>${style}</style>
         <ha-card>
-          <div class="header">${this._escape(this._config.title)}</div>
+          ${header}
           ${body}
         </ha-card>
       `;
@@ -321,6 +341,13 @@
     _renderSvg() {
       const t = this._topology;
       const parts = [];
+      // Graph centroid: labels are pushed away from it so they end up on
+      // the outside of the mesh instead of on top of each other.
+      const placed = t.nodes
+        .map((n) => this._positions[n.mac])
+        .filter(Boolean);
+      const cx = placed.reduce((s, p) => s + p.x, 0) / Math.max(1, placed.length);
+      const cy = placed.reduce((s, p) => s + p.y, 0) / Math.max(1, placed.length);
       parts.push(
         `<svg viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet">`
       );
@@ -343,13 +370,27 @@
             ` stroke-linecap="round"${dash} opacity="${sel ? 1 : 0.85}"></line>` +
             `<line class="edge-hit" data-edge="${i}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"></line>`
         );
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2 - 6;
         if (e.average_rate > 0) {
+          // Place the label beside the line (perpendicular offset), on the
+          // side facing away from the graph centre so it stays clear of the
+          // mesh interior and the node labels.
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+          let nx = -dy / len;
+          let ny = dx / len;
+          if (nx * (mx - cx) + ny * (my - cy) < 0) {
+            nx = -nx;
+            ny = -ny;
+          }
+          const lx = mx + nx * 14;
+          const ly = my + ny * 14 + 4;
           parts.push(
-            `<text class="edge-label" x="${mx}" y="${my}">${e.average_rate} Mbit/s${
-              e.estimated ? " ~" : ""
-            }</text>`
+            `<text class="edge-label" x="${lx.toFixed(1)}" y="${ly.toFixed(
+              1
+            )}">${e.average_rate} Mbit/s${e.estimated ? " ~" : ""}</text>`
           );
         }
       });
@@ -377,16 +418,8 @@
             ` stroke="var(--card-background-color, #fff)" stroke-width="2"></circle>`
         );
         const label = node.name === node.mac ? this._shortMac(node.mac) : node.name;
-        parts.push(
-          `<text class="node-label" x="${p.x}" y="${p.y + 30}">${this._escape(
-            label
-          )}</text>`
-        );
-        if (node.role === "CCo") {
-          parts.push(
-            `<text class="node-sub" x="${p.x}" y="${p.y + 43}">CCo</text>`
-          );
-        }
+        const sub = node.role === "CCo" ? "CCo" : "";
+        parts.push(this._nodeLabelSvg(p, cx, cy, label, sub));
         parts.push(`</g>`);
       });
 
@@ -495,8 +528,7 @@
         band +
         `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>` +
         `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="var(--primary-color, #03a9f4)"></circle>` +
-        `<text x="${PAD}" y="10" font-size="9" fill="var(--secondary-text-color, #666)">max ${hi} Mbit/s</text>` +
-        `<text x="${PAD}" y="${H - PAD - 1}" font-size="9" fill="var(--secondary-text-color, #666)">min ${lo}</text>` +
+        `<text x="${PAD}" y="10" font-size="9" fill="var(--secondary-text-color, #666)">Max ${hi} Mbit/s</text>` +
         `</svg>`
       );
     }
@@ -584,6 +616,55 @@
           if (edge) this._fetchHistory(edge, Number(el.getAttribute("data-hours")));
         });
       });
+    }
+
+    // Node label placed on the side of the node facing away from the graph
+    // centre (so it doesn't sit on the edges), clamped to the viewBox.
+    _nodeLabelSvg(p, cx, cy, label, sub) {
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.5;
+      const halfW = label.length * 3.6;
+      const lines = [];
+      if (horizontal) {
+        const right = dx >= 0;
+        const anchor = right ? "start" : "end";
+        let x = p.x + (right ? 24 : -24);
+        x = right
+          ? Math.min(x, VIEW_W - 4 - 2 * halfW)
+          : Math.max(x, 4 + 2 * halfW);
+        const y = Math.max(14, Math.min(VIEW_H - (sub ? 18 : 6), p.y + 4));
+        lines.push(
+          `<text class="node-label" text-anchor="${anchor}" x="${x.toFixed(
+            1
+          )}" y="${y.toFixed(1)}">${this._escape(label)}</text>`
+        );
+        if (sub) {
+          lines.push(
+            `<text class="node-sub" text-anchor="${anchor}" x="${x.toFixed(
+              1
+            )}" y="${(y + 13).toFixed(1)}">${this._escape(sub)}</text>`
+          );
+        }
+      } else {
+        const below = dy >= 0;
+        const x = Math.max(4 + halfW, Math.min(VIEW_W - 4 - halfW, p.x));
+        let y = below ? p.y + 32 : p.y - (sub ? 37 : 24);
+        y = Math.max(14, Math.min(VIEW_H - (sub ? 18 : 6), y));
+        lines.push(
+          `<text class="node-label" text-anchor="middle" x="${x.toFixed(
+            1
+          )}" y="${y.toFixed(1)}">${this._escape(label)}</text>`
+        );
+        if (sub) {
+          lines.push(
+            `<text class="node-sub" text-anchor="middle" x="${x.toFixed(
+              1
+            )}" y="${(y + 13).toFixed(1)}">${this._escape(sub)}</text>`
+          );
+        }
+      }
+      return lines.join("");
     }
 
     // ── Helpers ────────────────────────────────────────────
