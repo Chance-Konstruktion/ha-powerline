@@ -40,43 +40,43 @@ class PowerlineTopologyPanel extends HTMLElement {
         overflow-y: auto;
         background: var(--primary-background-color);
       }
-      .toolbar {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 56px;
-        padding: 0 16px;
-        background: var(--app-header-background-color, var(--primary-color));
-        color: var(--app-header-text-color, #fff);
-        font-size: 20px;
-        font-weight: 400;
+      /* No toolbar: the graph gets the full frame. The hamburger floats
+         on top so the sidebar stays reachable on narrow screens. */
+      .menu {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 1;
+        color: var(--primary-text-color);
       }
       .content {
-        max-width: 920px;
-        margin: 0 auto;
-        padding: 16px;
+        position: relative;
+        min-height: 100%;
+        padding: 8px;
         box-sizing: border-box;
+      }
+      .content > powerline-topology-card {
+        display: block;
+        max-width: 1400px;
+        margin: 0 auto;
       }
     `;
 
-    const toolbar = document.createElement("div");
-    toolbar.className = "toolbar";
-    // ha-menu-button renders the hamburger on narrow screens so the
-    // sidebar stays reachable from this panel on mobile.
-    this._menuButton = document.createElement("ha-menu-button");
-    if (this._hass) this._menuButton.hass = this._hass;
-    this._menuButton.narrow = !!this._narrow;
-    const title = document.createElement("div");
-    title.textContent = "Powerline";
-    toolbar.append(this._menuButton, title);
-
     const content = document.createElement("div");
     content.className = "content";
-    this._card = document.createElement("powerline-topology-card");
-    this._card.setConfig({ title: "Powerline Mesh", refresh_interval: 15 });
-    content.appendChild(this._card);
 
-    this.shadowRoot.append(style, toolbar, content);
+    // ha-menu-button renders only on narrow screens; floated over the card
+    // so no header bar is needed.
+    this._menuButton = document.createElement("ha-menu-button");
+    this._menuButton.className = "menu";
+    if (this._hass) this._menuButton.hass = this._hass;
+    this._menuButton.narrow = !!this._narrow;
+
+    this._card = document.createElement("powerline-topology-card");
+    this._card.setConfig({ title: "", refresh_interval: 15 });
+    content.append(this._menuButton, this._card);
+
+    this.shadowRoot.append(style, content);
   }
 }
 
