@@ -22,6 +22,17 @@
     unknown: "#9e9e9e",
   };
 
+  // Human-readable German role labels. "CCo" (Central Coordinator) is the
+  // adapter that coordinates the powerline network; "Zentrale" is far easier
+  // to grasp than the HomePlug acronym.
+  const ROLE_LABELS = {
+    CCo: "Zentrale (Koordinator)",
+    Station: "Teilnehmer",
+    unknown: "unbekannt",
+  };
+  // Short badge shown under the coordinator node in the graph.
+  const ROLE_BADGE = { CCo: "Zentrale" };
+
   // Human-readable German quality labels shown in the details table instead
   // of the raw colour keys returned by the backend.
   const QUALITY_LABELS = {
@@ -250,16 +261,16 @@
         }
         .node { cursor: pointer; }
         .node-label {
-          font: 12px sans-serif;
+          font: 10px sans-serif;
           fill: var(--primary-text-color, #212121);
           pointer-events: none;
           paint-order: stroke;
           stroke: var(--card-background-color, #fff);
-          stroke-width: 3.5px;
+          stroke-width: 3px;
           stroke-linejoin: round;
         }
         .node-sub {
-          font: 10px sans-serif;
+          font: 9px sans-serif;
           fill: var(--secondary-text-color, #666);
           pointer-events: none;
           paint-order: stroke;
@@ -272,11 +283,16 @@
         .details {
           border-top: 1px solid var(--divider-color, #e0e0e0);
           padding: 8px 16px 12px;
-          font-size: 0.9em;
+          font-size: 1.02em;
           color: var(--primary-text-color);
         }
         .details table { border-collapse: collapse; width: 100%; }
-        .details td { padding: 2px 8px 2px 0; vertical-align: top; }
+        .details td { padding: 3px 8px 3px 0; vertical-align: top; }
+        .info-title {
+          font-size: 0.9em; font-weight: 500; color: var(--secondary-text-color);
+          margin: 10px 0 4px; padding-top: 8px;
+          border-top: 1px solid var(--divider-color, #e0e0e0);
+        }
         .details td:first-child { color: var(--secondary-text-color); white-space: nowrap; }
         .hint {
           padding: 4px 16px 12px;
@@ -310,7 +326,7 @@
            non-uniform (preserveAspectRatio=none) horizontal scaling. */
         .spark-readout {
           position: absolute; top: 2px; left: 4px;
-          font-size: 0.82em; font-weight: 500;
+          font-size: 0.98em; font-weight: 500;
           color: var(--primary-text-color);
           background: color-mix(in srgb, var(--card-background-color, #fff) 78%, transparent);
           padding: 0 4px; border-radius: 4px;
@@ -345,11 +361,10 @@
           background: var(--dot, #999);
         }
         .controls {
-          margin-top: 10px; padding-top: 8px;
-          border-top: 1px solid var(--divider-color, #e0e0e0);
+          margin-bottom: 4px;
         }
         .controls-title {
-          font-size: 0.85em; font-weight: 500; color: var(--secondary-text-color);
+          font-size: 0.9em; font-weight: 500; color: var(--secondary-text-color);
           margin-bottom: 6px;
         }
         .control-row {
@@ -495,7 +510,7 @@
             ` stroke="var(--card-background-color, #fff)" stroke-width="2"></circle>`
         );
         const label = node.name === node.mac ? this._shortMac(node.mac) : node.name;
-        const sub = node.role === "CCo" ? "CCo" : "";
+        const sub = ROLE_BADGE[node.role] || "";
         parts.push(this._nodeLabelSvg(p, cx, cy, label, sub));
         parts.push(`</g>`);
       });
@@ -645,7 +660,7 @@
         if (node.firmware) rows.push(["Firmware", node.firmware]);
         if (node.manufacturer) rows.push(["Hersteller", node.manufacturer]);
         if (node.chipset) rows.push(["Chipsatz", node.chipset]);
-        rows.push(["Rolle", node.role]);
+        rows.push(["Rolle", ROLE_LABELS[node.role] || node.role]);
         rows.push(["Status", node.online ? "online" : "offline"]);
         rows.push(["Letztes Update", this._formatTime(node.last_update)]);
         controls = this._renderAdapterControls(node.mac);
@@ -676,7 +691,10 @@
         const edge = this._topology.edges[this._selected.id];
         if (edge) history = this._renderHistory(edge);
       }
-      return `<div class="details"><table>${table}</table>${controls}${history}</div>`;
+      // For an adapter the controls sit above the info block (as requested);
+      // the "Info:" heading only appears when controls precede the table.
+      const infoTitle = controls ? `<div class="info-title">Info:</div>` : "";
+      return `<div class="details">${controls}${infoTitle}<table>${table}</table>${history}</div>`;
     }
 
     _bindEvents() {
@@ -810,7 +828,7 @@
       const dx = p.x - cx;
       const dy = p.y - cy;
       const horizontal = Math.abs(dx) > Math.abs(dy) * 1.5;
-      const halfW = label.length * 3.6;
+      const halfW = label.length * 3.0;
       const lines = [];
       if (horizontal) {
         const right = dx >= 0;
