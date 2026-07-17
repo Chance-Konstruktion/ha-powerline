@@ -212,6 +212,13 @@ will be rediscovered on the next poll — unplug it first, then delete it.
 
 ## 🕸️ Topology Card
 
+<div align="center">
+<img src="assets/topology-card.png" alt="Powerline topology card: mesh graph with per-link rates, quality colours, analysis line and a rate-history sparkline" width="80%">
+<br><sub>Live mesh graph with per-link rates, quality colours and a rate-history sparkline <em>(illustration with sample data)</em></sub>
+</div>
+
+<br>
+
 The integration builds a live mesh graph of your powerline network — every
 adapter as a node, every PLC link as an edge coloured by link quality — and
 shows it in two places:
