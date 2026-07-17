@@ -2,6 +2,14 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [260718] - 2026-07-18
+
+### Changed
+- **English suggested area.** Adapters and the network device now suggest the
+  area *Network* instead of the German *Netzwerk*, matching the rest of the
+  English-by-default device metadata. The suggestion only applies to newly
+  created devices and can be changed at any time in Home Assistant.
+
 ## [260717] - 2026-07-17
 
 ### Added

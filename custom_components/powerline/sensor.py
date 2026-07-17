@@ -31,7 +31,7 @@ def device_info_for_adapter(mac: str, dev: dict[str, Any]) -> DeviceInfo:
         manufacturer="TP-Link",
         model=dev.get("model") or "Powerline Adapter",
         sw_version=dev.get("firmware_ver") or None,
-        suggested_area="Netzwerk",
+        suggested_area="Network",
     )
 
 
@@ -42,7 +42,7 @@ def network_device_info() -> DeviceInfo:
         name=NETWORK_DEVICE_NAME,
         manufacturer="TP-Link",
         model="Powerline Network",
-        suggested_area="Netzwerk",
+        suggested_area="Network",
     )
 
 
