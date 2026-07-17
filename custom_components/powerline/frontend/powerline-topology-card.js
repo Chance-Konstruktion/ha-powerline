@@ -22,6 +22,16 @@
     unknown: "#9e9e9e",
   };
 
+  // Human-readable German quality labels shown in the details table instead
+  // of the raw colour keys returned by the backend.
+  const QUALITY_LABELS = {
+    green: "sehr gut",
+    yellow: "gut",
+    orange: "mittelmäßig",
+    red: "schlecht",
+    unknown: "unbekannt",
+  };
+
   const VIEW_W = 600;
   const VIEW_H = 400;
 
@@ -35,6 +45,7 @@
       this._history = null; // {key, hours, series}
       this._historyHours = 24;
       this._historyLoading = false;
+      this._sparkMeta = null; // scale info for sparkline hover readout
       this._timer = null;
       this._lastFetch = 0;
       this._fetchInFlight = false;
@@ -293,12 +304,28 @@
           border-color: var(--primary-color, #03a9f4);
           color: var(--text-primary-color, #fff);
         }
-        .spark { width: 100%; height: 70px; display: block; }
-        .spark text {
-          paint-order: stroke;
-          stroke: var(--card-background-color, #fff);
-          stroke-width: 3px;
-          stroke-linejoin: round;
+        .spark-wrap { position: relative; width: 100%; margin-top: 2px; }
+        .spark { width: 100%; height: 70px; display: block; touch-action: none; }
+        /* HTML overlay so the readout is not distorted by the SVG's
+           non-uniform (preserveAspectRatio=none) horizontal scaling. */
+        .spark-readout {
+          position: absolute; top: 2px; left: 4px;
+          font-size: 0.82em; font-weight: 500;
+          color: var(--primary-text-color);
+          background: color-mix(in srgb, var(--card-background-color, #fff) 78%, transparent);
+          padding: 0 4px; border-radius: 4px;
+          pointer-events: none; white-space: nowrap;
+        }
+        .spark-cursor {
+          position: absolute; top: 0; bottom: 0; width: 1px;
+          background: var(--secondary-text-color, #666);
+          opacity: 0.6; display: none; pointer-events: none;
+        }
+        .spark-dot {
+          position: absolute; width: 8px; height: 8px; border-radius: 50%;
+          background: var(--primary-color, #03a9f4);
+          border: 1.5px solid var(--card-background-color, #fff);
+          transform: translate(-50%, -50%); display: none; pointer-events: none;
         }
         .spark-empty { font-size: 0.8em; color: var(--secondary-text-color); padding: 4px 0; }
         .empty { padding: 16px; color: var(--secondary-text-color); }
@@ -312,6 +339,56 @@
           border-radius: 2px; margin-right: 4px;
           background: var(--dot, #999);
         }
+        .quality-dot {
+          display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+          margin-right: 5px; vertical-align: baseline;
+          background: var(--dot, #999);
+        }
+        .controls {
+          margin-top: 10px; padding-top: 8px;
+          border-top: 1px solid var(--divider-color, #e0e0e0);
+        }
+        .controls-title {
+          font-size: 0.85em; font-weight: 500; color: var(--secondary-text-color);
+          margin-bottom: 6px;
+        }
+        .control-row {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; padding: 4px 0;
+        }
+        .control-row .label { color: var(--primary-text-color); }
+        .control-row.unavailable .label { color: var(--secondary-text-color); }
+        /* iOS-style toggle */
+        .toggle {
+          position: relative; width: 40px; height: 22px; flex: none;
+          border-radius: 11px; border: none; padding: 0; cursor: pointer;
+          background: var(--switch-unchecked-track-color, #9e9e9e);
+          transition: background 0.15s ease;
+        }
+        .toggle[aria-checked="true"] {
+          background: var(--primary-color, #03a9f4);
+        }
+        .toggle::after {
+          content: ""; position: absolute; top: 2px; left: 2px;
+          width: 18px; height: 18px; border-radius: 50%; background: #fff;
+          transition: transform 0.15s ease;
+        }
+        .toggle[aria-checked="true"]::after { transform: translateX(18px); }
+        .toggle:disabled { opacity: 0.5; cursor: default; }
+        .control-select {
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: 8px; padding: 4px 8px; font-size: 0.9em; cursor: pointer;
+        }
+        .control-select:disabled { opacity: 0.5; cursor: default; }
+        .control-btn {
+          border: 1px solid var(--divider-color, #e0e0e0);
+          background: transparent; color: var(--primary-text-color);
+          border-radius: 8px; padding: 4px 12px; font-size: 0.9em; cursor: pointer;
+        }
+        .control-btn:hover { background: var(--secondary-background-color, #f0f0f0); }
+        .control-btn:disabled { opacity: 0.5; cursor: default; }
       `;
 
       let body;
@@ -504,13 +581,16 @@
       const ts = series.map((p) => p.t);
       const t0 = Math.min(...ts);
       const t1 = Math.max(...ts);
-      const values = series.map((p) => p.avg);
       const lo = Math.min(...series.map((p) => (p.min != null ? p.min : p.avg)));
       const hi = Math.max(...series.map((p) => (p.max != null ? p.max : p.avg)));
       const x = (t) =>
         PAD + ((t - t0) / Math.max(1, t1 - t0)) * (W - 2 * PAD);
       const y = (v) =>
         H - PAD - ((v - lo) / Math.max(1, hi - lo)) * (H - 2 * PAD - 10);
+
+      // Stash the scale so the hover handler can map a mouse position back to
+      // the nearest sample and place the crosshair/readout.
+      this._sparkMeta = { series, t0, t1, lo, hi, W, H, PAD, hours: this._historyHours };
 
       const line = series.map((p) => `${x(p.t).toFixed(1)},${y(p.avg).toFixed(1)}`).join(" ");
       let band = "";
@@ -523,13 +603,26 @@
         band = `<polygon points="${upper.join(" ")} ${lower.join(" ")}" fill="var(--primary-color, #03a9f4)" opacity="0.15"></polygon>`;
       }
       const last = series[series.length - 1];
-      return (
+      // Default readout (no hover) = maximum over the visible range. The
+      // crosshair line uses a non-scaling stroke so it stays 1px despite the
+      // SVG's horizontal stretch; the dot is an HTML overlay for the same
+      // reason. Both are hidden until the pointer enters the chart.
+      const svg =
         `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
         band +
         `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>` +
         `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="var(--primary-color, #03a9f4)"></circle>` +
-        `<text x="${PAD}" y="10" font-size="9" fill="var(--secondary-text-color, #666)">Max ${hi} Mbit/s</text>` +
-        `</svg>`
+        `<line class="spark-cursor-line" x1="0" y1="0" x2="0" y2="${H}"` +
+        ` stroke="var(--secondary-text-color, #666)" stroke-width="1"` +
+        ` vector-effect="non-scaling-stroke" opacity="0" pointer-events="none"></line>` +
+        `</svg>`;
+      const defaultLabel = `Max ${hi} Mbit/s`;
+      return (
+        `<div class="spark-wrap">` +
+        `<div class="spark-readout" data-default="${this._escape(defaultLabel)}">${this._escape(defaultLabel)}</div>` +
+        svg +
+        `<div class="spark-dot"></div>` +
+        `</div>`
       );
     }
 
@@ -537,7 +630,10 @@
       if (!this._selected) {
         return `<div class="hint">Adapter oder Verbindung anklicken für Details.</div>`;
       }
+      // Each row is [key, value, isHtml?]. When isHtml is true the value is
+      // treated as trusted markup (used for the coloured quality label).
       const rows = [];
+      let controls = "";
       if (this._selected.kind === "node") {
         const node = this._topology.nodes.find(
           (n) => n.mac === this._selected.id
@@ -552,6 +648,7 @@
         rows.push(["Rolle", node.role]);
         rows.push(["Status", node.online ? "online" : "offline"]);
         rows.push(["Letztes Update", this._formatTime(node.last_update)]);
+        controls = this._renderAdapterControls(node.mac);
       } else {
         const edge = this._topology.edges[this._selected.id];
         if (!edge) return "";
@@ -562,14 +659,16 @@
         rows.push(["TX", `${edge.tx_phy_rate} Mbit/s`]);
         rows.push(["RX", `${edge.rx_phy_rate} Mbit/s`]);
         rows.push(["Durchschnitt", `${edge.average_rate} Mbit/s`]);
-        rows.push(["Qualität", edge.link_quality]);
+        rows.push(["Qualität", this._qualityLabelHtml(edge.link_quality), true]);
         if (edge.estimated) rows.push(["Hinweis", "geschätzt (keine paarweise Messung)"]);
         rows.push(["Letztes Update", this._formatTime(edge.timestamp)]);
       }
       const table = rows
         .map(
-          ([k, v]) =>
-            `<tr><td>${this._escape(k)}</td><td>${this._escape(String(v))}</td></tr>`
+          ([k, v, isHtml]) =>
+            `<tr><td>${this._escape(k)}</td><td>${
+              isHtml ? v : this._escape(String(v))
+            }</td></tr>`
         )
         .join("");
       let history = "";
@@ -577,7 +676,7 @@
         const edge = this._topology.edges[this._selected.id];
         if (edge) history = this._renderHistory(edge);
       }
-      return `<div class="details"><table>${table}</table>${history}</div>`;
+      return `<div class="details"><table>${table}</table>${controls}${history}</div>`;
     }
 
     _bindEvents() {
@@ -614,6 +713,93 @@
           if (!this._selected || this._selected.kind !== "edge") return;
           const edge = this._topology.edges[this._selected.id];
           if (edge) this._fetchHistory(edge, Number(el.getAttribute("data-hours")));
+        });
+      });
+      this._bindSparkHover();
+      this._bindControls();
+    }
+
+    // Live readout: while the pointer is over the sparkline show the value at
+    // the nearest sample; on leave fall back to the range maximum.
+    _bindSparkHover() {
+      const wrap = this.shadowRoot.querySelector(".spark-wrap");
+      if (!wrap || !this._sparkMeta) return;
+      const readout = wrap.querySelector(".spark-readout");
+      const cursor = wrap.querySelector(".spark-cursor-line");
+      const dot = wrap.querySelector(".spark-dot");
+      const meta = this._sparkMeta;
+      const span = Math.max(1, meta.t1 - meta.t0);
+      const x = (t) =>
+        meta.PAD + ((t - meta.t0) / span) * (meta.W - 2 * meta.PAD);
+      const y = (v) =>
+        meta.H - meta.PAD -
+        ((v - meta.lo) / Math.max(1, meta.hi - meta.lo)) *
+          (meta.H - 2 * meta.PAD - 10);
+
+      const move = (ev) => {
+        const rect = wrap.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const frac = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+        const tTarget = meta.t0 + frac * span;
+        let best = meta.series[0];
+        for (const p of meta.series) {
+          if (Math.abs(p.t - tTarget) < Math.abs(best.t - tTarget)) best = p;
+        }
+        const leftPct = (x(best.t) / meta.W) * 100;
+        const topPct = (y(best.avg) / meta.H) * 100;
+        if (cursor) {
+          cursor.setAttribute("x1", x(best.t).toFixed(1));
+          cursor.setAttribute("x2", x(best.t).toFixed(1));
+          cursor.setAttribute("opacity", "0.6");
+        }
+        if (dot) {
+          dot.style.left = `${leftPct}%`;
+          dot.style.top = `${topPct}%`;
+          dot.style.display = "block";
+        }
+        if (readout) {
+          readout.textContent = `${best.avg} Mbit/s · ${this._formatSampleTime(
+            best.t,
+            meta.hours
+          )}`;
+        }
+      };
+      const leave = () => {
+        if (cursor) cursor.setAttribute("opacity", "0");
+        if (dot) dot.style.display = "none";
+        if (readout) readout.textContent = readout.getAttribute("data-default") || "";
+      };
+      wrap.addEventListener("pointermove", move);
+      wrap.addEventListener("pointerleave", leave);
+    }
+
+    _bindControls() {
+      this.shadowRoot.querySelectorAll("[data-toggle]").forEach((el) => {
+        el.addEventListener("click", () => {
+          if (el.disabled) return;
+          const entityId = el.getAttribute("data-toggle");
+          const turnOn = el.getAttribute("aria-checked") !== "true";
+          // Optimistic UI; the next topology/state update reconciles it.
+          el.setAttribute("aria-checked", String(turnOn));
+          this._hass.callService("switch", turnOn ? "turn_on" : "turn_off", {
+            entity_id: entityId,
+          });
+        });
+      });
+      this.shadowRoot.querySelectorAll("[data-select]").forEach((el) => {
+        el.addEventListener("change", () => {
+          const entityId = el.getAttribute("data-select");
+          this._hass.callService("select", "select_option", {
+            entity_id: entityId,
+            option: el.value,
+          });
+        });
+      });
+      this.shadowRoot.querySelectorAll("[data-press]").forEach((el) => {
+        el.addEventListener("click", () => {
+          if (el.disabled) return;
+          const entityId = el.getAttribute("data-press");
+          this._hass.callService("button", "press", { entity_id: entityId });
         });
       });
     }
@@ -685,6 +871,146 @@
       } catch (e) {
         return iso;
       }
+    }
+
+    // Timestamp (unix seconds) for the hover readout. Short time for the 1 h /
+    // 24 h ranges, date + time for the multi-day ranges.
+    _formatSampleTime(t, hours) {
+      const d = new Date(t * 1000);
+      try {
+        if (hours && hours > 24) {
+          return d.toLocaleString([], {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        }
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch (e) {
+        return d.toLocaleString();
+      }
+    }
+
+    // Coloured German quality label (e.g. "sehr gut") for the details table.
+    _qualityLabelHtml(quality) {
+      const label = QUALITY_LABELS[quality] || QUALITY_LABELS.unknown;
+      const color = QUALITY_COLORS[quality] || QUALITY_COLORS.unknown;
+      return `<span class="quality-dot" style="--dot:${color}"></span>${this._escape(
+        label
+      )}`;
+    }
+
+    // ── Adapter controls ───────────────────────────────────
+    // Find this adapter's controllable Home Assistant entities (LED / power
+    // saving switches, QoS selector, restart button) by matching the device
+    // whose identifier is (powerline, mac), then listing its entities.
+    _adapterEntities(mac) {
+      const hass = this._hass;
+      if (!hass || !hass.devices || !hass.entities) return [];
+      const target = String(mac).toLowerCase();
+      let deviceId = null;
+      for (const dev of Object.values(hass.devices)) {
+        const ids = dev.identifiers || [];
+        if (
+          ids.some(
+            (pair) =>
+              Array.isArray(pair) &&
+              pair[0] === "powerline" &&
+              String(pair[1]).toLowerCase() === target
+          )
+        ) {
+          deviceId = dev.id;
+          break;
+        }
+      }
+      if (!deviceId) return [];
+      const wanted = { switch: 0, select: 1, button: 2 };
+      const result = [];
+      for (const ent of Object.values(hass.entities)) {
+        if (ent.device_id !== deviceId) continue;
+        if (ent.hidden || ent.disabled_by) continue;
+        const domain = ent.entity_id.split(".")[0];
+        if (!(domain in wanted)) continue;
+        const stateObj = hass.states[ent.entity_id];
+        if (!stateObj) continue;
+        result.push({ entity_id: ent.entity_id, domain, stateObj });
+      }
+      // Stable order: switches, then selector, then button.
+      result.sort((a, b) => wanted[a.domain] - wanted[b.domain]);
+      return result;
+    }
+
+    // Strip the adapter's device name from an entity's friendly name so the
+    // control label reads "LED" rather than "Powerline 1a:2b:3c LED".
+    _controlLabel(stateObj) {
+      const full = (stateObj.attributes && stateObj.attributes.friendly_name) || stateObj.entity_id;
+      const devId = this._hass.entities[stateObj.entity_id] &&
+        this._hass.entities[stateObj.entity_id].device_id;
+      const dev = devId && this._hass.devices[devId];
+      const devName = dev && (dev.name_by_user || dev.name);
+      if (devName && full.startsWith(devName)) {
+        return full.slice(devName.length).trim() || full;
+      }
+      return full;
+    }
+
+    _formatState(stateObj, value) {
+      if (this._hass && typeof this._hass.formatEntityState === "function") {
+        try {
+          return this._hass.formatEntityState(stateObj, value);
+        } catch (e) {
+          /* fall through */
+        }
+      }
+      return value != null ? value : stateObj.state;
+    }
+
+    _renderAdapterControls(mac) {
+      const entities = this._adapterEntities(mac);
+      if (!entities.length) return "";
+      const rows = entities
+        .map((e) => {
+          const label = this._escape(this._controlLabel(e.stateObj));
+          const unavailable =
+            e.stateObj.state === "unavailable" || e.stateObj.state === "unknown";
+          const rowCls = unavailable ? "control-row unavailable" : "control-row";
+          if (e.domain === "switch") {
+            const on = e.stateObj.state === "on";
+            return (
+              `<div class="${rowCls}"><span class="label">${label}</span>` +
+              `<button class="toggle" role="switch" data-toggle="${this._escape(
+                e.entity_id
+              )}" aria-checked="${on}"${unavailable ? " disabled" : ""}></button></div>`
+            );
+          }
+          if (e.domain === "select") {
+            const options = (e.stateObj.attributes && e.stateObj.attributes.options) || [];
+            const opts = options
+              .map(
+                (o) =>
+                  `<option value="${this._escape(o)}"${
+                    o === e.stateObj.state ? " selected" : ""
+                  }>${this._escape(this._formatState(e.stateObj, o))}</option>`
+              )
+              .join("");
+            return (
+              `<div class="${rowCls}"><span class="label">${label}</span>` +
+              `<select class="control-select" data-select="${this._escape(
+                e.entity_id
+              )}"${unavailable ? " disabled" : ""}>${opts}</select></div>`
+            );
+          }
+          // button
+          return (
+            `<div class="${rowCls}"><span class="label">${label}</span>` +
+            `<button class="control-btn" data-press="${this._escape(
+              e.entity_id
+            )}"${unavailable ? " disabled" : ""}>Ausführen</button></div>`
+          );
+        })
+        .join("");
+      return `<div class="controls"><div class="controls-title">Einstellungen</div>${rows}</div>`;
     }
 
     _escape(text) {
