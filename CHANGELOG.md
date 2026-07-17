@@ -12,15 +12,19 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 - **Live sparkline readout.** Hovering the link-rate chart shows the value and
   time at the pointer position; the range maximum is shown only when the pointer
   is outside the chart.
+- **Bilingual topology card.** All card text now follows Home Assistant's UI
+  language — German when it is set to German, English otherwise. Previously the
+  card was German-only.
 
 ### Changed
 - **Readable link-rate label.** The "Max … Mbit/s" label moved out of the
   horizontally-stretched SVG into a legible HTML overlay, and its font is
   slightly larger.
-- **Plain-language labels.** Link quality now reads *sehr gut / gut /
-  mittelmäßig / schlecht* (with a colour dot) instead of the raw colour key, and
-  the adapter role shows *Zentrale (Koordinator)* / *Teilnehmer* instead of the
-  HomePlug acronyms *CCo* / *Station*.
+- **Plain-language labels.** Link quality now reads *very good / good / fair /
+  poor* (*sehr gut / gut / mittelmäßig / schlecht* in German), with a colour
+  dot, instead of the raw colour key; the adapter role shows *Coordinator /
+  Station* (*Zentrale (Koordinator) / Teilnehmer*) instead of the HomePlug
+  acronyms *CCo* / *Station*.
 - **Typography tweaks.** Larger info/detail text, smaller adapter name labels in
   the graph.
 
