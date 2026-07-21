@@ -1,5 +1,6 @@
 """Unit tests for the sidebar panel registration toggle."""
 
+from pathlib import Path
 from unittest import TestCase
 
 import custom_components.powerline as integration
@@ -45,3 +46,14 @@ class TestSidebarPanel(TestCase):
         integration._async_update_panel(hass, False)
 
         self.assertFalse(getattr(hass, "registered_panels", {}))
+
+    def test_frontend_adapter_png_assets_are_embedded(self):
+        card = (
+            Path(integration.__file__).parent
+            / "frontend"
+            / "powerline-topology-card.js"
+        ).read_text()
+
+        self.assertEqual(card.count("data:image/png;base64,"), 2)
+        self.assertIn("const ADAPTER_ASSETS", card)
+

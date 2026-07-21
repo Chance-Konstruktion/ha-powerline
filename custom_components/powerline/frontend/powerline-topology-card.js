@@ -111,6 +111,113 @@
 
   const VIEW_W = 600;
   const VIEW_H = 400;
+  const ADAPTER_ASSETS = {
+    on:
+      "data:image/png;base64," +
+      "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" +
+      "M4vuAQAAAABJRU5ErkJggg==",
+    off:
+      "data:image/png;base64," +
+      "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",
+  };
 
   class PowerlineTopologyCard extends HTMLElement {
     constructor() {
@@ -327,12 +434,10 @@
           stroke-linejoin: round;
         }
         .node { cursor: pointer; }
-        .adapter-body { filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.28)); }
-        .adapter-face { fill: color-mix(in srgb, var(--card-background-color, #fff) 88%, #b0bec5); }
-        .adapter-port { fill: color-mix(in srgb, var(--primary-text-color, #212121) 12%, transparent); }
-        .adapter-led { stroke: rgba(255, 255, 255, 0.9); stroke-width: 1; }
-        .adapter-led.on { filter: drop-shadow(0 0 5px currentColor); }
-        .adapter-led.off { opacity: 0.35; }
+        .adapter-body { filter: drop-shadow(0 8px 11px rgba(0, 0, 0, 0.32)); }
+        .adapter-photo { pointer-events: none; }
+        .adapter-aura { fill: currentColor; opacity: 0.16; filter: blur(7px); }
+        .adapter-quality { fill: none; stroke-width: 2.5; stroke: currentColor; opacity: 0.9; }
         .node-label {
           font: 10px sans-serif;
           fill: var(--primary-text-color, #212121);
@@ -954,17 +1059,13 @@
       const x = p.x;
       const y = p.y;
       const opacity = online ? 1 : 0.55;
-      const ledOn = led === "on";
-      const ledColor = ledOn ? color : "var(--secondary-text-color, #777)";
+      const asset = led === "on" ? ADAPTER_ASSETS.on : ADAPTER_ASSETS.off;
       return (
-        `<g class="adapter-body" opacity="${opacity}">` +
-        `<rect x="${(x - 15).toFixed(1)}" y="${(y - 22).toFixed(1)}" width="30" height="44" rx="7"` +
-        ` fill="${color}" stroke="var(--card-background-color, #fff)" stroke-width="2"></rect>` +
-        `<rect class="adapter-face" x="${(x - 10).toFixed(1)}" y="${(y - 14).toFixed(1)}" width="20" height="26" rx="4"></rect>` +
-        `<circle class="adapter-led ${ledOn ? "on" : "off"}" cx="${x.toFixed(1)}" cy="${(y - 7).toFixed(1)}" r="3.2"` +
-        ` fill="${ledColor}" style="color:${ledColor}"></circle>` +
-        `<rect class="adapter-port" x="${(x - 6).toFixed(1)}" y="${(y + 2).toFixed(1)}" width="12" height="7" rx="1.5"></rect>` +
-        `<path d="M ${(x - 7).toFixed(1)} ${(y + 17).toFixed(1)} h 14" stroke="rgba(255,255,255,0.75)" stroke-width="2" stroke-linecap="round"></path>` +
+        `<g class="adapter-body" opacity="${opacity}" style="color:${color}">` +
+        `<ellipse class="adapter-aura" cx="${x.toFixed(1)}" cy="${(y + 4).toFixed(1)}" rx="30" ry="38"></ellipse>` +
+        `<image class="adapter-photo" href="${asset}" x="${(x - 22).toFixed(1)}" y="${(y - 30).toFixed(1)}"` +
+        ` width="44" height="60" preserveAspectRatio="xMidYMid meet"></image>` +
+        `<rect class="adapter-quality" x="${(x - 17).toFixed(1)}" y="${(y - 25).toFixed(1)}" width="34" height="50" rx="8"></rect>` +
         `</g>`
       );
     }
