@@ -313,7 +313,8 @@
         }
         .graph { width: 100%; display: block; }
         svg { width: 100%; height: auto; display: block; }
-        .edge { cursor: pointer; }
+        .mesh-bg { fill: url(#mesh-bg); }
+        .edge { cursor: pointer; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18)); }
         .edge-hit { stroke: transparent; stroke-width: 14; cursor: pointer; }
         .edge-label {
           font: 11px sans-serif;
@@ -326,6 +327,12 @@
           stroke-linejoin: round;
         }
         .node { cursor: pointer; }
+        .adapter-body { filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.28)); }
+        .adapter-face { fill: color-mix(in srgb, var(--card-background-color, #fff) 88%, #b0bec5); }
+        .adapter-port { fill: color-mix(in srgb, var(--primary-text-color, #212121) 12%, transparent); }
+        .adapter-led { stroke: rgba(255, 255, 255, 0.9); stroke-width: 1; }
+        .adapter-led.on { filter: drop-shadow(0 0 5px currentColor); }
+        .adapter-led.off { opacity: 0.35; }
         .node-label {
           font: 10px sans-serif;
           fill: var(--primary-text-color, #212121);
@@ -507,7 +514,12 @@
       const cx = placed.reduce((s, p) => s + p.x, 0) / Math.max(1, placed.length);
       const cy = placed.reduce((s, p) => s + p.y, 0) / Math.max(1, placed.length);
       parts.push(
-        `<svg viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet">`
+        `<svg viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet">` +
+          `<defs><linearGradient id="mesh-bg" x1="0" y1="0" x2="1" y2="1">` +
+          `<stop offset="0" stop-color="var(--primary-color, #03a9f4)" stop-opacity="0.12"></stop>` +
+          `<stop offset="1" stop-color="var(--card-background-color, #fff)" stop-opacity="0"></stop>` +
+          `</linearGradient></defs>` +
+          `<rect class="mesh-bg" x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" rx="18"></rect>`
       );
 
       // Edges below nodes
@@ -557,24 +569,23 @@
       t.nodes.forEach((node) => {
         const p = this._positions[node.mac];
         if (!p) return;
+        const nodeQuality = this._nodeQuality(node);
         const fill = node.online
-          ? QUALITY_COLORS.green
+          ? QUALITY_COLORS[nodeQuality] || QUALITY_COLORS.unknown
           : QUALITY_COLORS.red;
+        const led = this._adapterLedState(node.mac);
         const sel =
           this._selected &&
           this._selected.kind === "node" &&
           this._selected.id === node.mac;
         parts.push(`<g class="node" data-node="${this._escape(node.mac)}">`);
         if (node.role === "CCo") {
-          parts.push(`<circle class="cco-ring" cx="${p.x}" cy="${p.y}" r="19"></circle>`);
+          parts.push(`<circle class="cco-ring" cx="${p.x}" cy="${p.y}" r="26"></circle>`);
         }
         if (sel) {
-          parts.push(`<circle class="selected-ring" cx="${p.x}" cy="${p.y}" r="23"></circle>`);
+          parts.push(`<circle class="selected-ring" cx="${p.x}" cy="${p.y}" r="30"></circle>`);
         }
-        parts.push(
-          `<circle cx="${p.x}" cy="${p.y}" r="14" fill="${fill}"` +
-            ` stroke="var(--card-background-color, #fff)" stroke-width="2"></circle>`
-        );
+        parts.push(this._adapterIconSvg(p, fill, led, node.online));
         const label = node.name === node.mac ? this._shortMac(node.mac) : node.name;
         const sub = node.role === "CCo" ? this._t("badge_CCo") : "";
         parts.push(this._nodeLabelSvg(p, cx, cy, label, sub));
@@ -938,6 +949,45 @@
     }
 
     // ── Helpers ────────────────────────────────────────────
+
+    _adapterIconSvg(p, color, led, online) {
+      const x = p.x;
+      const y = p.y;
+      const opacity = online ? 1 : 0.55;
+      const ledOn = led === "on";
+      const ledColor = ledOn ? color : "var(--secondary-text-color, #777)";
+      return (
+        `<g class="adapter-body" opacity="${opacity}">` +
+        `<rect x="${(x - 15).toFixed(1)}" y="${(y - 22).toFixed(1)}" width="30" height="44" rx="7"` +
+        ` fill="${color}" stroke="var(--card-background-color, #fff)" stroke-width="2"></rect>` +
+        `<rect class="adapter-face" x="${(x - 10).toFixed(1)}" y="${(y - 14).toFixed(1)}" width="20" height="26" rx="4"></rect>` +
+        `<circle class="adapter-led ${ledOn ? "on" : "off"}" cx="${x.toFixed(1)}" cy="${(y - 7).toFixed(1)}" r="3.2"` +
+        ` fill="${ledColor}" style="color:${ledColor}"></circle>` +
+        `<rect class="adapter-port" x="${(x - 6).toFixed(1)}" y="${(y + 2).toFixed(1)}" width="12" height="7" rx="1.5"></rect>` +
+        `<path d="M ${(x - 7).toFixed(1)} ${(y + 17).toFixed(1)} h 14" stroke="rgba(255,255,255,0.75)" stroke-width="2" stroke-linecap="round"></path>` +
+        `</g>`
+      );
+    }
+
+    _nodeQuality(node) {
+      const edges = (this._topology && this._topology.edges) || [];
+      const rank = { green: 4, yellow: 3, orange: 2, red: 1, unknown: 0 };
+      let best = "unknown";
+      edges.forEach((edge) => {
+        if (edge.source !== node.mac && edge.destination !== node.mac) return;
+        const quality = edge.link_quality || "unknown";
+        if ((rank[quality] || 0) > (rank[best] || 0)) best = quality;
+      });
+      return best;
+    }
+
+    _adapterLedState(mac) {
+      const led = this._adapterEntities(mac).find((entity) => {
+        const label = this._controlLabel(entity.stateObj).toLowerCase();
+        return entity.domain === "switch" && label.includes("led");
+      });
+      return led ? led.stateObj.state : "unknown";
+    }
 
     _nodeName(mac) {
       const node = this._topology.nodes.find((n) => n.mac === mac);
