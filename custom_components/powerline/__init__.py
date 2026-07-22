@@ -254,6 +254,7 @@ def _websocket_get_layout(hass: HomeAssistant, connection, msg: dict) -> None:
             "positions": layout.get("positions", {}),
             "background": layout.get("background"),
             "icon_scale": layout.get("icon_scale", 1),
+            "icon_style": layout.get("icon_style", "chatgpt"),
         },
     )
 
@@ -269,6 +270,8 @@ def _websocket_get_layout(hass: HomeAssistant, connection, msg: dict) -> None:
         vol.Optional("background"): vol.Any(None, str),
         # Adapter icon size multiplier (1 = default).
         vol.Optional("icon_scale"): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=2.5)),
+        # Adapter icon set: "chatgpt" (photo) or "claude" (vector).
+        vol.Optional("icon_style"): vol.In(["chatgpt", "claude"]),
     }
 )
 @callback
@@ -296,6 +299,8 @@ def _websocket_set_layout(hass: HomeAssistant, connection, msg: dict) -> None:
         layout["background"] = background or None
     if "icon_scale" in msg:
         layout["icon_scale"] = msg["icon_scale"]
+    if "icon_style" in msg:
+        layout["icon_style"] = msg["icon_style"]
     layouts[key] = layout
 
     store = hass.data.get(_DATA_LAYOUT_STORE)

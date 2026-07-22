@@ -158,6 +158,26 @@ class TestLayoutApi(TestCase):
             hass.data[integration._DATA_LAYOUT]["entry-1"]["icon_scale"], 1.6
         )
 
+    def test_get_defaults_icon_style_to_chatgpt(self):
+        hass = self._hass_with_layout()
+        connection = _Connection()
+
+        integration._websocket_get_layout(hass, connection, {"id": 20})
+
+        _, payload = connection.results[0]
+        self.assertEqual(payload["icon_style"], "chatgpt")
+
+    def test_set_persists_icon_style(self):
+        hass = self._hass_with_layout()
+        connection = _Connection()
+
+        integration._websocket_set_layout(hass, connection, {"id": 21, "icon_style": "claude"})
+
+        self.assertEqual(connection.errors, [])
+        self.assertEqual(
+            hass.data[integration._DATA_LAYOUT]["entry-1"]["icon_style"], "claude"
+        )
+
     def test_set_leaves_icon_scale_untouched_on_position_only_save(self):
         stored = {"entry-1": {"positions": {}, "icon_scale": 2.0}}
         hass = self._hass_with_layout(stored)
@@ -243,5 +263,5 @@ class TestLayoutApi(TestCase):
         self.assertIn("type", get_schema)
         self.assertIn("entry_id", get_schema)
         set_schema = integration._websocket_set_layout._ws_schema
-        for field in ("type", "entry_id", "positions", "background", "icon_scale"):
+        for field in ("type", "entry_id", "positions", "background", "icon_scale", "icon_style"):
             self.assertIn(field, set_schema)

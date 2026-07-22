@@ -76,6 +76,7 @@
       bg_too_large: "Bild zu groß (max. 4 MB). Bitte ein kleineres verwenden.",
       layout_saved: "Anordnung gespeichert",
       icon_size: "Symbolgröße",
+      icon_style: "Symbolstil",
     },
     en: {
       role_CCo: "Coordinator",
@@ -126,6 +127,7 @@
       bg_too_large: "Image too large (max 4 MB). Please use a smaller one.",
       layout_saved: "Layout saved",
       icon_size: "Icon size",
+      icon_style: "Icon style",
     },
   };
 
@@ -256,7 +258,7 @@
       this._error = null;
       // User-arranged layout (server-persisted): manual adapter positions and
       // an optional floor-plan background image.
-      this._userLayout = { positions: {}, background: null, iconScale: 1 };
+      this._userLayout = { positions: {}, background: null, iconScale: 1, iconStyle: "chatgpt" };
       this._layoutLoaded = false;
       this._editing = false; // "Arrange" mode: drag adapters, set background
       this._drag = null; // active drag {mac, moved}
@@ -337,9 +339,10 @@
           positions: (layout && layout.positions) || {},
           background: (layout && layout.background) || null,
           iconScale: (layout && Number(layout.icon_scale)) || 1,
+          iconStyle: (layout && layout.icon_style) === "claude" ? "claude" : "chatgpt",
         };
       } catch (err) {
-        this._userLayout = { positions: {}, background: null, iconScale: 1 };
+        this._userLayout = { positions: {}, background: null, iconScale: 1, iconStyle: "chatgpt" };
       }
     }
 
@@ -528,6 +531,18 @@
         .tool-size .size-glyph { color: var(--secondary-text-color); line-height: 1; }
         .tool-size .size-glyph.small { font-size: 0.7em; }
         .tool-size .size-glyph.large { font-size: 1.05em; }
+        .tool-style {
+          display: inline-flex; border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: 14px; overflow: hidden;
+        }
+        .tool-style .style-opt {
+          border: none; background: transparent; cursor: pointer;
+          color: var(--secondary-text-color); font-size: 0.82em; padding: 4px 10px;
+        }
+        .tool-style .style-opt.active {
+          background: var(--primary-color, #03a9f4);
+          color: var(--text-primary-color, #fff);
+        }
         .edit-hint {
           padding: 0 16px 8px; font-size: 0.8em;
           color: var(--secondary-text-color);
@@ -865,8 +880,15 @@
         `<input type="range" class="size-input" min="0.5" max="2.5" step="0.1" value="${scale}">` +
         `<span class="size-glyph large">◼</span>` +
         `</label>`;
+      const style = this._iconStyle();
+      const styleToggle =
+        `<div class="tool-style" role="group" title="${this._escape(this._t("icon_style"))}">` +
+        `<button class="style-opt${style === "chatgpt" ? " active" : ""}" data-icon-style="chatgpt">ChatGPT</button>` +
+        `<button class="style-opt${style === "claude" ? " active" : ""}" data-icon-style="claude">Claude</button>` +
+        `</div>`;
       return (
         `<div class="toolbar editing">` +
+        styleToggle +
         sizeSlider +
         `<button class="tool-btn" data-bg-upload>🖼 ${this._escape(this._t("bg_upload"))}</button>` +
         removeBg +
@@ -1219,6 +1241,15 @@
         const commit = () => this._saveLayout({ icon_scale: this._iconScale() });
         size.addEventListener("change", commit);
       }
+      this.shadowRoot.querySelectorAll("[data-icon-style]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const style = el.getAttribute("data-icon-style");
+          if (style === this._iconStyle()) return;
+          this._userLayout.iconStyle = style;
+          this._saveLayout({ icon_style: style });
+          this._render();
+        });
+      });
     }
 
     // Replace just the graph's SVG in place (used by the size slider) so the
@@ -1293,7 +1324,8 @@
         el.addEventListener("pointerdown", (ev) => {
           ev.preventDefault();
           const mac = el.getAttribute("data-node");
-          this._drag = { mac, moved: false };
+          const base = this._positions[mac] || { x: 0, y: 0 };
+          this._drag = { mac, moved: false, base: { x: base.x, y: base.y } };
           el.setPointerCapture(ev.pointerId);
           el.style.cursor = "grabbing";
         });
@@ -1303,7 +1335,14 @@
           if (!p) return;
           this._drag.moved = true;
           this._positions[this._drag.mac] = p;
-          this._updateNodeDom(el, p);
+          // Translate the whole node group (icon + rings + label) so the drag
+          // stays cheap and works for any icon style; a full render on drop
+          // reflows the connected edges and labels.
+          const base = this._drag.base;
+          el.setAttribute(
+            "transform",
+            `translate(${(p.x - base.x).toFixed(1)} ${(p.y - base.y).toFixed(1)})`
+          );
         });
         const end = (ev) => {
           if (!this._drag) return;
@@ -1325,32 +1364,6 @@
         };
         el.addEventListener("pointerup", end);
         el.addEventListener("pointercancel", end);
-      });
-    }
-
-    // Cheap in-drag reposition: move just the dragged node's group so we don't
-    // rebuild the whole SVG on every pointermove. A full _render() on drop
-    // fixes up the connected edges and labels.
-    _updateNodeDom(groupEl, p) {
-      const photo = groupEl.querySelector(".adapter-photo");
-      const rect = groupEl.querySelector(".adapter-quality");
-      const aura = groupEl.querySelector(".adapter-aura");
-      const m = this._adapterMetrics(p);
-      if (photo) {
-        photo.setAttribute("x", m.photoX.toFixed(1));
-        photo.setAttribute("y", m.photoY.toFixed(1));
-      }
-      if (rect) {
-        rect.setAttribute("x", m.rectX.toFixed(1));
-        rect.setAttribute("y", m.rectY.toFixed(1));
-      }
-      if (aura) {
-        aura.setAttribute("cx", m.auraCx.toFixed(1));
-        aura.setAttribute("cy", m.auraCy.toFixed(1));
-      }
-      groupEl.querySelectorAll(".cco-ring, .selected-ring").forEach((c) => {
-        c.setAttribute("cx", p.x.toFixed(1));
-        c.setAttribute("cy", p.y.toFixed(1));
       });
     }
 
@@ -1497,6 +1510,13 @@
       return Math.max(0.5, Math.min(2.5, s));
     }
 
+    // Which adapter icon set to draw: "chatgpt" (photo, default) or "claude"
+    // (the vector adapter).
+    _iconStyle() {
+      const style = this._userLayout && this._userLayout.iconStyle;
+      return style === "claude" ? "claude" : "chatgpt";
+    }
+
     _adapterMetrics(p) {
       const s = this._iconScale();
       return {
@@ -1516,6 +1536,14 @@
     }
 
     _adapterIconSvg(p, color, led, online) {
+      if (this._iconStyle() === "claude") {
+        return this._adapterIconClaude(p, color, led, online);
+      }
+      return this._adapterIconPhoto(p, color, led, online);
+    }
+
+    // Original "ChatGPT" icon: the embedded adapter photo with a quality ring.
+    _adapterIconPhoto(p, color, led, online) {
       const opacity = online ? 1 : 0.55;
       const asset = led === "on" ? ADAPTER_ASSETS.on : ADAPTER_ASSETS.off;
       const m = this._adapterMetrics(p);
@@ -1527,6 +1555,76 @@
         `<rect class="adapter-quality" x="${m.rectX.toFixed(1)}" y="${m.rectY.toFixed(1)}" width="${m.rectW.toFixed(1)}" height="${m.rectH.toFixed(1)}" rx="${(8 * this._iconScale()).toFixed(1)}"></rect>` +
         `</g>`
       );
+    }
+
+    // "Claude" icon: a crisp vector powerline adapter. Being pure SVG it stays
+    // sharp at any size (pairs well with the size slider) and is theme-aware —
+    // the body uses the card background, the outline and glow use the link
+    // quality colour (currentColor), and the LEDs reflect the LED switch state.
+    _adapterIconClaude(p, color, led, online) {
+      const s = this._iconScale();
+      const x = p.x;
+      const y = p.y;
+      const opacity = online ? 1 : 0.55;
+      const ledOn = led === "on";
+      const n = (v) => v.toFixed(1);
+      // Geometry (unscaled units around the centre), all multiplied by s.
+      const bodyX = x - 16 * s;
+      const bodyY = y - 24 * s;
+      const bodyW = 32 * s;
+      const bodyH = 44 * s;
+      const bodyR = 7 * s;
+      const panelX = x - 11 * s;
+      const panelY = y - 19 * s;
+      const panelW = 22 * s;
+      const panelH = 17 * s;
+      const panelR = 4 * s;
+      const ledCy = y - 10.5 * s;
+      const ledR = 2.1 * s;
+      const ledDim = "#9aa4ad";
+      const ledLit = "#5fe08a";
+      const parts = [`<g class="adapter-body adapter-vector" opacity="${opacity}" style="color:${color}">`];
+      // Soft coloured aura behind the adapter.
+      parts.push(
+        `<ellipse class="adapter-aura" cx="${n(x)}" cy="${n(y + 4 * s)}" rx="${n(24 * s)}" ry="${n(30 * s)}"></ellipse>`
+      );
+      // Two plug prongs peeking out at the bottom.
+      parts.push(
+        `<rect x="${n(x - 7 * s)}" y="${n(y + 18 * s)}" width="${n(3.4 * s)}" height="${n(9 * s)}" rx="${n(1.4 * s)}" fill="#b7c0c9"></rect>` +
+        `<rect x="${n(x + 3.6 * s)}" y="${n(y + 18 * s)}" width="${n(3.4 * s)}" height="${n(9 * s)}" rx="${n(1.4 * s)}" fill="#b7c0c9"></rect>`
+      );
+      // Adapter body: card-coloured fill, quality-coloured outline.
+      parts.push(
+        `<rect x="${n(bodyX)}" y="${n(bodyY)}" width="${n(bodyW)}" height="${n(bodyH)}" rx="${n(bodyR)}"` +
+        ` fill="var(--card-background-color, #fff)" stroke="currentColor" stroke-width="${n(2.4 * s)}"></rect>`
+      );
+      // Front panel tinted with the quality colour.
+      parts.push(
+        `<rect x="${n(panelX)}" y="${n(panelY)}" width="${n(panelW)}" height="${n(panelH)}" rx="${n(panelR)}"` +
+        ` fill="currentColor" opacity="0.14"></rect>`
+      );
+      // Three status LEDs. Lit ones get a soft glow halo.
+      [-6, 0, 6].forEach((dx) => {
+        const cx = x + dx * s;
+        if (ledOn) {
+          parts.push(
+            `<circle cx="${n(cx)}" cy="${n(ledCy)}" r="${n(ledR * 2.1)}" fill="${ledLit}" opacity="0.28"></circle>`
+          );
+        }
+        parts.push(
+          `<circle cx="${n(cx)}" cy="${n(ledCy)}" r="${n(ledR)}" fill="${ledOn ? ledLit : ledDim}"></circle>`
+        );
+      });
+      // Ethernet port near the bottom of the body.
+      const portX = x - 8 * s;
+      const portY = y + 4 * s;
+      parts.push(
+        `<rect x="${n(portX)}" y="${n(portY)}" width="${n(16 * s)}" height="${n(10 * s)}" rx="${n(1.8 * s)}" fill="#37474f"></rect>` +
+        `<rect x="${n(x - 2.2 * s)}" y="${n(portY + 7 * s)}" width="${n(4.4 * s)}" height="${n(3.4 * s)}" fill="#37474f"></rect>` +
+        `<rect x="${n(portX + 2 * s)}" y="${n(portY + 2 * s)}" width="${n(12 * s)}" height="${n(3 * s)}" rx="${n(1 * s)}" fill="#546e7a"></rect>`
+      );
+      parts.push(`</g>`);
+      return parts.join("");
     }
 
     _nodeQuality(node) {
