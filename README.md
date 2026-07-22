@@ -252,8 +252,9 @@ own background image (e.g. a floor plan) and drag each adapter to where it
 physically sits. The positions and the background are saved server-side by the
 integration, so the same arrangement shows up on every device. Newly
 discovered adapters still get an automatic spot; **Auto layout** clears the
-manual placement and returns to the force-directed graph. The layout is stored
-and served over websocket (`powerline/topology/layout/get` and
+manual placement and returns to the force-directed graph. A size slider scales
+the adapter icons (0.5×–2.5×) to taste. Positions, background and icon size are
+stored and served over websocket (`powerline/topology/layout/get` and
 `powerline/topology/layout/set`).
 
 **History & analysis.** The integration keeps a rolling link-rate history —

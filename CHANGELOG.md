@@ -5,6 +5,9 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 ## [Unreleased]
 
 ### Added
+- **Adjustable adapter icon size.** *Arrange* mode gained a size slider that
+  scales the adapter icons (0.5×–2.5×). The chosen size is stored server-side
+  alongside the layout, so it is the same on every device.
 - **Arrange adapters on a floor plan.** The topology card gained an *Arrange*
   mode: upload your own background image (e.g. a floor plan) and drag each
   adapter to where it physically sits in your home. Positions and the

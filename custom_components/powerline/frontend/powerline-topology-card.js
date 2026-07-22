@@ -75,6 +75,7 @@
       edit_hint: "Adapter mit der Maus/Finger an ihre Position im Grundriss ziehen.",
       bg_too_large: "Bild zu groß (max. 4 MB). Bitte ein kleineres verwenden.",
       layout_saved: "Anordnung gespeichert",
+      icon_size: "Symbolgröße",
     },
     en: {
       role_CCo: "Coordinator",
@@ -124,6 +125,7 @@
       edit_hint: "Drag adapters to where they sit in your floor plan.",
       bg_too_large: "Image too large (max 4 MB). Please use a smaller one.",
       layout_saved: "Layout saved",
+      icon_size: "Icon size",
     },
   };
 
@@ -254,7 +256,7 @@
       this._error = null;
       // User-arranged layout (server-persisted): manual adapter positions and
       // an optional floor-plan background image.
-      this._userLayout = { positions: {}, background: null };
+      this._userLayout = { positions: {}, background: null, iconScale: 1 };
       this._layoutLoaded = false;
       this._editing = false; // "Arrange" mode: drag adapters, set background
       this._drag = null; // active drag {mac, moved}
@@ -334,9 +336,10 @@
         this._userLayout = {
           positions: (layout && layout.positions) || {},
           background: (layout && layout.background) || null,
+          iconScale: (layout && Number(layout.icon_scale)) || 1,
         };
       } catch (err) {
-        this._userLayout = { positions: {}, background: null };
+        this._userLayout = { positions: {}, background: null, iconScale: 1 };
       }
     }
 
@@ -517,6 +520,14 @@
           border-color: var(--primary-color, #03a9f4);
           color: var(--text-primary-color, #fff);
         }
+        .tool-size {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 0 6px; color: var(--secondary-text-color);
+        }
+        .tool-size .size-input { width: 90px; cursor: pointer; accent-color: var(--primary-color, #03a9f4); }
+        .tool-size .size-glyph { color: var(--secondary-text-color); line-height: 1; }
+        .tool-size .size-glyph.small { font-size: 0.7em; }
+        .tool-size .size-glyph.large { font-size: 1.05em; }
         .edit-hint {
           padding: 0 16px 8px; font-size: 0.8em;
           color: var(--secondary-text-color);
@@ -813,12 +824,13 @@
           this._selected &&
           this._selected.kind === "node" &&
           this._selected.id === node.mac;
+        const ringS = this._iconScale();
         parts.push(`<g class="node" data-node="${this._escape(node.mac)}">`);
         if (node.role === "CCo") {
-          parts.push(`<circle class="cco-ring" cx="${p.x}" cy="${p.y}" r="26"></circle>`);
+          parts.push(`<circle class="cco-ring" cx="${p.x}" cy="${p.y}" r="${(26 * ringS).toFixed(1)}"></circle>`);
         }
         if (sel) {
-          parts.push(`<circle class="selected-ring" cx="${p.x}" cy="${p.y}" r="30"></circle>`);
+          parts.push(`<circle class="selected-ring" cx="${p.x}" cy="${p.y}" r="${(30 * ringS).toFixed(1)}"></circle>`);
         }
         parts.push(this._adapterIconSvg(p, fill, led, node.online));
         const label = node.name === node.mac ? this._shortMac(node.mac) : node.name;
@@ -846,8 +858,16 @@
       const removeBg = this._userLayout.background
         ? `<button class="tool-btn" data-bg-remove>${this._escape(this._t("bg_remove"))}</button>`
         : "";
+      const scale = this._iconScale();
+      const sizeSlider =
+        `<label class="tool-size" title="${this._escape(this._t("icon_size"))}">` +
+        `<span class="size-glyph small">▪</span>` +
+        `<input type="range" class="size-input" min="0.5" max="2.5" step="0.1" value="${scale}">` +
+        `<span class="size-glyph large">◼</span>` +
+        `</label>`;
       return (
         `<div class="toolbar editing">` +
+        sizeSlider +
         `<button class="tool-btn" data-bg-upload>🖼 ${this._escape(this._t("bg_upload"))}</button>` +
         removeBg +
         `<button class="tool-btn" data-reset-positions>${this._escape(this._t("reset_positions"))}</button>` +
@@ -1188,6 +1208,32 @@
           this._render();
         });
       }
+      const size = this.shadowRoot.querySelector(".size-input");
+      if (size) {
+        // Live resize while sliding (redraw only the SVG so the slider keeps
+        // focus); persist once the user lets go.
+        size.addEventListener("input", () => {
+          this._userLayout.iconScale = Number(size.value);
+          this._refreshGraphSvg();
+        });
+        const commit = () => this._saveLayout({ icon_scale: this._iconScale() });
+        size.addEventListener("change", commit);
+      }
+    }
+
+    // Replace just the graph's SVG in place (used by the size slider) so the
+    // toolbar and its native range input are not torn down mid-interaction.
+    _refreshGraphSvg() {
+      const graph = this.shadowRoot.querySelector(".graph");
+      const svg = graph && graph.querySelector("svg");
+      if (!graph || !svg) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = this._renderSvg();
+      const fresh = tmp.querySelector("svg");
+      if (fresh) {
+        svg.replaceWith(fresh);
+        if (this._editing) this._bindDrag();
+      }
     }
 
     // Read an uploaded floor plan, downscale it so the stored data URL stays
@@ -1289,17 +1335,18 @@
       const photo = groupEl.querySelector(".adapter-photo");
       const rect = groupEl.querySelector(".adapter-quality");
       const aura = groupEl.querySelector(".adapter-aura");
+      const m = this._adapterMetrics(p);
       if (photo) {
-        photo.setAttribute("x", (p.x - 22).toFixed(1));
-        photo.setAttribute("y", (p.y - 30).toFixed(1));
+        photo.setAttribute("x", m.photoX.toFixed(1));
+        photo.setAttribute("y", m.photoY.toFixed(1));
       }
       if (rect) {
-        rect.setAttribute("x", (p.x - 17).toFixed(1));
-        rect.setAttribute("y", (p.y - 25).toFixed(1));
+        rect.setAttribute("x", m.rectX.toFixed(1));
+        rect.setAttribute("y", m.rectY.toFixed(1));
       }
       if (aura) {
-        aura.setAttribute("cx", p.x.toFixed(1));
-        aura.setAttribute("cy", (p.y + 4).toFixed(1));
+        aura.setAttribute("cx", m.auraCx.toFixed(1));
+        aura.setAttribute("cy", m.auraCy.toFixed(1));
       }
       groupEl.querySelectorAll(".cco-ring, .selected-ring").forEach((c) => {
         c.setAttribute("cx", p.x.toFixed(1));
@@ -1443,17 +1490,41 @@
 
     // ── Helpers ────────────────────────────────────────────
 
+    // The adapter's base drawing dimensions (unscaled). Kept in one place so
+    // the icon renderer and the in-drag DOM updater stay in sync.
+    _iconScale() {
+      const s = (this._userLayout && this._userLayout.iconScale) || 1;
+      return Math.max(0.5, Math.min(2.5, s));
+    }
+
+    _adapterMetrics(p) {
+      const s = this._iconScale();
+      return {
+        auraCx: p.x,
+        auraCy: p.y + 4 * s,
+        auraRx: 30 * s,
+        auraRy: 38 * s,
+        photoX: p.x - 22 * s,
+        photoY: p.y - 30 * s,
+        photoW: 44 * s,
+        photoH: 60 * s,
+        rectX: p.x - 17 * s,
+        rectY: p.y - 25 * s,
+        rectW: 34 * s,
+        rectH: 50 * s,
+      };
+    }
+
     _adapterIconSvg(p, color, led, online) {
-      const x = p.x;
-      const y = p.y;
       const opacity = online ? 1 : 0.55;
       const asset = led === "on" ? ADAPTER_ASSETS.on : ADAPTER_ASSETS.off;
+      const m = this._adapterMetrics(p);
       return (
         `<g class="adapter-body" opacity="${opacity}" style="color:${color}">` +
-        `<ellipse class="adapter-aura" cx="${x.toFixed(1)}" cy="${(y + 4).toFixed(1)}" rx="30" ry="38"></ellipse>` +
-        `<image class="adapter-photo" href="${asset}" x="${(x - 22).toFixed(1)}" y="${(y - 30).toFixed(1)}"` +
-        ` width="44" height="60" preserveAspectRatio="xMidYMid meet"></image>` +
-        `<rect class="adapter-quality" x="${(x - 17).toFixed(1)}" y="${(y - 25).toFixed(1)}" width="34" height="50" rx="8"></rect>` +
+        `<ellipse class="adapter-aura" cx="${m.auraCx.toFixed(1)}" cy="${m.auraCy.toFixed(1)}" rx="${m.auraRx.toFixed(1)}" ry="${m.auraRy.toFixed(1)}"></ellipse>` +
+        `<image class="adapter-photo" href="${asset}" x="${m.photoX.toFixed(1)}" y="${m.photoY.toFixed(1)}"` +
+        ` width="${m.photoW.toFixed(1)}" height="${m.photoH.toFixed(1)}" preserveAspectRatio="xMidYMid meet"></image>` +
+        `<rect class="adapter-quality" x="${m.rectX.toFixed(1)}" y="${m.rectY.toFixed(1)}" width="${m.rectW.toFixed(1)}" height="${m.rectH.toFixed(1)}" rx="${(8 * this._iconScale()).toFixed(1)}"></rect>` +
         `</g>`
       );
     }

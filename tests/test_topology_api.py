@@ -145,6 +145,31 @@ class TestLayoutApi(TestCase):
         _, payload = connection.results[0]
         self.assertEqual(payload["positions"], {})
         self.assertIsNone(payload["background"])
+        self.assertEqual(payload["icon_scale"], 1)
+
+    def test_set_persists_icon_scale(self):
+        hass = self._hass_with_layout()
+        connection = _Connection()
+
+        integration._websocket_set_layout(hass, connection, {"id": 8, "icon_scale": 1.6})
+
+        self.assertEqual(connection.errors, [])
+        self.assertEqual(
+            hass.data[integration._DATA_LAYOUT]["entry-1"]["icon_scale"], 1.6
+        )
+
+    def test_set_leaves_icon_scale_untouched_on_position_only_save(self):
+        stored = {"entry-1": {"positions": {}, "icon_scale": 2.0}}
+        hass = self._hass_with_layout(stored)
+        connection = _Connection()
+
+        integration._websocket_set_layout(
+            hass, connection, {"id": 9, "positions": {"AA:BB": {"x": 1.0, "y": 1.0}}}
+        )
+
+        self.assertEqual(
+            hass.data[integration._DATA_LAYOUT]["entry-1"]["icon_scale"], 2.0
+        )
 
     def test_get_returns_stored_layout(self):
         stored = {"entry-1": {"positions": {"AA:BB": {"x": 1.0, "y": 2.0}}, "background": "data:img"}}
@@ -218,5 +243,5 @@ class TestLayoutApi(TestCase):
         self.assertIn("type", get_schema)
         self.assertIn("entry_id", get_schema)
         set_schema = integration._websocket_set_layout._ws_schema
-        for field in ("type", "entry_id", "positions", "background"):
+        for field in ("type", "entry_id", "positions", "background", "icon_scale"):
             self.assertIn(field, set_schema)

@@ -253,6 +253,7 @@ def _websocket_get_layout(hass: HomeAssistant, connection, msg: dict) -> None:
         {
             "positions": layout.get("positions", {}),
             "background": layout.get("background"),
+            "icon_scale": layout.get("icon_scale", 1),
         },
     )
 
@@ -266,6 +267,8 @@ def _websocket_get_layout(hass: HomeAssistant, connection, msg: dict) -> None:
         # A data: URL for the floor plan, or null/"" to clear it. Unset leaves
         # the stored background untouched (position-only saves stay cheap).
         vol.Optional("background"): vol.Any(None, str),
+        # Adapter icon size multiplier (1 = default).
+        vol.Optional("icon_scale"): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=2.5)),
     }
 )
 @callback
@@ -291,6 +294,8 @@ def _websocket_set_layout(hass: HomeAssistant, connection, msg: dict) -> None:
         layout["positions"] = msg["positions"]
     if "background" in msg:
         layout["background"] = background or None
+    if "icon_scale" in msg:
+        layout["icon_scale"] = msg["icon_scale"]
     layouts[key] = layout
 
     store = hass.data.get(_DATA_LAYOUT_STORE)
