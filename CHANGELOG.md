@@ -2,14 +2,15 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
-## [Unreleased]
+## [260723] - 2026-07-23
 
 ### Added
 - **Switchable adapter icon style.** *Arrange* mode now offers a **ChatGPT ↔
   Claude** toggle for the adapter icons. The new *Claude* set is a crisp vector
-  adapter (plug pins, Ethernet port, status LEDs) that stays sharp at any size,
-  is theme-aware, colours its outline by link quality and reflects the LED
-  switch state. The choice is stored server-side with the rest of the layout.
+  adapter (body, single cable, status LEDs) that stays sharp at any size, is
+  theme-aware, colours its outline by link quality and reflects the LED switch
+  state. The original *ChatGPT* photo icon remains the default. The choice is
+  stored server-side with the rest of the layout.
 - **Adjustable adapter icon size.** *Arrange* mode gained a size slider that
   scales the adapter icons (0.5×–2.5×). The chosen size is stored server-side
   alongside the layout, so it is the same on every device.
