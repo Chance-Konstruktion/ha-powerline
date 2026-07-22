@@ -1577,7 +1577,7 @@
       const panelX = x - 11 * s;
       const panelY = y - 19 * s;
       const panelW = 22 * s;
-      const panelH = 17 * s;
+      const panelH = 30 * s;
       const panelR = 4 * s;
       const ledCy = y - 10.5 * s;
       const ledR = 2.1 * s;
@@ -1588,10 +1588,10 @@
       parts.push(
         `<ellipse class="adapter-aura" cx="${n(x)}" cy="${n(y + 4 * s)}" rx="${n(24 * s)}" ry="${n(30 * s)}"></ellipse>`
       );
-      // Two plug prongs peeking out at the bottom.
+      // A single cable exiting the bottom centre of the adapter.
+      const cableW = 4.2 * s;
       parts.push(
-        `<rect x="${n(x - 7 * s)}" y="${n(y + 18 * s)}" width="${n(3.4 * s)}" height="${n(9 * s)}" rx="${n(1.4 * s)}" fill="#b7c0c9"></rect>` +
-        `<rect x="${n(x + 3.6 * s)}" y="${n(y + 18 * s)}" width="${n(3.4 * s)}" height="${n(9 * s)}" rx="${n(1.4 * s)}" fill="#b7c0c9"></rect>`
+        `<rect x="${n(x - cableW / 2)}" y="${n(y + 16 * s)}" width="${n(cableW)}" height="${n(12 * s)}" rx="${n(cableW / 2)}" fill="#8a949c"></rect>`
       );
       // Adapter body: card-coloured fill, quality-coloured outline.
       parts.push(
@@ -1615,14 +1615,6 @@
           `<circle cx="${n(cx)}" cy="${n(ledCy)}" r="${n(ledR)}" fill="${ledOn ? ledLit : ledDim}"></circle>`
         );
       });
-      // Ethernet port near the bottom of the body.
-      const portX = x - 8 * s;
-      const portY = y + 4 * s;
-      parts.push(
-        `<rect x="${n(portX)}" y="${n(portY)}" width="${n(16 * s)}" height="${n(10 * s)}" rx="${n(1.8 * s)}" fill="#37474f"></rect>` +
-        `<rect x="${n(x - 2.2 * s)}" y="${n(portY + 7 * s)}" width="${n(4.4 * s)}" height="${n(3.4 * s)}" fill="#37474f"></rect>` +
-        `<rect x="${n(portX + 2 * s)}" y="${n(portY + 2 * s)}" width="${n(12 * s)}" height="${n(3 * s)}" rx="${n(1 * s)}" fill="#546e7a"></rect>`
-      );
       parts.push(`</g>`);
       return parts.join("");
     }
