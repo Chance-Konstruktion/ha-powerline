@@ -785,8 +785,8 @@
 
       // Edges below nodes
       t.edges.forEach((e, i) => {
-        const a = this._positions[e.source];
-        const b = this._positions[e.destination];
+        const a = this._edgeAnchor(e.source);
+        const b = this._edgeAnchor(e.destination);
         if (!a || !b) return;
         const color = QUALITY_COLORS[e.link_quality] || QUALITY_COLORS.unknown;
         const width = Math.min(8, 1.5 + e.average_rate / 200);
@@ -1515,6 +1515,18 @@
     _iconStyle() {
       const style = this._userLayout && this._userLayout.iconStyle;
       return style === "claude" ? "claude" : "chatgpt";
+    }
+
+    // Where a PLC link line attaches to a node. For the Claude icon the link
+    // meets the cable at the bottom of the adapter (where the powerline signal
+    // physically leaves the plug); the photo icon keeps the node centre.
+    _edgeAnchor(mac) {
+      const p = this._positions[mac];
+      if (!p) return null;
+      if (this._iconStyle() === "claude") {
+        return { x: p.x, y: p.y + 27 * this._iconScale() };
+      }
+      return p;
     }
 
     _adapterMetrics(p) {
