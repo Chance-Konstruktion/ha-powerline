@@ -66,6 +66,15 @@
       run: "Ausführen",
       range_168: "7 T",
       range_720: "30 T",
+      outage: "Aussetzer – Adapter war zeitweise offline (rot markiert)",
+      edit: "Anordnen",
+      edit_done: "Fertig",
+      bg_upload: "Hintergrund",
+      bg_remove: "Hintergrund entfernen",
+      reset_positions: "Auto-Anordnung",
+      edit_hint: "Adapter mit der Maus/Finger an ihre Position im Grundriss ziehen.",
+      bg_too_large: "Bild zu groß (max. 4 MB). Bitte ein kleineres verwenden.",
+      layout_saved: "Anordnung gespeichert",
     },
     en: {
       role_CCo: "Coordinator",
@@ -106,6 +115,15 @@
       run: "Run",
       range_168: "7 d",
       range_720: "30 d",
+      outage: "Outage – adapter was offline for a while (marked red)",
+      edit: "Arrange",
+      edit_done: "Done",
+      bg_upload: "Background",
+      bg_remove: "Remove background",
+      reset_positions: "Auto layout",
+      edit_hint: "Drag adapters to where they sit in your floor plan.",
+      bg_too_large: "Image too large (max 4 MB). Please use a smaller one.",
+      layout_saved: "Layout saved",
     },
   };
 
@@ -234,6 +252,13 @@
       this._lastFetch = 0;
       this._fetchInFlight = false;
       this._error = null;
+      // User-arranged layout (server-persisted): manual adapter positions and
+      // an optional floor-plan background image.
+      this._userLayout = { positions: {}, background: null };
+      this._layoutLoaded = false;
+      this._editing = false; // "Arrange" mode: drag adapters, set background
+      this._drag = null; // active drag {mac, moved}
+      this._toast = null; // transient status message
     }
 
     setConfig(config) {
@@ -283,6 +308,7 @@
 
     async _fetch() {
       if (!this._hass || this._fetchInFlight) return;
+      if (!this._layoutLoaded) await this._fetchLayout();
       this._fetchInFlight = true;
       this._lastFetch = Date.now();
       const msg = { type: "powerline/topology" };
@@ -297,6 +323,44 @@
       } finally {
         this._fetchInFlight = false;
       }
+    }
+
+    async _fetchLayout() {
+      this._layoutLoaded = true;
+      const msg = { type: "powerline/topology/layout/get" };
+      if (this._config.entry_id) msg.entry_id = this._config.entry_id;
+      try {
+        const layout = await this._hass.callWS(msg);
+        this._userLayout = {
+          positions: (layout && layout.positions) || {},
+          background: (layout && layout.background) || null,
+        };
+      } catch (err) {
+        this._userLayout = { positions: {}, background: null };
+      }
+    }
+
+    // Persist the current layout. `patch` carries only what changed
+    // (positions and/or background) so a drag doesn't re-upload the image.
+    async _saveLayout(patch) {
+      const msg = { type: "powerline/topology/layout/set", ...patch };
+      if (this._config.entry_id) msg.entry_id = this._config.entry_id;
+      try {
+        await this._hass.callWS(msg);
+        this._showToast(this._t("layout_saved"));
+      } catch (err) {
+        this._showToast((err && err.message) || "save failed");
+      }
+    }
+
+    _showToast(text) {
+      this._toast = text;
+      this._render();
+      clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => {
+        this._toast = null;
+        this._render();
+      }, 2500);
     }
 
     async _fetchHistory(edge, hours) {
@@ -328,7 +392,22 @@
       const newMacs = topology.nodes.map((n) => n.mac).join();
       this._topology = topology;
       if (oldMacs !== newMacs) this._layout();
+      // A background refresh must never yank the graph out from under an
+      // in-progress drag or the arrange toolbar.
+      if (this._drag) return;
       this._render();
+    }
+
+    // Overlay user-placed positions (from the saved layout) onto the
+    // auto-computed ones, so manually arranged adapters stay put while any
+    // newly discovered adapter still gets a sensible automatic spot.
+    _applyLayoutOverrides() {
+      const saved = (this._userLayout && this._userLayout.positions) || {};
+      Object.entries(saved).forEach(([mac, p]) => {
+        if (p && typeof p.x === "number" && typeof p.y === "number") {
+          this._positions[mac] = { x: p.x, y: p.y };
+        }
+      });
     }
 
     // ── Force-directed layout ──────────────────────────────
@@ -404,6 +483,7 @@
         });
       }
       this._positions = pos;
+      this._applyLayoutOverrides();
     }
 
     // ── Rendering ──────────────────────────────────────────
@@ -418,8 +498,38 @@
           font-weight: 500;
           color: var(--primary-text-color);
         }
-        .graph { width: 100%; display: block; }
+        .graph { width: 100%; display: block; position: relative; }
+        .graph.editing svg { touch-action: none; }
         svg { width: 100%; height: auto; display: block; }
+        .floorplan { opacity: 0.9; }
+        .toolbar {
+          display: flex; flex-wrap: wrap; gap: 6px;
+          padding: 8px 16px 4px; justify-content: flex-end;
+        }
+        .tool-btn {
+          border: 1px solid var(--divider-color, #e0e0e0);
+          background: transparent; color: var(--primary-text-color);
+          border-radius: 14px; padding: 4px 12px; font-size: 0.85em; cursor: pointer;
+        }
+        .tool-btn:hover { background: var(--secondary-background-color, #f0f0f0); }
+        .tool-btn.primary {
+          background: var(--primary-color, #03a9f4);
+          border-color: var(--primary-color, #03a9f4);
+          color: var(--text-primary-color, #fff);
+        }
+        .edit-hint {
+          padding: 0 16px 8px; font-size: 0.8em;
+          color: var(--secondary-text-color);
+        }
+        .toast {
+          position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+          background: color-mix(in srgb, var(--card-background-color, #333) 82%, transparent);
+          color: var(--primary-text-color);
+          border: 1px solid var(--divider-color, #e0e0e0);
+          padding: 4px 12px; border-radius: 14px; font-size: 0.8em;
+          pointer-events: none; white-space: nowrap;
+        }
+        .spark-outage { font-size: 0.78em; color: var(--error-color, #e53935); padding: 2px 0 0; }
         .mesh-bg { fill: url(#mesh-bg); }
         .edge { cursor: pointer; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18)); }
         .edge-hit { stroke: transparent; stroke-width: 14; cursor: pointer; }
@@ -592,7 +702,16 @@
       } else if (!this._topology || !this._topology.nodes.length) {
         body = `<div class="empty">${this._escape(this._t("empty"))}</div>`;
       } else {
-        body = `<div class="graph">${this._renderSvg()}</div>${this._renderLegend()}${this._renderAnalysis()}${this._renderDetails()}`;
+        const editHint = this._editing
+          ? `<div class="edit-hint">${this._escape(this._t("edit_hint"))}</div>`
+          : "";
+        const toast = this._toast
+          ? `<div class="toast">${this._escape(this._toast)}</div>`
+          : "";
+        body =
+          `${this._renderToolbar()}` +
+          `<div class="graph${this._editing ? " editing" : ""}">${this._renderSvg()}${toast}</div>` +
+          `${editHint}${this._renderLegend()}${this._renderAnalysis()}${this._renderDetails()}`;
       }
 
       const header = this._config.title
@@ -623,9 +742,20 @@
           `<defs><linearGradient id="mesh-bg" x1="0" y1="0" x2="1" y2="1">` +
           `<stop offset="0" stop-color="var(--primary-color, #03a9f4)" stop-opacity="0.12"></stop>` +
           `<stop offset="1" stop-color="var(--card-background-color, #fff)" stop-opacity="0"></stop>` +
-          `</linearGradient></defs>` +
+          `</linearGradient>` +
+          `<clipPath id="mesh-clip"><rect x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" rx="18"></rect></clipPath></defs>` +
           `<rect class="mesh-bg" x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" rx="18"></rect>`
       );
+
+      // Optional floor-plan background behind the mesh. Clipped to the card's
+      // rounded rectangle; "meet" keeps the whole plan visible (letterboxed).
+      if (this._userLayout && this._userLayout.background) {
+        parts.push(
+          `<image class="floorplan" href="${this._userLayout.background}" x="0" y="0"` +
+            ` width="${VIEW_W}" height="${VIEW_H}" preserveAspectRatio="xMidYMid meet"` +
+            ` clip-path="url(#mesh-clip)"></image>`
+        );
+      }
 
       // Edges below nodes
       t.edges.forEach((e, i) => {
@@ -701,6 +831,32 @@
       return parts.join("");
     }
 
+    // Toolbar above the graph: an "Arrange" toggle, and while arranging,
+    // buttons to upload/remove the floor-plan background and reset positions.
+    _renderToolbar() {
+      if (!this._editing) {
+        return (
+          `<div class="toolbar">` +
+          `<button class="tool-btn" data-edit-toggle title="${this._escape(
+            this._t("edit")
+          )}">✥ ${this._escape(this._t("edit"))}</button>` +
+          `</div>`
+        );
+      }
+      const removeBg = this._userLayout.background
+        ? `<button class="tool-btn" data-bg-remove>${this._escape(this._t("bg_remove"))}</button>`
+        : "";
+      return (
+        `<div class="toolbar editing">` +
+        `<button class="tool-btn" data-bg-upload>🖼 ${this._escape(this._t("bg_upload"))}</button>` +
+        removeBg +
+        `<button class="tool-btn" data-reset-positions>${this._escape(this._t("reset_positions"))}</button>` +
+        `<button class="tool-btn primary" data-edit-toggle>✓ ${this._escape(this._t("edit_done"))}</button>` +
+        `<input type="file" accept="image/*" class="bg-input" hidden>` +
+        `</div>`
+      );
+    }
+
     _renderLegend() {
       const items = [
         ["#43a047", "&gt; 700 Mbit/s"],
@@ -771,6 +927,36 @@
       return `<div class="ranges">${buttons}</div>${chart}`;
     }
 
+    // Split a time series into contiguous segments, breaking wherever the
+    // gap between two consecutive samples is much larger than the typical
+    // spacing. A gap means the adapter was offline/disconnected during that
+    // time, so no link speed existed — we must NOT draw a line across it
+    // (that would make an outage look like continuous availability).
+    _segmentSeries(series) {
+      if (series.length < 2) return { segments: [series.slice()], gaps: [] };
+      const deltas = [];
+      for (let i = 1; i < series.length; i++) {
+        deltas.push(series[i].t - series[i - 1].t);
+      }
+      const sorted = deltas.slice().sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)] || 1;
+      // 2.5× the median spacing (with a small floor) counts as an outage.
+      const threshold = Math.max(median * 2.5, median + 60);
+      const segments = [];
+      const gaps = [];
+      let current = [series[0]];
+      for (let i = 1; i < series.length; i++) {
+        if (series[i].t - series[i - 1].t > threshold) {
+          segments.push(current);
+          gaps.push([series[i - 1], series[i]]);
+          current = [];
+        }
+        current.push(series[i]);
+      }
+      segments.push(current);
+      return { segments, gaps };
+    }
+
     _renderSparkline(series) {
       const W = 300;
       const H = 70;
@@ -789,16 +975,54 @@
       // the nearest sample and place the crosshair/readout.
       this._sparkMeta = { series, t0, t1, lo, hi, W, H, PAD, hours: this._historyHours };
 
-      const line = series.map((p) => `${x(p.t).toFixed(1)},${y(p.avg).toFixed(1)}`).join(" ");
-      let band = "";
-      if (series.some((p) => p.min != null)) {
-        const upper = series.map((p) => `${x(p.t).toFixed(1)},${y(p.max != null ? p.max : p.avg).toFixed(1)}`);
-        const lower = series
-          .slice()
-          .reverse()
-          .map((p) => `${x(p.t).toFixed(1)},${y(p.min != null ? p.min : p.avg).toFixed(1)}`);
-        band = `<polygon points="${upper.join(" ")} ${lower.join(" ")}" fill="var(--primary-color, #03a9f4)" opacity="0.15"></polygon>`;
-      }
+      const { segments, gaps } = this._segmentSeries(series);
+      const hasBand = series.some((p) => p.min != null);
+
+      const svgParts = [];
+      // One band + one polyline per contiguous segment, so gaps stay empty.
+      segments.forEach((seg) => {
+        if (!seg.length) return;
+        if (hasBand && seg.length > 1) {
+          const upper = seg.map(
+            (p) => `${x(p.t).toFixed(1)},${y(p.max != null ? p.max : p.avg).toFixed(1)}`
+          );
+          const lower = seg
+            .slice()
+            .reverse()
+            .map((p) => `${x(p.t).toFixed(1)},${y(p.min != null ? p.min : p.avg).toFixed(1)}`);
+          svgParts.push(
+            `<polygon points="${upper.join(" ")} ${lower.join(" ")}" fill="var(--primary-color, #03a9f4)" opacity="0.15"></polygon>`
+          );
+        }
+        if (seg.length > 1) {
+          const line = seg.map((p) => `${x(p.t).toFixed(1)},${y(p.avg).toFixed(1)}`).join(" ");
+          svgParts.push(
+            `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>`
+          );
+        } else {
+          const p = seg[0];
+          svgParts.push(
+            `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.avg).toFixed(1)}" r="1.8" fill="var(--primary-color, #03a9f4)"></circle>`
+          );
+        }
+      });
+      // Outage markers: a red band along the bottom spanning each gap makes
+      // "adapter was offline here" unmistakable at a glance.
+      gaps.forEach(([a, b]) => {
+        const x1 = x(a.t);
+        const x2 = x(b.t);
+        svgParts.push(
+          `<rect class="spark-gap" x="${x1.toFixed(1)}" y="${(H - 3).toFixed(1)}" width="${Math.max(
+            1,
+            x2 - x1
+          ).toFixed(1)}" height="3" fill="${QUALITY_COLORS.red}" opacity="0.9"></rect>`
+        );
+        svgParts.push(
+          `<line x1="${x1.toFixed(1)}" y1="0" x2="${x1.toFixed(1)}" y2="${H}" stroke="${QUALITY_COLORS.red}" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity="0.5"></line>` +
+            `<line x1="${x2.toFixed(1)}" y1="0" x2="${x2.toFixed(1)}" y2="${H}" stroke="${QUALITY_COLORS.red}" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity="0.5"></line>`
+        );
+      });
+
       const last = series[series.length - 1];
       // Default readout (no hover) = maximum over the visible range. The
       // crosshair line uses a non-scaling stroke so it stays 1px despite the
@@ -806,20 +1030,23 @@
       // reason. Both are hidden until the pointer enters the chart.
       const svg =
         `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
-        band +
-        `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>` +
+        svgParts.join("") +
         `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="var(--primary-color, #03a9f4)"></circle>` +
         `<line class="spark-cursor-line" x1="0" y1="0" x2="0" y2="${H}"` +
         ` stroke="var(--secondary-text-color, #666)" stroke-width="1"` +
         ` vector-effect="non-scaling-stroke" opacity="0" pointer-events="none"></line>` +
         `</svg>`;
       const defaultLabel = `Max ${hi} Mbit/s`;
+      const outageNote = gaps.length
+        ? `<div class="spark-outage">⚠ ${this._escape(this._t("outage"))}</div>`
+        : "";
       return (
         `<div class="spark-wrap">` +
         `<div class="spark-readout" data-default="${this._escape(defaultLabel)}">${this._escape(defaultLabel)}</div>` +
         svg +
         `<div class="spark-dot"></div>` +
-        `</div>`
+        `</div>` +
+        outageNote
       );
     }
 
@@ -880,6 +1107,13 @@
     }
 
     _bindEvents() {
+      this._bindToolbar();
+      // While arranging, adapters are draggable instead of clickable and the
+      // edge/detail interactions are suspended to keep the surface calm.
+      if (this._editing) {
+        this._bindDrag();
+        return;
+      }
       this.shadowRoot.querySelectorAll("[data-node]").forEach((el) => {
         el.addEventListener("click", () => {
           const mac = el.getAttribute("data-node");
@@ -917,6 +1151,160 @@
       });
       this._bindSparkHover();
       this._bindControls();
+    }
+
+    _bindToolbar() {
+      const toggle = this.shadowRoot.querySelector("[data-edit-toggle]");
+      if (toggle) {
+        toggle.addEventListener("click", () => {
+          this._editing = !this._editing;
+          this._selected = null;
+          this._render();
+        });
+      }
+      const upload = this.shadowRoot.querySelector("[data-bg-upload]");
+      const input = this.shadowRoot.querySelector(".bg-input");
+      if (upload && input) {
+        upload.addEventListener("click", () => input.click());
+        input.addEventListener("change", () => {
+          const file = input.files && input.files[0];
+          if (file) this._loadBackgroundFile(file);
+        });
+      }
+      const removeBg = this.shadowRoot.querySelector("[data-bg-remove]");
+      if (removeBg) {
+        removeBg.addEventListener("click", () => {
+          this._userLayout.background = null;
+          this._saveLayout({ background: null });
+          this._render();
+        });
+      }
+      const reset = this.shadowRoot.querySelector("[data-reset-positions]");
+      if (reset) {
+        reset.addEventListener("click", () => {
+          this._userLayout.positions = {};
+          this._saveLayout({ positions: {} });
+          this._layout(); // recompute automatic layout
+          this._render();
+        });
+      }
+    }
+
+    // Read an uploaded floor plan, downscale it so the stored data URL stays
+    // small, and persist it as the background.
+    _loadBackgroundFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1600;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          // JPEG keeps photographic floor plans compact; PNG would balloon.
+          let dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          if (dataUrl.length > 4 * 1024 * 1024) {
+            dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+          }
+          if (dataUrl.length > 4 * 1024 * 1024) {
+            this._showToast(this._t("bg_too_large"));
+            return;
+          }
+          this._userLayout.background = dataUrl;
+          this._saveLayout({ background: dataUrl });
+          this._render();
+        };
+        img.onerror = () => this._showToast(this._t("bg_too_large"));
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Drag adapters to their real-world position. Pointer coordinates are
+    // mapped into SVG user space via the inverse screen CTM, which correctly
+    // accounts for the viewBox scaling and letterboxing.
+    _bindDrag() {
+      const svg = this.shadowRoot.querySelector(".graph svg");
+      if (!svg) return;
+      const toSvg = (ev) => {
+        const pt = svg.createSVGPoint();
+        pt.x = ev.clientX;
+        pt.y = ev.clientY;
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return null;
+        const p = pt.matrixTransform(ctm.inverse());
+        return {
+          x: Math.max(20, Math.min(VIEW_W - 20, p.x)),
+          y: Math.max(20, Math.min(VIEW_H - 20, p.y)),
+        };
+      };
+      this.shadowRoot.querySelectorAll("[data-node]").forEach((el) => {
+        el.style.cursor = "grab";
+        el.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault();
+          const mac = el.getAttribute("data-node");
+          this._drag = { mac, moved: false };
+          el.setPointerCapture(ev.pointerId);
+          el.style.cursor = "grabbing";
+        });
+        el.addEventListener("pointermove", (ev) => {
+          if (!this._drag || this._drag.mac !== el.getAttribute("data-node")) return;
+          const p = toSvg(ev);
+          if (!p) return;
+          this._drag.moved = true;
+          this._positions[this._drag.mac] = p;
+          this._updateNodeDom(el, p);
+        });
+        const end = (ev) => {
+          if (!this._drag) return;
+          const mac = this._drag.mac;
+          const moved = this._drag.moved;
+          this._drag = null;
+          el.style.cursor = "grab";
+          try {
+            el.releasePointerCapture(ev.pointerId);
+          } catch (e) {
+            /* pointer already released */
+          }
+          if (moved) {
+            const p = this._positions[mac];
+            this._userLayout.positions[mac] = { x: p.x, y: p.y };
+            this._saveLayout({ positions: this._userLayout.positions });
+            this._render(); // redraw edges/labels at final position
+          }
+        };
+        el.addEventListener("pointerup", end);
+        el.addEventListener("pointercancel", end);
+      });
+    }
+
+    // Cheap in-drag reposition: move just the dragged node's group so we don't
+    // rebuild the whole SVG on every pointermove. A full _render() on drop
+    // fixes up the connected edges and labels.
+    _updateNodeDom(groupEl, p) {
+      const photo = groupEl.querySelector(".adapter-photo");
+      const rect = groupEl.querySelector(".adapter-quality");
+      const aura = groupEl.querySelector(".adapter-aura");
+      if (photo) {
+        photo.setAttribute("x", (p.x - 22).toFixed(1));
+        photo.setAttribute("y", (p.y - 30).toFixed(1));
+      }
+      if (rect) {
+        rect.setAttribute("x", (p.x - 17).toFixed(1));
+        rect.setAttribute("y", (p.y - 25).toFixed(1));
+      }
+      if (aura) {
+        aura.setAttribute("cx", p.x.toFixed(1));
+        aura.setAttribute("cy", (p.y + 4).toFixed(1));
+      }
+      groupEl.querySelectorAll(".cco-ring, .selected-ring").forEach((c) => {
+        c.setAttribute("cx", p.x.toFixed(1));
+        c.setAttribute("cy", p.y.toFixed(1));
+      });
     }
 
     // Live readout: while the pointer is over the sparkline show the value at

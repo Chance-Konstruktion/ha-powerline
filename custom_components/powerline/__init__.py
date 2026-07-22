@@ -48,6 +48,13 @@ _DATA_WS_REGISTERED = f"{DOMAIN}_ws_registered"
 _DATA_FRONTEND_REGISTERED = f"{DOMAIN}_frontend_registered"
 _DATA_FRONTEND_VERSION = f"{DOMAIN}_frontend_version"
 _DATA_PANEL_REGISTERED = f"{DOMAIN}_panel_registered"
+# Dashboard layout (user-placed adapter positions + floor-plan background),
+# keyed by config entry id. Cached in memory and persisted via a Store.
+_DATA_LAYOUT = f"{DOMAIN}_layout"
+_DATA_LAYOUT_STORE = f"{DOMAIN}_layout_store"
+
+# Guard for the floor-plan data URL so a stray upload can't bloat .storage.
+MAX_BACKGROUND_BYTES = 4 * 1024 * 1024
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -93,6 +100,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    await _register_layout_store(hass)
     _register_websocket_api(hass)
     await _register_frontend(hass)
     _async_update_panel(
@@ -115,6 +123,24 @@ def _register_websocket_api(hass: HomeAssistant) -> None:
     hass.data[_DATA_WS_REGISTERED] = True
     websocket_api.async_register_command(hass, _websocket_get_topology)
     websocket_api.async_register_command(hass, _websocket_get_history)
+    websocket_api.async_register_command(hass, _websocket_get_layout)
+    websocket_api.async_register_command(hass, _websocket_set_layout)
+
+
+async def _register_layout_store(hass: HomeAssistant) -> None:
+    """Load the persisted dashboard layout into memory (once)."""
+    if _DATA_LAYOUT in hass.data:
+        return
+    layout: dict = {}
+    try:
+        from homeassistant.helpers.storage import Store
+
+        store = Store(hass, 1, f"{DOMAIN}.topology_layout")
+        layout = (await store.async_load()) or {}
+        hass.data[_DATA_LAYOUT_STORE] = store
+    except ImportError:  # pragma: no cover - Store exists in every real HA
+        pass
+    hass.data[_DATA_LAYOUT] = layout
 
 
 def _get_coordinator(hass: HomeAssistant, msg: dict):
@@ -124,6 +150,20 @@ def _get_coordinator(hass: HomeAssistant, msg: dict):
     if entry_id:
         return coordinators.get(entry_id)
     return next(iter(coordinators.values()), None)
+
+
+def _layout_key(hass: HomeAssistant, msg: dict) -> str | None:
+    """Resolve which config entry a layout message applies to.
+
+    Layouts are keyed by config entry id so multi-entry installs keep
+    separate floor plans. Without an explicit entry_id the first (usually
+    only) entry is used, matching the topology command's behaviour.
+    """
+    entry_id = msg.get("entry_id")
+    if entry_id:
+        return entry_id
+    coordinators = hass.data.get(DOMAIN, {})
+    return next(iter(coordinators), None)
 
 
 @websocket_api.websocket_command(
@@ -190,6 +230,74 @@ def _websocket_get_history(
             "series": series,
         },
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/topology/layout/get",
+        vol.Optional("entry_id"): str,
+    }
+)
+@callback
+def _websocket_get_layout(hass: HomeAssistant, connection, msg: dict) -> None:
+    """Return the stored dashboard layout ({positions, background}).
+
+    Empty defaults are returned when the user has not arranged anything yet,
+    so the card falls back to its automatic force-directed layout.
+    """
+    key = _layout_key(hass, msg)
+    layouts = hass.data.get(_DATA_LAYOUT, {})
+    layout = layouts.get(key) or {}
+    connection.send_result(
+        msg["id"],
+        {
+            "positions": layout.get("positions", {}),
+            "background": layout.get("background"),
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/topology/layout/set",
+        vol.Optional("entry_id"): str,
+        vol.Optional("positions"): {str: {vol.Required("x"): vol.Coerce(float),
+                                          vol.Required("y"): vol.Coerce(float)}},
+        # A data: URL for the floor plan, or null/"" to clear it. Unset leaves
+        # the stored background untouched (position-only saves stay cheap).
+        vol.Optional("background"): vol.Any(None, str),
+    }
+)
+@callback
+def _websocket_set_layout(hass: HomeAssistant, connection, msg: dict) -> None:
+    """Persist user-placed adapter positions and/or the floor-plan image."""
+    key = _layout_key(hass, msg)
+    if key is None:
+        connection.send_error(
+            msg["id"], "not_found", "Powerline config entry not found"
+        )
+        return
+
+    background = msg.get("background")
+    if isinstance(background, str) and len(background.encode("utf-8")) > MAX_BACKGROUND_BYTES:
+        connection.send_error(
+            msg["id"], "invalid_format", "Background image too large"
+        )
+        return
+
+    layouts = hass.data.setdefault(_DATA_LAYOUT, {})
+    layout = dict(layouts.get(key) or {})
+    if "positions" in msg:
+        layout["positions"] = msg["positions"]
+    if "background" in msg:
+        layout["background"] = background or None
+    layouts[key] = layout
+
+    store = hass.data.get(_DATA_LAYOUT_STORE)
+    if store is not None:
+        store.async_delay_save(lambda: hass.data.get(_DATA_LAYOUT, {}), 2)
+
+    connection.send_result(msg["id"], {"success": True})
 
 
 def _display_name(hass: HomeAssistant, mac: str) -> str | None:

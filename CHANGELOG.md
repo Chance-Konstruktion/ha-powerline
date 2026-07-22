@@ -2,6 +2,25 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [Unreleased]
+
+### Added
+- **Arrange adapters on a floor plan.** The topology card gained an *Arrange*
+  mode: upload your own background image (e.g. a floor plan) and drag each
+  adapter to where it physically sits in your home. Positions and the
+  background are stored server-side by the integration, so the same layout
+  appears on every device (phone, tablet, PC). New adapters still get an
+  automatic position; *Auto layout* resets everything back to the
+  force-directed graph.
+
+### Changed
+- **Outages are visible in the link-rate chart.** The history sparkline no
+  longer draws a continuous line across periods when an adapter was
+  offline/disconnected. Each contiguous online stretch is drawn separately and
+  every gap is marked red, so an outage can no longer masquerade as
+  uninterrupted availability — even when the speed before and after the gap is
+  the same.
+
 ## [260718] - 2026-07-18
 
 ### Changed

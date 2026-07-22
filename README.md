@@ -247,10 +247,21 @@ refresh_interval: 30           # optional, seconds
 - **Names** come from the Home Assistant device registry, so renaming an
   adapter ("Wohnzimmer", "Keller") renames its node.
 
+**Arrange on your floor plan.** Click **Arrange** on the card to upload your
+own background image (e.g. a floor plan) and drag each adapter to where it
+physically sits. The positions and the background are saved server-side by the
+integration, so the same arrangement shows up on every device. Newly
+discovered adapters still get an automatic spot; **Auto layout** clears the
+manual placement and returns to the force-directed graph. The layout is stored
+and served over websocket (`powerline/topology/layout/get` and
+`powerline/topology/layout/set`).
+
 **History & analysis.** The integration keeps a rolling link-rate history —
 raw samples for the last hour, 15-minute aggregates for 30 days, persisted
 across restarts. Click a connection in the graph and pick **1 h / 24 h /
-7 d / 30 d** to see its rate as a sparkline. The analysis line above the
+7 d / 30 d** to see its rate as a sparkline. Periods when an adapter was
+offline break the sparkline and are marked red, so an outage never looks like
+continuous availability. The analysis line above the
 details names the *slowest* and the *most unstable* connection (rate
 variation over 24 h), so the bottleneck and the flapping link are visible at
 a glance. History is also queryable over websocket
