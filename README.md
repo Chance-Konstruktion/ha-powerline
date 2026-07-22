@@ -252,9 +252,13 @@ own background image (e.g. a floor plan) and drag each adapter to where it
 physically sits. The positions and the background are saved server-side by the
 integration, so the same arrangement shows up on every device. Newly
 discovered adapters still get an automatic spot; **Auto layout** clears the
-manual placement and returns to the force-directed graph. The layout is stored
-and served over websocket (`powerline/topology/layout/get` and
-`powerline/topology/layout/set`).
+manual placement and returns to the force-directed graph. A size slider scales
+the adapter icons (0.5×–2.5×) to taste, and a **ChatGPT ↔ Claude** toggle
+switches the icon set — *ChatGPT* is the adapter photo, *Claude* is a crisp
+vector adapter that stays sharp at any size, colours its outline by link
+quality and shows the LED state. Positions, background, icon size and icon
+style are stored and served over websocket (`powerline/topology/layout/get`
+and `powerline/topology/layout/set`).
 
 **History & analysis.** The integration keeps a rolling link-rate history —
 raw samples for the last hour, 15-minute aggregates for 30 days, persisted

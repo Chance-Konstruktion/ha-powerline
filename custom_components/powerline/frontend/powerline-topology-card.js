@@ -75,6 +75,8 @@
       edit_hint: "Adapter mit der Maus/Finger an ihre Position im Grundriss ziehen.",
       bg_too_large: "Bild zu groß (max. 4 MB). Bitte ein kleineres verwenden.",
       layout_saved: "Anordnung gespeichert",
+      icon_size: "Symbolgröße",
+      icon_style: "Symbolstil",
     },
     en: {
       role_CCo: "Coordinator",
@@ -124,6 +126,8 @@
       edit_hint: "Drag adapters to where they sit in your floor plan.",
       bg_too_large: "Image too large (max 4 MB). Please use a smaller one.",
       layout_saved: "Layout saved",
+      icon_size: "Icon size",
+      icon_style: "Icon style",
     },
   };
 
@@ -254,7 +258,7 @@
       this._error = null;
       // User-arranged layout (server-persisted): manual adapter positions and
       // an optional floor-plan background image.
-      this._userLayout = { positions: {}, background: null };
+      this._userLayout = { positions: {}, background: null, iconScale: 1, iconStyle: "chatgpt" };
       this._layoutLoaded = false;
       this._editing = false; // "Arrange" mode: drag adapters, set background
       this._drag = null; // active drag {mac, moved}
@@ -334,9 +338,11 @@
         this._userLayout = {
           positions: (layout && layout.positions) || {},
           background: (layout && layout.background) || null,
+          iconScale: (layout && Number(layout.icon_scale)) || 1,
+          iconStyle: (layout && layout.icon_style) === "claude" ? "claude" : "chatgpt",
         };
       } catch (err) {
-        this._userLayout = { positions: {}, background: null };
+        this._userLayout = { positions: {}, background: null, iconScale: 1, iconStyle: "chatgpt" };
       }
     }
 
@@ -515,6 +521,26 @@
         .tool-btn.primary {
           background: var(--primary-color, #03a9f4);
           border-color: var(--primary-color, #03a9f4);
+          color: var(--text-primary-color, #fff);
+        }
+        .tool-size {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 0 6px; color: var(--secondary-text-color);
+        }
+        .tool-size .size-input { width: 90px; cursor: pointer; accent-color: var(--primary-color, #03a9f4); }
+        .tool-size .size-glyph { color: var(--secondary-text-color); line-height: 1; }
+        .tool-size .size-glyph.small { font-size: 0.7em; }
+        .tool-size .size-glyph.large { font-size: 1.05em; }
+        .tool-style {
+          display: inline-flex; border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: 14px; overflow: hidden;
+        }
+        .tool-style .style-opt {
+          border: none; background: transparent; cursor: pointer;
+          color: var(--secondary-text-color); font-size: 0.82em; padding: 4px 10px;
+        }
+        .tool-style .style-opt.active {
+          background: var(--primary-color, #03a9f4);
           color: var(--text-primary-color, #fff);
         }
         .edit-hint {
@@ -813,12 +839,13 @@
           this._selected &&
           this._selected.kind === "node" &&
           this._selected.id === node.mac;
+        const ringS = this._iconScale();
         parts.push(`<g class="node" data-node="${this._escape(node.mac)}">`);
         if (node.role === "CCo") {
-          parts.push(`<circle class="cco-ring" cx="${p.x}" cy="${p.y}" r="26"></circle>`);
+          parts.push(`<circle class="cco-ring" cx="${p.x}" cy="${p.y}" r="${(26 * ringS).toFixed(1)}"></circle>`);
         }
         if (sel) {
-          parts.push(`<circle class="selected-ring" cx="${p.x}" cy="${p.y}" r="30"></circle>`);
+          parts.push(`<circle class="selected-ring" cx="${p.x}" cy="${p.y}" r="${(30 * ringS).toFixed(1)}"></circle>`);
         }
         parts.push(this._adapterIconSvg(p, fill, led, node.online));
         const label = node.name === node.mac ? this._shortMac(node.mac) : node.name;
@@ -846,8 +873,23 @@
       const removeBg = this._userLayout.background
         ? `<button class="tool-btn" data-bg-remove>${this._escape(this._t("bg_remove"))}</button>`
         : "";
+      const scale = this._iconScale();
+      const sizeSlider =
+        `<label class="tool-size" title="${this._escape(this._t("icon_size"))}">` +
+        `<span class="size-glyph small">▪</span>` +
+        `<input type="range" class="size-input" min="0.5" max="2.5" step="0.1" value="${scale}">` +
+        `<span class="size-glyph large">◼</span>` +
+        `</label>`;
+      const style = this._iconStyle();
+      const styleToggle =
+        `<div class="tool-style" role="group" title="${this._escape(this._t("icon_style"))}">` +
+        `<button class="style-opt${style === "chatgpt" ? " active" : ""}" data-icon-style="chatgpt">ChatGPT</button>` +
+        `<button class="style-opt${style === "claude" ? " active" : ""}" data-icon-style="claude">Claude</button>` +
+        `</div>`;
       return (
         `<div class="toolbar editing">` +
+        styleToggle +
+        sizeSlider +
         `<button class="tool-btn" data-bg-upload>🖼 ${this._escape(this._t("bg_upload"))}</button>` +
         removeBg +
         `<button class="tool-btn" data-reset-positions>${this._escape(this._t("reset_positions"))}</button>` +
@@ -1188,6 +1230,41 @@
           this._render();
         });
       }
+      const size = this.shadowRoot.querySelector(".size-input");
+      if (size) {
+        // Live resize while sliding (redraw only the SVG so the slider keeps
+        // focus); persist once the user lets go.
+        size.addEventListener("input", () => {
+          this._userLayout.iconScale = Number(size.value);
+          this._refreshGraphSvg();
+        });
+        const commit = () => this._saveLayout({ icon_scale: this._iconScale() });
+        size.addEventListener("change", commit);
+      }
+      this.shadowRoot.querySelectorAll("[data-icon-style]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const style = el.getAttribute("data-icon-style");
+          if (style === this._iconStyle()) return;
+          this._userLayout.iconStyle = style;
+          this._saveLayout({ icon_style: style });
+          this._render();
+        });
+      });
+    }
+
+    // Replace just the graph's SVG in place (used by the size slider) so the
+    // toolbar and its native range input are not torn down mid-interaction.
+    _refreshGraphSvg() {
+      const graph = this.shadowRoot.querySelector(".graph");
+      const svg = graph && graph.querySelector("svg");
+      if (!graph || !svg) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = this._renderSvg();
+      const fresh = tmp.querySelector("svg");
+      if (fresh) {
+        svg.replaceWith(fresh);
+        if (this._editing) this._bindDrag();
+      }
     }
 
     // Read an uploaded floor plan, downscale it so the stored data URL stays
@@ -1247,7 +1324,8 @@
         el.addEventListener("pointerdown", (ev) => {
           ev.preventDefault();
           const mac = el.getAttribute("data-node");
-          this._drag = { mac, moved: false };
+          const base = this._positions[mac] || { x: 0, y: 0 };
+          this._drag = { mac, moved: false, base: { x: base.x, y: base.y } };
           el.setPointerCapture(ev.pointerId);
           el.style.cursor = "grabbing";
         });
@@ -1257,7 +1335,14 @@
           if (!p) return;
           this._drag.moved = true;
           this._positions[this._drag.mac] = p;
-          this._updateNodeDom(el, p);
+          // Translate the whole node group (icon + rings + label) so the drag
+          // stays cheap and works for any icon style; a full render on drop
+          // reflows the connected edges and labels.
+          const base = this._drag.base;
+          el.setAttribute(
+            "transform",
+            `translate(${(p.x - base.x).toFixed(1)} ${(p.y - base.y).toFixed(1)})`
+          );
         });
         const end = (ev) => {
           if (!this._drag) return;
@@ -1279,31 +1364,6 @@
         };
         el.addEventListener("pointerup", end);
         el.addEventListener("pointercancel", end);
-      });
-    }
-
-    // Cheap in-drag reposition: move just the dragged node's group so we don't
-    // rebuild the whole SVG on every pointermove. A full _render() on drop
-    // fixes up the connected edges and labels.
-    _updateNodeDom(groupEl, p) {
-      const photo = groupEl.querySelector(".adapter-photo");
-      const rect = groupEl.querySelector(".adapter-quality");
-      const aura = groupEl.querySelector(".adapter-aura");
-      if (photo) {
-        photo.setAttribute("x", (p.x - 22).toFixed(1));
-        photo.setAttribute("y", (p.y - 30).toFixed(1));
-      }
-      if (rect) {
-        rect.setAttribute("x", (p.x - 17).toFixed(1));
-        rect.setAttribute("y", (p.y - 25).toFixed(1));
-      }
-      if (aura) {
-        aura.setAttribute("cx", p.x.toFixed(1));
-        aura.setAttribute("cy", (p.y + 4).toFixed(1));
-      }
-      groupEl.querySelectorAll(".cco-ring, .selected-ring").forEach((c) => {
-        c.setAttribute("cx", p.x.toFixed(1));
-        c.setAttribute("cy", p.y.toFixed(1));
       });
     }
 
@@ -1443,19 +1503,120 @@
 
     // ── Helpers ────────────────────────────────────────────
 
+    // The adapter's base drawing dimensions (unscaled). Kept in one place so
+    // the icon renderer and the in-drag DOM updater stay in sync.
+    _iconScale() {
+      const s = (this._userLayout && this._userLayout.iconScale) || 1;
+      return Math.max(0.5, Math.min(2.5, s));
+    }
+
+    // Which adapter icon set to draw: "chatgpt" (photo, default) or "claude"
+    // (the vector adapter).
+    _iconStyle() {
+      const style = this._userLayout && this._userLayout.iconStyle;
+      return style === "claude" ? "claude" : "chatgpt";
+    }
+
+    _adapterMetrics(p) {
+      const s = this._iconScale();
+      return {
+        auraCx: p.x,
+        auraCy: p.y + 4 * s,
+        auraRx: 30 * s,
+        auraRy: 38 * s,
+        photoX: p.x - 22 * s,
+        photoY: p.y - 30 * s,
+        photoW: 44 * s,
+        photoH: 60 * s,
+        rectX: p.x - 17 * s,
+        rectY: p.y - 25 * s,
+        rectW: 34 * s,
+        rectH: 50 * s,
+      };
+    }
+
     _adapterIconSvg(p, color, led, online) {
+      if (this._iconStyle() === "claude") {
+        return this._adapterIconClaude(p, color, led, online);
+      }
+      return this._adapterIconPhoto(p, color, led, online);
+    }
+
+    // Original "ChatGPT" icon: the embedded adapter photo with a quality ring.
+    _adapterIconPhoto(p, color, led, online) {
+      const opacity = online ? 1 : 0.55;
+      const asset = led === "on" ? ADAPTER_ASSETS.on : ADAPTER_ASSETS.off;
+      const m = this._adapterMetrics(p);
+      return (
+        `<g class="adapter-body" opacity="${opacity}" style="color:${color}">` +
+        `<ellipse class="adapter-aura" cx="${m.auraCx.toFixed(1)}" cy="${m.auraCy.toFixed(1)}" rx="${m.auraRx.toFixed(1)}" ry="${m.auraRy.toFixed(1)}"></ellipse>` +
+        `<image class="adapter-photo" href="${asset}" x="${m.photoX.toFixed(1)}" y="${m.photoY.toFixed(1)}"` +
+        ` width="${m.photoW.toFixed(1)}" height="${m.photoH.toFixed(1)}" preserveAspectRatio="xMidYMid meet"></image>` +
+        `<rect class="adapter-quality" x="${m.rectX.toFixed(1)}" y="${m.rectY.toFixed(1)}" width="${m.rectW.toFixed(1)}" height="${m.rectH.toFixed(1)}" rx="${(8 * this._iconScale()).toFixed(1)}"></rect>` +
+        `</g>`
+      );
+    }
+
+    // "Claude" icon: a crisp vector powerline adapter. Being pure SVG it stays
+    // sharp at any size (pairs well with the size slider) and is theme-aware —
+    // the body uses the card background, the outline and glow use the link
+    // quality colour (currentColor), and the LEDs reflect the LED switch state.
+    _adapterIconClaude(p, color, led, online) {
+      const s = this._iconScale();
       const x = p.x;
       const y = p.y;
       const opacity = online ? 1 : 0.55;
-      const asset = led === "on" ? ADAPTER_ASSETS.on : ADAPTER_ASSETS.off;
-      return (
-        `<g class="adapter-body" opacity="${opacity}" style="color:${color}">` +
-        `<ellipse class="adapter-aura" cx="${x.toFixed(1)}" cy="${(y + 4).toFixed(1)}" rx="30" ry="38"></ellipse>` +
-        `<image class="adapter-photo" href="${asset}" x="${(x - 22).toFixed(1)}" y="${(y - 30).toFixed(1)}"` +
-        ` width="44" height="60" preserveAspectRatio="xMidYMid meet"></image>` +
-        `<rect class="adapter-quality" x="${(x - 17).toFixed(1)}" y="${(y - 25).toFixed(1)}" width="34" height="50" rx="8"></rect>` +
-        `</g>`
+      const ledOn = led === "on";
+      const n = (v) => v.toFixed(1);
+      // Geometry (unscaled units around the centre), all multiplied by s.
+      const bodyX = x - 16 * s;
+      const bodyY = y - 24 * s;
+      const bodyW = 32 * s;
+      const bodyH = 44 * s;
+      const bodyR = 7 * s;
+      const panelX = x - 11 * s;
+      const panelY = y - 19 * s;
+      const panelW = 22 * s;
+      const panelH = 30 * s;
+      const panelR = 4 * s;
+      const ledCy = y - 10.5 * s;
+      const ledR = 2.1 * s;
+      const ledDim = "#9aa4ad";
+      const ledLit = "#5fe08a";
+      const parts = [`<g class="adapter-body adapter-vector" opacity="${opacity}" style="color:${color}">`];
+      // Soft coloured aura behind the adapter.
+      parts.push(
+        `<ellipse class="adapter-aura" cx="${n(x)}" cy="${n(y + 4 * s)}" rx="${n(24 * s)}" ry="${n(30 * s)}"></ellipse>`
       );
+      // A single cable exiting the bottom centre of the adapter.
+      const cableW = 4.2 * s;
+      parts.push(
+        `<rect x="${n(x - cableW / 2)}" y="${n(y + 16 * s)}" width="${n(cableW)}" height="${n(12 * s)}" rx="${n(cableW / 2)}" fill="#8a949c"></rect>`
+      );
+      // Adapter body: card-coloured fill, quality-coloured outline.
+      parts.push(
+        `<rect x="${n(bodyX)}" y="${n(bodyY)}" width="${n(bodyW)}" height="${n(bodyH)}" rx="${n(bodyR)}"` +
+        ` fill="var(--card-background-color, #fff)" stroke="currentColor" stroke-width="${n(2.4 * s)}"></rect>`
+      );
+      // Front panel tinted with the quality colour.
+      parts.push(
+        `<rect x="${n(panelX)}" y="${n(panelY)}" width="${n(panelW)}" height="${n(panelH)}" rx="${n(panelR)}"` +
+        ` fill="currentColor" opacity="0.14"></rect>`
+      );
+      // Three status LEDs. Lit ones get a soft glow halo.
+      [-6, 0, 6].forEach((dx) => {
+        const cx = x + dx * s;
+        if (ledOn) {
+          parts.push(
+            `<circle cx="${n(cx)}" cy="${n(ledCy)}" r="${n(ledR * 2.1)}" fill="${ledLit}" opacity="0.28"></circle>`
+          );
+        }
+        parts.push(
+          `<circle cx="${n(cx)}" cy="${n(ledCy)}" r="${n(ledR)}" fill="${ledOn ? ledLit : ledDim}"></circle>`
+        );
+      });
+      parts.push(`</g>`);
+      return parts.join("");
     }
 
     _nodeQuality(node) {

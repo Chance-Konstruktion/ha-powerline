@@ -63,6 +63,7 @@ except ImportError:
     _vol.Optional = _VolMarker
     _vol.All = lambda *validators: validators
     _vol.Any = lambda *validators: validators
+    _vol.In = lambda container: container
     _vol.Coerce = lambda target: target
     _vol.Range = lambda **kwargs: kwargs
     _vol.Schema = lambda schema, **kwargs: schema
