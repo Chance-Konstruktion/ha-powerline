@@ -128,3 +128,95 @@ class TestHistoryApi(TestCase):
         schema = integration._websocket_get_history._ws_schema
         for field in ("type", "source", "destination", "hours", "entry_id"):
             self.assertIn(field, schema)
+
+
+class TestLayoutApi(TestCase):
+    def _hass_with_layout(self, layouts=None, coordinators=None):
+        hass = _hass(coordinators if coordinators is not None else {"entry-1": _Coordinator(TOPOLOGY)})
+        hass.data[integration._DATA_LAYOUT] = layouts or {}
+        return hass
+
+    def test_get_returns_empty_defaults(self):
+        hass = self._hass_with_layout()
+        connection = _Connection()
+
+        integration._websocket_get_layout(hass, connection, {"id": 1})
+
+        _, payload = connection.results[0]
+        self.assertEqual(payload["positions"], {})
+        self.assertIsNone(payload["background"])
+
+    def test_get_returns_stored_layout(self):
+        stored = {"entry-1": {"positions": {"AA:BB": {"x": 1.0, "y": 2.0}}, "background": "data:img"}}
+        hass = self._hass_with_layout(stored)
+        connection = _Connection()
+
+        integration._websocket_get_layout(hass, connection, {"id": 2, "entry_id": "entry-1"})
+
+        _, payload = connection.results[0]
+        self.assertEqual(payload["positions"], {"AA:BB": {"x": 1.0, "y": 2.0}})
+        self.assertEqual(payload["background"], "data:img")
+
+    def test_set_persists_positions(self):
+        hass = self._hass_with_layout()
+        connection = _Connection()
+
+        integration._websocket_set_layout(
+            hass,
+            connection,
+            {"id": 3, "positions": {"AA:BB": {"x": 5.0, "y": 6.0}}},
+        )
+
+        self.assertEqual(connection.errors, [])
+        self.assertEqual(
+            hass.data[integration._DATA_LAYOUT]["entry-1"]["positions"],
+            {"AA:BB": {"x": 5.0, "y": 6.0}},
+        )
+
+    def test_set_leaves_background_untouched_on_position_only_save(self):
+        stored = {"entry-1": {"positions": {}, "background": "data:keepme"}}
+        hass = self._hass_with_layout(stored)
+        connection = _Connection()
+
+        integration._websocket_set_layout(
+            hass, connection, {"id": 4, "positions": {"CC:DD": {"x": 0.0, "y": 0.0}}}
+        )
+
+        self.assertEqual(
+            hass.data[integration._DATA_LAYOUT]["entry-1"]["background"], "data:keepme"
+        )
+
+    def test_set_clears_background(self):
+        stored = {"entry-1": {"positions": {}, "background": "data:old"}}
+        hass = self._hass_with_layout(stored)
+        connection = _Connection()
+
+        integration._websocket_set_layout(hass, connection, {"id": 5, "background": None})
+
+        self.assertIsNone(hass.data[integration._DATA_LAYOUT]["entry-1"]["background"])
+
+    def test_set_rejects_oversized_background(self):
+        hass = self._hass_with_layout()
+        connection = _Connection()
+        big = "x" * (integration.MAX_BACKGROUND_BYTES + 1)
+
+        integration._websocket_set_layout(hass, connection, {"id": 6, "background": big})
+
+        self.assertEqual(connection.results, [])
+        self.assertEqual(connection.errors[0][1], "invalid_format")
+
+    def test_set_reports_missing_entry(self):
+        hass = self._hass_with_layout(coordinators={})
+        connection = _Connection()
+
+        integration._websocket_set_layout(hass, connection, {"id": 7, "positions": {}})
+
+        self.assertEqual(connection.errors[0][1], "not_found")
+
+    def test_layout_schemas_declare_fields(self):
+        get_schema = integration._websocket_get_layout._ws_schema
+        self.assertIn("type", get_schema)
+        self.assertIn("entry_id", get_schema)
+        set_schema = integration._websocket_set_layout._ws_schema
+        for field in ("type", "entry_id", "positions", "background"):
+            self.assertIn(field, set_schema)
