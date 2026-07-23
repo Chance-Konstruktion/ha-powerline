@@ -234,7 +234,7 @@ def test_link_rate_change_events_are_noise_filtered():
     assert events[0]["event"] == "link_rate_changed"
     assert events[0]["previous_average"] == 510
     assert events[0]["average"] == 120
-    assert events[0]["link_quality"] == "red"
+    assert events[0]["link_quality"] == "poor"
 
 
 # ── Analysis ───────────────────────────────────────────────
@@ -268,4 +268,4 @@ def test_link_quality_thresholds():
     assert quality(400) == "yellow"
     assert quality(399) == "orange"
     assert quality(150) == "orange"
-    assert quality(149) == "red"
+    assert quality(149) == "poor"

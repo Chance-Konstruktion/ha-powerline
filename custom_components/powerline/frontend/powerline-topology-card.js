@@ -18,9 +18,23 @@
     green: "#43a047",
     yellow: "#fdd835",
     orange: "#fb8c00",
+    // "poor" = connected but very slow (< 150 Mbit/s). Kept visually distinct
+    // from `red`, which is reserved for "no connection" (offline adapters and
+    // history outage gaps) so a red line always means a broken link.
+    poor: "#8e24aa",
     red: "#e53935",
     unknown: "#9e9e9e",
   };
+
+  // Map an average link rate (Mbit/s) to the same quality colour the topology
+  // legend and edges use, so the history trend line always matches the tiers
+  // shown in the legend (> 700 / 400–700 / 150–400 / < 150).
+  function rateColor(rate) {
+    if (rate > 700) return QUALITY_COLORS.green;
+    if (rate >= 400) return QUALITY_COLORS.yellow;
+    if (rate >= 150) return QUALITY_COLORS.orange;
+    return QUALITY_COLORS.poor;
+  }
 
   // All user-facing strings, keyed by language. The card follows Home
   // Assistant's UI language (this._hass.language): German when it starts with
@@ -35,7 +49,8 @@
       quality_green: "sehr gut",
       quality_yellow: "gut",
       quality_orange: "mittelmäßig",
-      quality_red: "schlecht",
+      quality_poor: "schwach",
+      quality_red: "keine Verbindung",
       quality_unknown: "unbekannt",
       legend_estimated: "gestrichelt = geschätzt",
       history_loading: "Lade Verlauf …",
@@ -86,7 +101,8 @@
       quality_green: "very good",
       quality_yellow: "good",
       quality_orange: "fair",
-      quality_red: "poor",
+      quality_poor: "weak",
+      quality_red: "no connection",
       quality_unknown: "unknown",
       legend_estimated: "dashed = estimated",
       history_loading: "Loading history …",
@@ -901,10 +917,10 @@
 
     _renderLegend() {
       const items = [
-        ["#43a047", "&gt; 700 Mbit/s"],
-        ["#fdd835", "400–700"],
-        ["#fb8c00", "150–400"],
-        ["#e53935", "&lt; 150"],
+        [QUALITY_COLORS.green, "&gt; 700 Mbit/s"],
+        [QUALITY_COLORS.yellow, "400–700"],
+        [QUALITY_COLORS.orange, "150–400"],
+        [QUALITY_COLORS.poor, "&lt; 150"],
       ]
         .map(([c, l]) => `<span style="--dot:${c}">${l}</span>`)
         .join("");
@@ -1037,14 +1053,23 @@
           );
         }
         if (seg.length > 1) {
-          const line = seg.map((p) => `${x(p.t).toFixed(1)},${y(p.avg).toFixed(1)}`).join(" ");
-          svgParts.push(
-            `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"></polyline>`
-          );
+          // Draw one coloured sub-segment per pair of samples so the trend line
+          // shows exactly the quality tier (legend colour) at each point,
+          // instead of a single flat blue line.
+          for (let i = 1; i < seg.length; i++) {
+            const a = seg[i - 1];
+            const b = seg[i];
+            const color = rateColor((a.avg + b.avg) / 2);
+            svgParts.push(
+              `<line x1="${x(a.t).toFixed(1)}" y1="${y(a.avg).toFixed(1)}"` +
+                ` x2="${x(b.t).toFixed(1)}" y2="${y(b.avg).toFixed(1)}"` +
+                ` fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round"></line>`
+            );
+          }
         } else {
           const p = seg[0];
           svgParts.push(
-            `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.avg).toFixed(1)}" r="1.8" fill="var(--primary-color, #03a9f4)"></circle>`
+            `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.avg).toFixed(1)}" r="1.8" fill="${rateColor(p.avg)}"></circle>`
           );
         }
       });
@@ -1073,7 +1098,7 @@
       const svg =
         `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
         svgParts.join("") +
-        `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="var(--primary-color, #03a9f4)"></circle>` +
+        `<circle cx="${x(last.t).toFixed(1)}" cy="${y(last.avg).toFixed(1)}" r="2.5" fill="${rateColor(last.avg)}"></circle>` +
         `<line class="spark-cursor-line" x1="0" y1="0" x2="0" y2="${H}"` +
         ` stroke="var(--secondary-text-color, #666)" stroke-width="1"` +
         ` vector-effect="non-scaling-stroke" opacity="0" pointer-events="none"></line>` +
@@ -1633,7 +1658,7 @@
 
     _nodeQuality(node) {
       const edges = (this._topology && this._topology.edges) || [];
-      const rank = { green: 4, yellow: 3, orange: 2, red: 1, unknown: 0 };
+      const rank = { green: 5, yellow: 4, orange: 3, poor: 2, red: 1, unknown: 0 };
       let best = "unknown";
       edges.forEach((edge) => {
         if (edge.source !== node.mac && edge.destination !== node.mac) return;

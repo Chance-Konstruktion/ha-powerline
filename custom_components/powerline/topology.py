@@ -316,4 +316,4 @@ class TopologyManager:
             return "yellow"
         if average_rate >= 150:
             return "orange"
-        return "red"
+        return "poor"

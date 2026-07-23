@@ -236,9 +236,11 @@ title: Powerline Mesh          # optional
 refresh_interval: 30           # optional, seconds
 ```
 
-- **Colours**: link > 700 Mbit/s 🟢 · 400–700 🟡 · 150–400 🟠 · < 150 🔴;
-  line width scales with speed. Online adapters are green, offline red, and
-  the network's Central Coordinator (CCo) is marked with a dashed ring.
+- **Colours**: link > 700 Mbit/s 🟢 · 400–700 🟡 · 150–400 🟠 · < 150 🟣;
+  line width scales with speed. Red is reserved for *no connection* (offline
+  adapters and history outage gaps), so a red line always means a broken link.
+  The history trend line uses these same tier colours. The network's Central
+  Coordinator (CCo) is marked with a dashed ring.
 - **Click** an adapter for MAC, model, firmware, chipset, role and status;
   click a connection for TX/RX/average rates and when they were measured.
 - **Honest data**: edges from real pairwise measurements are drawn solid.
