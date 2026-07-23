@@ -2,6 +2,19 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [Unreleased]
+
+### Changed
+- **Quality colours no longer collide with "no connection".** The `< 150 Mbit/s`
+  tier now has its own colour (🟣) instead of red. Red is reserved exclusively
+  for a broken link — offline adapters and history outage gaps — so a red line
+  always means *no connection*. The topology edges, legend and quality labels
+  follow the new scheme.
+- **History trend line is coloured by quality tier.** The history graph's trend
+  line now uses the same tier colours as the legend (> 700 / 400–700 / 150–400 /
+  < 150) at each point, instead of a single flat blue line, so link quality over
+  time is visible at a glance.
+
 ## [260723] - 2026-07-23
 
 ### Added

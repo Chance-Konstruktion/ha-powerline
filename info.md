@@ -35,7 +35,7 @@ Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` 
 ### 🕸️ Topology view
 
 The integration draws your powerline network as a live mesh graph — adapters
-as nodes, links coloured by quality (>700 🟢 · 400–700 🟡 · 150–400 🟠 · <150 🔴),
+as nodes, links coloured by quality (>700 🟢 · 400–700 🟡 · 150–400 🟠 · <150 🟣; red = no connection),
 click any adapter or connection for details. Two ways to see it:
 
 - **Sidebar panel "Powerline"** — added automatically; can be disabled in the
