@@ -20,7 +20,13 @@ from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, PROVIDER_ID, PROVIDER_LAYER_ID
 from .coordinator import TpLinkPowerlineCoordinator
-from .floorplan_hub_provider import FloorplanHubProvider
+from .floorplan_hub_provider import (
+    FloorplanHubProvider,
+    action,
+    edge,
+    floorplan_provider,
+    node,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,24 +41,32 @@ _QUALITY = {
 # Actions the hub may invoke on an adapter node. The hub forwards the id
 # without interpreting it -- what "led_on" means is our business.
 _NODE_ACTIONS = [
-    {"id": "led_on", "label": "LED on", "icon": "mdi:led-on"},
-    {"id": "led_off", "label": "LED off", "icon": "mdi:led-off"},
-    {"id": "restart", "label": "Restart adapter", "icon": "mdi:restart",
-     "confirm": True},
+    action("led_on", "LED on", "mdi:led-on"),
+    action("led_off", "LED off", "mdi:led-off"),
+    action("restart", "Restart adapter", "mdi:restart", confirm=True),
 ]
 
 
 def async_create_provider(
-    hass: HomeAssistant, coordinator: TpLinkPowerlineCoordinator
+    hass: HomeAssistant,
+    entry: Any,
+    coordinator: TpLinkPowerlineCoordinator,
 ) -> FloorplanHubProvider:
-    """Build the registration for this config entry's coordinator."""
+    """Register with the hub and let it manage the whole lifecycle.
+
+    Registration is withdrawn when the config entry unloads, and every
+    coordinator refresh tells the hub to re-fetch -- so the floor plan
+    follows the adapters live without a single push from here.
+    """
     adapter = PowerlineFloorplanAdapter(hass, coordinator)
-    return FloorplanHubProvider(
+    return floorplan_provider(
         hass,
+        entry,
         provider_id=PROVIDER_ID,
         name="Powerline Network",
         icon="mdi:lan",
         version=_integration_version(hass),
+        coordinator=coordinator,
         capabilities={
             "nodes": True,
             "edges": True,
@@ -107,59 +121,55 @@ class PowerlineFloorplanAdapter:
             "edges": [self._edge(edge) for edge in topology.get("edges", [])],
         }
 
-    def _node(self, node: dict[str, Any]) -> dict[str, Any]:
-        mac = node["mac"]
-        online = bool(node.get("online"))
-        is_cco = node.get("role") == "CCo"
-        return {
-            "id": mac,
-            "label": node.get("name") or mac,
+    def _node(self, adapter: dict[str, Any]) -> dict[str, Any]:
+        mac = adapter["mac"]
+        online = bool(adapter.get("online"))
+        is_cco = adapter.get("role") == "CCo"
+        return node(
+            mac,
+            label=adapter.get("name") or mac,
             # No position: the hub centres the adapter in its area and the
             # user drags it from there. We genuinely don't know where it is.
-            "area_id": self._area_id(mac),
-            "state": "online" if online else "offline",
-            "icon": "mdi:router-network" if is_cco else (
+            area_id=self._area_id(mac),
+            state="online" if online else "offline",
+            icon="mdi:router-network" if is_cco else (
                 "mdi:lan-connect" if online else "mdi:lan-disconnect"
             ),
-            "color": "#4caf50" if online else "#f44336",
-            "layer_id": PROVIDER_LAYER_ID,
-            "actions": _NODE_ACTIONS if online else [],
-            "metadata": {
-                "mac": mac,
-                "role": node.get("role", "unknown"),
-                "model": node.get("model", ""),
-                "firmware": node.get("firmware", ""),
-                "chipset": node.get("chipset", ""),
-                "manufacturer": node.get("manufacturer", ""),
-                "last_update": node.get("last_update"),
-            },
-        }
+            color="#4caf50" if online else "#f44336",
+            actions=_NODE_ACTIONS if online else (),
+            # Keyword arguments beyond the known fields become metadata,
+            # which is what the popup shows.
+            mac=mac,
+            role=adapter.get("role", "unknown"),
+            model=adapter.get("model", ""),
+            firmware=adapter.get("firmware", ""),
+            chipset=adapter.get("chipset", ""),
+            manufacturer=adapter.get("manufacturer", ""),
+            last_update=adapter.get("last_update"),
+        ) | {"layer_id": PROVIDER_LAYER_ID}
 
-    def _edge(self, edge: dict[str, Any]) -> dict[str, Any]:
-        source, destination = edge["source"], edge["destination"]
-        average = edge.get("average_rate") or 0
-        return {
+    def _edge(self, link: dict[str, Any]) -> dict[str, Any]:
+        source, destination = link["source"], link["destination"]
+        average = link.get("average_rate") or 0
+        return edge(
+            source,
+            destination,
             # Same shape the history lookup splits back apart.
-            "id": f"{source}__{destination}",
-            "source": source,
-            "target": destination,
-            "label": f"{average} Mbit/s" if average else "",
-            "value": average,
-            "quality": _QUALITY.get(edge.get("link_quality", ""), "unknown"),
+            id=f"{source}__{destination}",
+            label=f"{average} Mbit/s" if average else "",
+            value=average,
+            quality=_QUALITY.get(link.get("link_quality", ""), "unknown"),
             # Thicker line for a faster link, within sane bounds.
-            "width": max(2.0, min(8.0, average / 150)) if average else 2.0,
-            "directed": False,
+            width=max(2.0, min(8.0, average / 150)) if average else 2.0,
             # An estimated edge is a guess, and should look like one.
-            "dashed": bool(edge.get("estimated")),
-            "animated": average > 0,
-            "metadata": {
-                "tx_phy_rate": edge.get("tx_phy_rate"),
-                "rx_phy_rate": edge.get("rx_phy_rate"),
-                "average_rate": average,
-                "link_quality": edge.get("link_quality"),
-                "estimated": bool(edge.get("estimated")),
-            },
-        }
+            dashed=bool(link.get("estimated")),
+            animated=average > 0,
+            tx_phy_rate=link.get("tx_phy_rate"),
+            rx_phy_rate=link.get("rx_phy_rate"),
+            average_rate=average,
+            link_quality=link.get("link_quality"),
+            estimated=bool(link.get("estimated")),
+        )
 
     def _area_id(self, mac: str) -> str | None:
         """The area the user put this adapter in, if any."""

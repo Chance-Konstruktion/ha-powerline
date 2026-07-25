@@ -21,15 +21,40 @@ class FakeHass:
         self.data = {}
 
 
+class FakeEntry:
+    """A ConfigEntry stand-in that records its unload hooks."""
+
+    domain = "powerline"
+
+    def __init__(self):
+        self.unload_hooks = []
+
+    def async_on_unload(self, func):
+        self.unload_hooks.append(func)
+
+    def unload(self):
+        for hook in self.unload_hooks:
+            hook()
+
+
 class FakeCoordinator:
     """Just enough coordinator for the adapter to translate."""
 
     def __init__(self, topology=None):
         self.data = {"topology": topology or _topology()}
+        self.listeners = []
         self.history = self
         self.led_calls = []
         self.restart_calls = []
         self.series_calls = []
+
+    def async_add_listener(self, listener):
+        self.listeners.append(listener)
+        return lambda: self.listeners.remove(listener)
+
+    def refreshed(self):
+        for listener in list(self.listeners):
+            listener()
 
     def series(self, source, destination, hours):
         self.series_calls.append((source, destination, hours))
@@ -66,8 +91,7 @@ def adapter():
 
 def test_registration_declares_itself_to_the_hub():
     hass = FakeHass()
-    provider = async_create_provider(hass, FakeCoordinator())
-    provider.async_register()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
 
     registration = hass.data[DATA_PROVIDERS]["powerline"]
     assert registration["provider_id"] == "powerline"
@@ -77,20 +101,26 @@ def test_registration_declares_itself_to_the_hub():
     assert callable(registration["data"])
 
 
-def test_unregister_leaves_no_trace():
-    hass = FakeHass()
-    provider = async_create_provider(hass, FakeCoordinator())
-    provider.async_register()
-    provider.async_unregister()
+def test_unloading_the_entry_withdraws_the_registration():
+    """Nobody wires unregister by hand -- the entry's unload does it."""
+    hass, entry = FakeHass(), FakeEntry()
+    async_create_provider(hass, entry, FakeCoordinator())
+    entry.unload()
 
     assert hass.data[DATA_PROVIDERS] == {}
+
+
+def test_every_poll_tells_the_hub_to_refetch():
+    hass, coordinator = FakeHass(), FakeCoordinator()
+    async_create_provider(hass, FakeEntry(), coordinator)
+
+    assert len(coordinator.listeners) == 1, "registration follows the coordinator"
 
 
 def test_registering_without_a_hub_costs_nothing():
     """No hub installed means nobody reads the dict -- and nothing raises."""
     hass = FakeHass()
-    provider = async_create_provider(hass, FakeCoordinator())
-    provider.async_register()
+    provider = async_create_provider(hass, FakeEntry(), FakeCoordinator())
     provider.async_notify()  # dispatcher signal into the void
 
 
@@ -107,7 +137,9 @@ def test_nodes_carry_state_icon_and_metadata(adapter):
     offline = nodes["CC:DD"]
     assert offline["state"] == "offline"
     assert offline["icon"] == "mdi:lan-disconnect"
-    assert offline["actions"] == [], "no actions on an adapter that is gone"
+    assert offline.get("actions", []) == [], (
+        "no actions on an adapter that is gone"
+    )
 
 
 def test_nodes_have_no_position(adapter):

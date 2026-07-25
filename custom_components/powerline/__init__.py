@@ -54,7 +54,7 @@ _DATA_PANEL_REGISTERED = f"{DOMAIN}_panel_registered"
 # keyed by config entry id. Cached in memory and persisted via a Store.
 _DATA_LAYOUT = f"{DOMAIN}_layout"
 _DATA_LAYOUT_STORE = f"{DOMAIN}_layout_store"
-# Floorplan-Hub provider registration + its coordinator listener, per entry.
+# Floorplan-Hub provider registration, per entry.
 _DATA_FLOORPLAN = f"{DOMAIN}_floorplan"
 
 # Guard for the floor-plan data URL so a stray upload can't bloat .storage.
@@ -332,25 +332,22 @@ def _async_update_floorplan_provider(
 
     The hub does not have to be installed: registering means writing a dict
     into hass.data and firing a dispatcher signal, both of which are free
-    when nobody is listening. Every poll then tells the hub to re-fetch, so
-    the floor plan follows the adapters live.
+    when nobody is listening. Registration then manages itself -- it follows
+    the coordinator and withdraws when the entry unloads -- so the only
+    thing left here is honouring the option when the user toggles it.
     """
     registrations: dict = hass.data.setdefault(_DATA_FLOORPLAN, {})
     existing = registrations.pop(entry.entry_id, None)
     if existing is not None:
-        provider, unsubscribe = existing
-        unsubscribe()
-        provider.async_unregister()
+        # Withdrawing also drops the coordinator listener it attached.
+        existing.async_unregister()
 
     if not enabled:
         return
 
     from .floorplan import async_create_provider
 
-    provider = async_create_provider(hass, coordinator)
-    provider.async_register()
-    unsubscribe = coordinator.async_add_listener(provider.async_notify)
-    registrations[entry.entry_id] = (provider, unsubscribe)
+    registrations[entry.entry_id] = async_create_provider(hass, entry, coordinator)
 
 
 def _display_name(hass: HomeAssistant, mac: str) -> str | None:
@@ -543,11 +540,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        registration = hass.data.get(_DATA_FLOORPLAN, {}).pop(entry.entry_id, None)
-        if registration is not None:
-            provider, unsubscribe = registration
-            unsubscribe()
-            provider.async_unregister()
+        # The provider withdrew itself via entry.async_on_unload; just drop
+        # our handle on it.
+        hass.data.get(_DATA_FLOORPLAN, {}).pop(entry.entry_id, None)
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
             # Last entry gone — take the sidebar panel down with it.
