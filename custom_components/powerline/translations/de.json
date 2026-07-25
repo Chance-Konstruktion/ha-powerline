@@ -29,7 +29,8 @@
         "data": {
           "scan_interval": "Scan-Intervall (Sekunden)",
           "sidebar_panel": "Seitenleisten-Eintrag „Powerline“ anzeigen (Topologie-Ansicht)",
-          "topology_alerts": "Intelligente Hinweise (langsame Verbindung, Adapter neu/entfernt)"
+          "topology_alerts": "Intelligente Hinweise (langsame Verbindung, Adapter neu/entfernt)",
+          "floorplan_hub": "Daten an Floorplan-Hub liefern (Netzwerk-Layer im Grundriss)"
         }
       }
     }

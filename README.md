@@ -290,6 +290,28 @@ adapter, and any offline or newly discovered adapters.
 
 ---
 
+## 🗺️ Floorplan-Hub Provider
+
+Powerline is the first provider for
+[**Floorplan-Hub**](https://github.com/Chance-Konstruktion/ha-floorplan-hub) —
+the spatial bus that puts every integration's data onto *one* floor plan
+instead of one card each. With the hub installed, the adapters appear as a
+**Network layer**: each adapter in the area you assigned it to in Home
+Assistant, links drawn between them, thickness by PHY rate, colour by
+quality tier, estimated links dashed. Click history and LED/restart actions
+come along for free.
+
+Nothing is required to make this work — no YAML, no coordinates, no card.
+The integration registers itself, the hub picks it up. If the hub is *not*
+installed, registration is a dict in `hass.data` that nobody reads, and the
+built-in topology panel keeps working exactly as before.
+
+It can be switched off under **Options → "Provide data to Floorplan-Hub"**,
+independently of the sidebar panel — so you can hand the floor plan the data
+and drop the standalone dashboard, or keep both.
+
+---
+
 ## 📦 Requirements
 
 **Raw socket access (`CAP_NET_RAW`)** + a **wired Ethernet** path to an adapter.
