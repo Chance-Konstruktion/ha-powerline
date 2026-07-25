@@ -223,3 +223,26 @@ if not hasattr(_ha_helpers, "update_coordinator"):
     _ha_helpers.update_coordinator = sys.modules[
         "homeassistant.helpers.update_coordinator"
     ]
+
+
+# -- homeassistant.helpers.dispatcher ------------------------------------------
+if "homeassistant.helpers.dispatcher" not in sys.modules:
+    dispatcher = types.ModuleType("homeassistant.helpers.dispatcher")
+    _signals: dict = {}
+
+    def async_dispatcher_connect(hass, signal, target):
+        _signals.setdefault(id(hass), {}).setdefault(signal, []).append(target)
+
+        def remove():
+            _signals[id(hass)][signal].remove(target)
+
+        return remove
+
+    def async_dispatcher_send(hass, signal, *args):
+        for target in list(_signals.get(id(hass), {}).get(signal, [])):
+            target(*args)
+
+    dispatcher.async_dispatcher_connect = async_dispatcher_connect
+    dispatcher.async_dispatcher_send = async_dispatcher_send
+    sys.modules["homeassistant.helpers.dispatcher"] = dispatcher
+    sys.modules["homeassistant.helpers"].dispatcher = dispatcher
