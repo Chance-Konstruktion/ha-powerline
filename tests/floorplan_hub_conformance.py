@@ -41,11 +41,15 @@ from typing import Any
 API_VERSION = 1
 DATA_PROVIDERS = "floorplan_hub_providers"
 
+# Which revision of the kit you copied. Kept in step with the shim, so a
+# mismatch between the two files in your repository is visible.
+SDK_VERSION = 1
+
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _QUALITY = {"good", "fair", "poor", "unknown", ""}
 _KNOWN_KEYS = {
-    "provider_id", "api_version", "name", "icon", "version", "capabilities",
-    "layers", "icon_set", "data", "history", "action",
+    "provider_id", "api_version", "sdk_version", "name", "icon", "version",
+    "capabilities", "layers", "icon_set", "data", "history", "action",
 }
 _NODE_KEYS = {
     "id", "label", "area_id", "floor_id", "position", "state", "icon",

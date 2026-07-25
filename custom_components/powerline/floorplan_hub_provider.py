@@ -42,6 +42,15 @@ SIGNAL_PROVIDER_REMOVED = "floorplan_hub_provider_removed"
 SIGNAL_DATA_UPDATED = "floorplan_hub_data_updated"
 API_VERSION = 1
 
+# Which revision of *this file* you copied. It travels with the
+# registration so the hub can tell you, in its diagnostics, that a newer
+# one exists -- without this file ever calling home, importing the hub, or
+# pinning you to a version of anything.
+#
+# Bumped only when the shim gains something worth going back for. The
+# contract above is frozen; this is not part of it.
+SDK_VERSION = 1
+
 
 @callback
 def floorplan_provider(
@@ -229,6 +238,7 @@ class FloorplanHubProvider:
         self._registration: dict[str, Any] = {
             "provider_id": provider_id,
             "api_version": API_VERSION,
+            "sdk_version": SDK_VERSION,
             "name": name,
             "icon": icon,
             "version": version,
