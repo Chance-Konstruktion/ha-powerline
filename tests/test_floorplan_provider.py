@@ -204,3 +204,38 @@ def test_unknown_actions_are_rejected(adapter):
         asyncio.run(adapter.async_action("node", "AA:BB", "self_destruct", {}))
     with pytest.raises(ValueError):
         asyncio.run(adapter.async_action("edge", "AA:BB__CC:DD", "led_on", {}))
+
+
+def test_the_provider_ships_its_own_icons():
+    """The hub decides where a node goes; we decide what it looks like."""
+    hass = FakeHass()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
+    registration = hass.data[DATA_PROVIDERS]["powerline"]
+
+    assert registration["capabilities"]["custom_icons"] is True
+    icons = registration["icon_set"]
+    assert icons, "an integration with no icons of its own is anonymous"
+    for name, icon in icons.items():
+        assert name.startswith("mdi:"), (
+            "keyed by the icon a node asks for, so a renderer that ignores "
+            "icon sets still draws something sensible"
+        )
+        assert icon["svg"].startswith("<svg")
+
+
+def test_every_icon_a_node_asks_for_is_one_we_ship():
+    hass = FakeHass()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
+    registration = hass.data[DATA_PROVIDERS]["powerline"]
+    wanted = {node["icon"] for node in registration["data"]()["nodes"]}
+
+    assert wanted <= set(registration["icon_set"])
+
+
+def test_the_popup_can_get_back_to_our_own_panel():
+    hass = FakeHass()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
+    registration = hass.data[DATA_PROVIDERS]["powerline"]
+
+    assert registration["panel_url"] == "/powerline"
+    assert registration["panel_url"].startswith("/"), "inside this instance"

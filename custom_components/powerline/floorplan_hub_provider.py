@@ -55,7 +55,7 @@ API_VERSION = 1
 #
 # Bumped only when the shim gains something worth going back for. The
 # contract above is frozen; this is not part of it.
-SDK_VERSION = 3
+SDK_VERSION = 4
 
 
 @callback
@@ -71,6 +71,7 @@ def floorplan_provider(
     capabilities: dict[str, bool] | None = None,
     layers: list[dict[str, Any]] | None = None,
     icon_set: dict[str, Any] | None = None,
+    panel_url: str = "",
     history: Callable[..., Any] | None = None,
     action: Callable[..., Any] | None = None,
     coordinator: Any = None,
@@ -95,6 +96,12 @@ def floorplan_provider(
 
     ``provider_id`` defaults to your integration's domain, which is exactly
     what you want unless you register more than one provider.
+
+    ``icon_set`` and ``panel_url`` are how your integration keeps its own
+    face: the icons your nodes are drawn with, and the panel the hub links
+    to from their popups. Both are optional and neither is interpreted --
+    the hub decides *where* things are drawn, you decide what they look
+    like, and Home Assistant stays the source of the data.
     """
     provider = FloorplanHubProvider(
         hass,
@@ -106,6 +113,7 @@ def floorplan_provider(
         capabilities=capabilities,
         layers=layers,
         icon_set=icon_set,
+        panel_url=panel_url,
         history=history,
         action=action,
     )
@@ -271,6 +279,7 @@ class FloorplanHubProvider:
         capabilities: dict[str, bool] | None = None,
         layers: list[dict[str, Any]] | None = None,
         icon_set: dict[str, Any] | None = None,
+        panel_url: str = "",
         history: Callable[..., Any] | None = None,
         action: Callable[..., Any] | None = None,
     ) -> None:
@@ -295,6 +304,10 @@ class FloorplanHubProvider:
             },
             "layers": layers or [],
             "icon_set": icon_set or {},
+            # Your own view, if you have one. The hub links to it from the
+            # popup of any node you produced, so a user who wants your
+            # full picture is one click away and comes back afterwards.
+            "panel_url": panel_url,
             "data": data,
         }
         if history is not None:

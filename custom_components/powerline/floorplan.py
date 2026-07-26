@@ -18,7 +18,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, PROVIDER_ID, PROVIDER_LAYER_ID
+from .const import DOMAIN, PANEL_URL_PATH, PROVIDER_ID, PROVIDER_LAYER_ID
 from .coordinator import TpLinkPowerlineCoordinator
 from .floorplan_hub_provider import (
     FloorplanHubProvider,
@@ -40,6 +40,44 @@ _QUALITY = {
 
 # Actions the hub may invoke on an adapter node. The hub forwards the id
 # without interpreting it -- what "led_on" means is our business.
+# Our own icons, so an adapter on somebody else's floor plan still looks
+# like one of ours. The hub decides where a node is drawn and never touches
+# what it looks like -- that half is ours, and this is us using it.
+#
+# Keyed by the icon name a node asks for, so the same node definition
+# degrades to the plain MDI icon on a renderer that ignores icon sets.
+_ICON_SET = {
+    "mdi:router-network": {
+        # The CCo: the adapter the others answer to.
+        "svg": (
+            '<svg viewBox="0 0 24 24">'
+            '<path d="M12 2 4 6v5h2V7.2l6-3 6 3V11h2V6l-8-4z"/>'
+            '<path d="M3 13h18a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-7'
+            'a1 1 0 0 1 1-1zm2 3v3h2v-3H5zm4 0v3h2v-3H9zm8 0v3h2v-3h-2z"/>'
+            "</svg>"
+        ),
+    },
+    "mdi:lan-connect": {
+        "svg": (
+            '<svg viewBox="0 0 24 24">'
+            '<path d="M9 3h6v4h3l-6 6-6-6h3V3z"/>'
+            '<path d="M3 15h18a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5'
+            'a1 1 0 0 1 1-1zm2 2v3h2v-3H5zm4 0v3h2v-3H9z"/>'
+            "</svg>"
+        ),
+    },
+    "mdi:lan-disconnect": {
+        "svg": (
+            '<svg viewBox="0 0 24 24">'
+            '<path d="M9 3h6v4h3l-6 6-6-6h3V3z" opacity=".45"/>'
+            '<path d="M3 15h18a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5'
+            'a1 1 0 0 1 1-1z" opacity=".45"/>'
+            '<path d="M4 4l16 16-1.4 1.4L2.6 5.4 4 4z"/>'
+            "</svg>"
+        ),
+    },
+}
+
 _NODE_ACTIONS = [
     action("led_on", "LED on", "mdi:led-on"),
     action("led_off", "LED off", "mdi:led-off"),
@@ -74,8 +112,12 @@ def async_create_provider(
             "animation": True,
             "popup": True,
             "actions": True,
-            "custom_icons": False,
+            "custom_icons": True,
         },
+        icon_set=_ICON_SET,
+        # Our own view, one click from any of our nodes on the plan. The
+        # hub links to it and asks nothing about what is on the other side.
+        panel_url=f"/{PANEL_URL_PATH}",
         layers=[
             {
                 "id": PROVIDER_LAYER_ID,
