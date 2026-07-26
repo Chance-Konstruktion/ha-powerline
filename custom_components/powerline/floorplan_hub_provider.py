@@ -30,10 +30,16 @@ area, icon and state, so the hub fills those in. Use :func:`node` and
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Iterable
 
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 # ── Frozen contract strings (must match the hub verbatim) ─────────────
 DATA_PROVIDERS = "floorplan_hub_providers"
@@ -49,7 +55,7 @@ API_VERSION = 1
 #
 # Bumped only when the shim gains something worth going back for. The
 # contract above is frozen; this is not part of it.
-SDK_VERSION = 1
+SDK_VERSION = 3
 
 
 @callback
@@ -68,6 +74,7 @@ def floorplan_provider(
     history: Callable[..., Any] | None = None,
     action: Callable[..., Any] | None = None,
     coordinator: Any = None,
+    signals: Iterable[str] | str | None = None,
 ) -> FloorplanHubProvider:
     """Register with the hub and wire up the whole lifecycle. One call.
 
@@ -77,6 +84,14 @@ def floorplan_provider(
     ``coordinator`` is optional. Pass your DataUpdateCoordinator and the hub
     is told to re-fetch after every refresh -- which is what makes the floor
     plan live without you writing a single push.
+
+    ``signals`` is for integrations that have no DataUpdateCoordinator --
+    a UDP listener, an MQTT subscription, anything push-shaped. Name the
+    dispatcher signals you already fire when your data changes and the hub
+    is told on each of them. They are disconnected on unload with
+    everything else::
+
+        signals=[SIGNAL_NODE_DISCOVERED, SIGNAL_NODE_AVAILABILITY]
 
     ``provider_id`` defaults to your integration's domain, which is exactly
     what you want unless you register more than one provider.
@@ -98,12 +113,38 @@ def floorplan_provider(
 
     if entry is not None and hasattr(entry, "async_on_unload"):
         entry.async_on_unload(provider.async_unregister)
-    if coordinator is not None and hasattr(coordinator, "async_add_listener"):
-        # Dropped by async_unregister too, so switching the provider off
-        # mid-run stops the chatter as well -- not just unloading.
-        provider.async_on_unregister(
-            coordinator.async_add_listener(provider.async_notify)
-        )
+    if coordinator is not None:
+        if hasattr(coordinator, "async_add_listener"):
+            # Dropped by async_unregister too, so switching the provider off
+            # mid-run stops the chatter as well -- not just unloading.
+            provider.async_on_unregister(
+                coordinator.async_add_listener(provider.async_notify)
+            )
+        elif not signals:
+            # Silence here would be the cruellest outcome: the plan draws
+            # once and then never moves, with nothing anywhere saying why.
+            _LOGGER.warning(
+                "Floorplan-Hub: the coordinator passed by %s has no "
+                "async_add_listener, so the hub will never hear about "
+                "changes. Pass signals=[...] with the dispatcher signals "
+                "you already fire, or call provider.async_notify() yourself",
+                provider.provider_id,
+            )
+
+    if signals:
+        if isinstance(signals, str):
+            signals = [signals]
+        for signal in signals:
+            provider.async_on_unregister(
+                # Swallow the payload. Dispatcher signals carry whatever
+                # their sender felt like sending -- a unit number, a node
+                # object, nothing at all -- and the hub does not want to
+                # know: it re-fetches. Connecting async_notify directly
+                # raises TypeError on any signal that carries something.
+                async_dispatcher_connect(
+                    hass, signal, lambda *_args: provider.async_notify()
+                )
+            )
 
     return provider
 
