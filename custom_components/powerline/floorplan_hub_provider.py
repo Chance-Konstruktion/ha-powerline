@@ -31,6 +31,7 @@ area, icon and state, so the hub fills those in. Use :func:`node` and
 from __future__ import annotations
 
 import logging
+from enum import StrEnum
 from typing import Any, Callable, Iterable
 
 from homeassistant.core import HomeAssistant, callback
@@ -56,6 +57,36 @@ API_VERSION = 1
 # Bumped only when the shim gains something worth going back for. The
 # contract above is frozen; this is not part of it.
 SDK_VERSION = 4
+
+# ── Spatial vocabulary (Specification 1.0) ───────────────────────────
+#
+# Copied, like everything else in this file. Compare against these rather
+# than against a literal: "outside" is the mistake this exists to prevent.
+class AreaKind(StrEnum):
+    """What an area is. Specification 1.0 § Area Type."""
+
+    INDOOR = "indoor"
+    OUTDOOR = "outdoor"
+    VIRTUAL = "virtual"
+
+
+class NodeState(StrEnum):
+    """The states every renderer is expected to style. § Node."""
+
+    ONLINE = "online"
+    OFFLINE = "offline"
+    ON = "on"
+    OFF = "off"
+    UNKNOWN = "unknown"
+
+
+class EdgeQuality(StrEnum):
+    """How good a connection is. § Edge."""
+
+    GOOD = "good"
+    FAIR = "fair"
+    POOR = "poor"
+    UNKNOWN = "unknown"
 
 
 @callback
