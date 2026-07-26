@@ -43,7 +43,7 @@ DATA_PROVIDERS = "floorplan_hub_providers"
 
 # Which revision of the kit you copied. Kept in step with the shim, so a
 # mismatch between the two files in your repository is visible.
-SDK_VERSION = 1
+SDK_VERSION = 3
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _QUALITY = {"good", "fair", "poor", "unknown", ""}
