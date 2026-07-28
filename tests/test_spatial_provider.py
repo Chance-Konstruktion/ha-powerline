@@ -143,7 +143,7 @@ def test_a_home_assistant_rename_beats_the_wire_name():
     """Otherwise the plan shows a MAC the moment the adapter says nothing."""
     coordinator = FakeCoordinator()
     coordinator.renamed["AA:BB"] = "Wohnzimmer"
-    adapter = PowerlineFloorplanAdapter(FakeHass(), coordinator)
+    adapter = PowerlineSpatialAdapter(FakeHass(), coordinator)
 
     nodes = {node["id"]: node for node in adapter.async_data()["nodes"]}
     assert nodes["AA:BB"]["label"] == "Wohnzimmer"
@@ -156,7 +156,7 @@ def test_no_name_anywhere_falls_back_to_the_mac():
             "edges": [],
         }
     )
-    adapter = PowerlineFloorplanAdapter(FakeHass(), coordinator)
+    adapter = PowerlineSpatialAdapter(FakeHass(), coordinator)
 
     nodes = {node["id"]: node for node in adapter.async_data()["nodes"]}
     assert nodes["11:22"]["label"] == "11:22"
