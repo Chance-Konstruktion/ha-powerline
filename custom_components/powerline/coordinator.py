@@ -260,7 +260,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Error polling Powerline adapters: %s", err)
             raise UpdateFailed(f"HomePlug AV error: {err}") from err
 
-    def _adapter_name(self, mac: str) -> str:
+    def adapter_name(self, mac: str) -> str:
         """Device-registry name for a MAC (user rename wins), else the MAC."""
         try:
             from homeassistant.helpers import device_registry as dr
@@ -272,6 +272,9 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception:  # noqa: BLE001 - name lookup must never break polling
             pass
         return mac
+
+    # Kept for the handful of internal callers that predate the public name.
+    _adapter_name = adapter_name
 
     def _notify_alert(self, alert: dict[str, Any]) -> None:
         """Surface a topology alert as a persistent notification."""

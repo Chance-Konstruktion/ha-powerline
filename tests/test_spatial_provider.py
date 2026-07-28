@@ -47,6 +47,10 @@ class FakeCoordinator:
         self.led_calls = []
         self.restart_calls = []
         self.series_calls = []
+        self.renamed = {}
+
+    def adapter_name(self, mac):
+        return self.renamed.get(mac, mac)
 
     def async_add_listener(self, listener):
         self.listeners.append(listener)
@@ -134,6 +138,32 @@ def test_nodes_carry_state_icon_and_metadata(adapter):
     assert cco["metadata"]["firmware"] == "1.2.3"
     assert cco["layer_id"] == "network_powerline"
 
+
+def test_a_home_assistant_rename_beats_the_wire_name():
+    """Otherwise the plan shows a MAC the moment the adapter says nothing."""
+    coordinator = FakeCoordinator()
+    coordinator.renamed["AA:BB"] = "Wohnzimmer"
+    adapter = PowerlineFloorplanAdapter(FakeHass(), coordinator)
+
+    nodes = {node["id"]: node for node in adapter.async_data()["nodes"]}
+    assert nodes["AA:BB"]["label"] == "Wohnzimmer"
+
+
+def test_no_name_anywhere_falls_back_to_the_mac():
+    coordinator = FakeCoordinator(
+        topology={
+            "nodes": [{"mac": "11:22", "online": True, "role": "Station"}],
+            "edges": [],
+        }
+    )
+    adapter = PowerlineFloorplanAdapter(FakeHass(), coordinator)
+
+    nodes = {node["id"]: node for node in adapter.async_data()["nodes"]}
+    assert nodes["11:22"]["label"] == "11:22"
+
+
+def test_offline_adapters_report_offline(adapter):
+    nodes = {node["id"]: node for node in adapter.async_data()["nodes"]}
     offline = nodes["CC:DD"]
     assert offline["state"] == "offline"
     assert offline["icon"] == "mdi:lan-disconnect"

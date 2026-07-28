@@ -167,9 +167,17 @@ class PowerlineSpatialAdapter:
         mac = adapter["mac"]
         online = bool(adapter.get("online"))
         is_cco = adapter.get("role") == "CCo"
+        registry_name = self.coordinator.adapter_name(mac)
         return node(
             mac,
-            label=adapter.get("name") or mac,
+            # The user's own rename wins over whatever the adapter calls
+            # itself over the wire -- usually nothing, which is how a floor
+            # plan full of MAC addresses happens. Only a real rename counts:
+            # the lookup returns the MAC itself when there is none.
+            label=(
+                registry_name if registry_name != mac
+                else adapter.get("name") or mac
+            ),
             # No position: the hub centres the adapter in its area and the
             # user drags it from there. We genuinely don't know where it is.
             area_id=self._area_id(mac),
