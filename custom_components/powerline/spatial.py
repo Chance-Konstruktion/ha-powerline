@@ -1,11 +1,11 @@
-"""Powerline as a Floorplan-Hub provider.
+"""Powerline as a Spatial Hub provider.
 
 Translates the topology graph this integration already maintains into the
 hub's vocabulary: adapters become nodes, PHY links become edges, and the
 adapters' Home Assistant areas decide where they sit. The hub does the
 placing, the drawing and the arranging -- everything below is data.
 
-Nothing here imports the hub. If Floorplan-Hub is not installed, the
+Nothing here imports the hub. If Spatial Hub is not installed, the
 registration dict simply sits in ``hass.data`` unread, and the built-in
 topology panel keeps working exactly as before.
 """
@@ -20,11 +20,11 @@ from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, PANEL_URL_PATH, PROVIDER_ID, PROVIDER_LAYER_ID
 from .coordinator import TpLinkPowerlineCoordinator
-from .floorplan_hub_provider import (
-    FloorplanHubProvider,
+from .spatial_hub_provider import (
+    SpatialHubProvider,
     action,
     edge,
-    floorplan_provider,
+    spatial_provider,
     node,
 )
 
@@ -89,15 +89,15 @@ def async_create_provider(
     hass: HomeAssistant,
     entry: Any,
     coordinator: TpLinkPowerlineCoordinator,
-) -> FloorplanHubProvider:
+) -> SpatialHubProvider:
     """Register with the hub and let it manage the whole lifecycle.
 
     Registration is withdrawn when the config entry unloads, and every
     coordinator refresh tells the hub to re-fetch -- so the floor plan
     follows the adapters live without a single push from here.
     """
-    adapter = PowerlineFloorplanAdapter(hass, coordinator)
-    return floorplan_provider(
+    adapter = PowerlineSpatialAdapter(hass, coordinator)
+    return spatial_provider(
         hass,
         entry,
         provider_id=PROVIDER_ID,
@@ -143,7 +143,7 @@ def _integration_version(hass: HomeAssistant) -> str:
         return ""
 
 
-class PowerlineFloorplanAdapter:
+class PowerlineSpatialAdapter:
     """Turns the topology payload into hub nodes and edges."""
 
     def __init__(
@@ -259,5 +259,5 @@ class PowerlineFloorplanAdapter:
         else:
             raise ValueError(f"unknown Powerline action: {action_id}")
 
-        _LOGGER.debug("Floorplan action %s on %s -> %s", action_id, item_id, success)
+        _LOGGER.debug("Spatial action %s on %s -> %s", action_id, item_id, success)
         return {"success": bool(success)}

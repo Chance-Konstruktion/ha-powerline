@@ -22,11 +22,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
-    CONF_FLOORPLAN_HUB,
+    CONF_SPATIAL_HUB,
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
     CONF_TOPOLOGY_ALERTS,
-    DEFAULT_FLOORPLAN_HUB,
+    DEFAULT_SPATIAL_HUB,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SIDEBAR_PANEL,
     DEFAULT_TOPOLOGY_ALERTS,
@@ -54,8 +54,8 @@ _DATA_PANEL_REGISTERED = f"{DOMAIN}_panel_registered"
 # keyed by config entry id. Cached in memory and persisted via a Store.
 _DATA_LAYOUT = f"{DOMAIN}_layout"
 _DATA_LAYOUT_STORE = f"{DOMAIN}_layout_store"
-# Floorplan-Hub provider registration, per entry.
-_DATA_FLOORPLAN = f"{DOMAIN}_floorplan"
+# Spatial Hub provider registration, per entry.
+_DATA_SPATIAL = f"{DOMAIN}_spatial"
 
 # Guard for the floor-plan data URL so a stray upload can't bloat .storage.
 MAX_BACKGROUND_BYTES = 4 * 1024 * 1024
@@ -111,11 +111,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, entry.options.get(CONF_SIDEBAR_PANEL, DEFAULT_SIDEBAR_PANEL)
     )
 
-    _async_update_floorplan_provider(
+    _async_update_spatial_provider(
         hass,
         entry,
         coordinator,
-        entry.options.get(CONF_FLOORPLAN_HUB, DEFAULT_FLOORPLAN_HUB),
+        entry.options.get(CONF_SPATIAL_HUB, DEFAULT_SPATIAL_HUB),
     )
 
     # Clean up stale/duplicate device entries from the registry
@@ -322,13 +322,13 @@ def _websocket_set_layout(hass: HomeAssistant, connection, msg: dict) -> None:
 
 
 @callback
-def _async_update_floorplan_provider(
+def _async_update_spatial_provider(
     hass: HomeAssistant,
     entry: ConfigEntry,
     coordinator: TpLinkPowerlineCoordinator,
     enabled: bool,
 ) -> None:
-    """Register or withdraw this entry as a Floorplan-Hub provider.
+    """Register or withdraw this entry as a Spatial Hub provider.
 
     The hub does not have to be installed: registering means writing a dict
     into hass.data and firing a dispatcher signal, both of which are free
@@ -336,7 +336,7 @@ def _async_update_floorplan_provider(
     the coordinator and withdraws when the entry unloads -- so the only
     thing left here is honouring the option when the user toggles it.
     """
-    registrations: dict = hass.data.setdefault(_DATA_FLOORPLAN, {})
+    registrations: dict = hass.data.setdefault(_DATA_SPATIAL, {})
     existing = registrations.pop(entry.entry_id, None)
     if existing is not None:
         # Withdrawing also drops the coordinator listener it attached.
@@ -345,7 +345,7 @@ def _async_update_floorplan_provider(
     if not enabled:
         return
 
-    from .floorplan import async_create_provider
+    from .spatial import async_create_provider
 
     registrations[entry.entry_id] = async_create_provider(hass, entry, coordinator)
 
@@ -528,11 +528,11 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
     coordinator.alerts_enabled = bool(
         entry.options.get(CONF_TOPOLOGY_ALERTS, DEFAULT_TOPOLOGY_ALERTS)
     )
-    _async_update_floorplan_provider(
+    _async_update_spatial_provider(
         hass,
         entry,
         coordinator,
-        entry.options.get(CONF_FLOORPLAN_HUB, DEFAULT_FLOORPLAN_HUB),
+        entry.options.get(CONF_SPATIAL_HUB, DEFAULT_SPATIAL_HUB),
     )
 
 
@@ -542,7 +542,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         # The provider withdrew itself via entry.async_on_unload; just drop
         # our handle on it.
-        hass.data.get(_DATA_FLOORPLAN, {}).pop(entry.entry_id, None)
+        hass.data.get(_DATA_SPATIAL, {}).pop(entry.entry_id, None)
         hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
             # Last entry gone — take the sidebar panel down with it.

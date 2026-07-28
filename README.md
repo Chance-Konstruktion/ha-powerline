@@ -290,10 +290,10 @@ adapter, and any offline or newly discovered adapters.
 
 ---
 
-## 🗺️ Floorplan-Hub Provider
+## 🗺️ Spatial Hub Provider
 
 Powerline is the first provider for
-[**Floorplan-Hub**](https://github.com/Chance-Konstruktion/ha-floorplan-hub) —
+[**Spatial Hub**](https://github.com/Chance-Konstruktion/ha-spatial-hub) —
 the spatial bus that puts every integration's data onto *one* floor plan
 instead of one card each. With the hub installed, the adapters appear as a
 **Network layer**: each adapter in the area you assigned it to in Home
@@ -306,7 +306,7 @@ The integration registers itself, the hub picks it up. If the hub is *not*
 installed, registration is a dict in `hass.data` that nobody reads, and the
 built-in topology panel keeps working exactly as before.
 
-It can be switched off under **Options → "Provide data to Floorplan-Hub"**,
+It can be switched off under **Options → "Provide data to Spatial Hub"**,
 independently of the sidebar panel — so you can hand the floor plan the data
 and drop the standalone dashboard, or keep both.
 
