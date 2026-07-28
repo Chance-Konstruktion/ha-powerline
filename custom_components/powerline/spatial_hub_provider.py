@@ -1,16 +1,16 @@
-"""Floorplan-Hub provider shim -- copy this file into your integration.
+"""Spatial Hub provider shim -- copy this file into your integration.
 
 Copy, do not import. The hub may not be installed, may be a different
 version, or may be removed while your integration keeps running. This file
-therefore has zero imports from ``floorplan_hub``: it writes a dict into
+therefore has zero imports from ``spatial_hub``: it writes a dict into
 ``hass.data`` and fires dispatcher signals, both of which cost nothing when
 nobody is listening.
 
 The whole integration usually looks like this, inside ``async_setup_entry``::
 
-    from .floorplan_hub_provider import floorplan_provider
+    from .spatial_hub_provider import spatial_provider
 
-    floorplan_provider(
+    spatial_provider(
         hass,
         entry,
         name="My Integration",
@@ -19,7 +19,7 @@ The whole integration usually looks like this, inside ``async_setup_entry``::
         coordinator=coordinator,
     )
 
-That is the complete integration. ``floorplan_provider`` registers,
+That is the complete integration. ``spatial_provider`` registers,
 withdraws on unload, and re-notifies the hub on every coordinator update --
 you never call register/unregister/notify yourself.
 
@@ -43,10 +43,10 @@ from homeassistant.helpers.dispatcher import (
 _LOGGER = logging.getLogger(__name__)
 
 # ── Frozen contract strings (must match the hub verbatim) ─────────────
-DATA_PROVIDERS = "floorplan_hub_providers"
-SIGNAL_PROVIDER_REGISTERED = "floorplan_hub_provider_registered"
-SIGNAL_PROVIDER_REMOVED = "floorplan_hub_provider_removed"
-SIGNAL_DATA_UPDATED = "floorplan_hub_data_updated"
+DATA_PROVIDERS = "spatial_hub_providers"
+SIGNAL_PROVIDER_REGISTERED = "spatial_hub_provider_registered"
+SIGNAL_PROVIDER_REMOVED = "spatial_hub_provider_removed"
+SIGNAL_DATA_UPDATED = "spatial_hub_data_updated"
 API_VERSION = 1
 
 # Which revision of *this file* you copied. It travels with the
@@ -90,7 +90,7 @@ class EdgeQuality(StrEnum):
 
 
 @callback
-def floorplan_provider(
+def spatial_provider(
     hass: HomeAssistant,
     entry: Any,
     name: str,
@@ -107,7 +107,7 @@ def floorplan_provider(
     action: Callable[..., Any] | None = None,
     coordinator: Any = None,
     signals: Iterable[str] | str | None = None,
-) -> FloorplanHubProvider:
+) -> SpatialHubProvider:
     """Register with the hub and wire up the whole lifecycle. One call.
 
     ``entry`` is your ConfigEntry: unregistration is hooked onto its unload,
@@ -134,7 +134,7 @@ def floorplan_provider(
     the hub decides *where* things are drawn, you decide what they look
     like, and Home Assistant stays the source of the data.
     """
-    provider = FloorplanHubProvider(
+    provider = SpatialHubProvider(
         hass,
         provider_id=provider_id or _domain_of(entry, name),
         name=name,
@@ -163,7 +163,7 @@ def floorplan_provider(
             # Silence here would be the cruellest outcome: the plan draws
             # once and then never moves, with nothing anywhere saying why.
             _LOGGER.warning(
-                "Floorplan-Hub: the coordinator passed by %s has no "
+                "Spatial Hub: the coordinator passed by %s has no "
                 "async_add_listener, so the hub will never hear about "
                 "changes. Pass signals=[...] with the dispatcher signals "
                 "you already fire, or call provider.async_notify() yourself",
@@ -292,11 +292,11 @@ def action(
 # ── The registration itself ───────────────────────────────────────────
 
 
-class FloorplanHubProvider:
+class SpatialHubProvider:
     """Announces one integration's spatial data to the hub, if present.
 
     Most integrations never touch this class directly -- use
-    :func:`floorplan_provider`, which builds it and wires the lifecycle.
+    :func:`spatial_provider`, which builds it and wires the lifecycle.
     """
 
     def __init__(

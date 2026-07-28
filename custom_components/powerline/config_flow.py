@@ -17,11 +17,11 @@ except ImportError:
     from homeassistant.data_entry_flow import FlowResult as ConfigFlowResult
 
 from .const import (
-    CONF_FLOORPLAN_HUB,
+    CONF_SPATIAL_HUB,
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
     CONF_TOPOLOGY_ALERTS,
-    DEFAULT_FLOORPLAN_HUB,
+    DEFAULT_SPATIAL_HUB,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SIDEBAR_PANEL,
     DEFAULT_TOPOLOGY_ALERTS,
@@ -153,8 +153,8 @@ class TpLinkPowerlineOptionsFlow(OptionsFlow):
             )
         )
 
-        current_floorplan = bool(
-            self.config_entry.options.get(CONF_FLOORPLAN_HUB, DEFAULT_FLOORPLAN_HUB)
+        current_spatial = bool(
+            self.config_entry.options.get(CONF_SPATIAL_HUB, DEFAULT_SPATIAL_HUB)
         )
 
         return self.async_show_form(
@@ -168,7 +168,7 @@ class TpLinkPowerlineOptionsFlow(OptionsFlow):
                     vol.Required(CONF_SIDEBAR_PANEL, default=current_panel): bool,
                     vol.Required(CONF_TOPOLOGY_ALERTS, default=current_alerts): bool,
                     vol.Required(
-                        CONF_FLOORPLAN_HUB, default=current_floorplan
+                        CONF_SPATIAL_HUB, default=current_spatial
                     ): bool,
                 }
             ),

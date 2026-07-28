@@ -1,4 +1,4 @@
-"""Powerline as a Floorplan-Hub provider.
+"""Powerline as a Spatial Hub provider.
 
 These tests never import the hub -- that is the point of the contract.
 They assert on the registration dict and the payload it produces, which is
@@ -9,11 +9,11 @@ import asyncio
 
 import pytest
 
-from custom_components.powerline.floorplan import (
-    PowerlineFloorplanAdapter,
+from custom_components.powerline.spatial import (
+    PowerlineSpatialAdapter,
     async_create_provider,
 )
-from custom_components.powerline.floorplan_hub_provider import DATA_PROVIDERS
+from custom_components.powerline.spatial_hub_provider import DATA_PROVIDERS
 
 
 class FakeHass:
@@ -86,7 +86,7 @@ def _topology():
 
 @pytest.fixture
 def adapter():
-    return PowerlineFloorplanAdapter(FakeHass(), FakeCoordinator())
+    return PowerlineSpatialAdapter(FakeHass(), FakeCoordinator())
 
 
 def test_registration_declares_itself_to_the_hub():
@@ -162,7 +162,7 @@ def test_edges_map_quality_to_the_shared_vocabulary(adapter):
 def test_estimated_edges_are_dashed():
     topology = _topology()
     topology["edges"][0]["estimated"] = True
-    adapter = PowerlineFloorplanAdapter(FakeHass(), FakeCoordinator(topology))
+    adapter = PowerlineSpatialAdapter(FakeHass(), FakeCoordinator(topology))
 
     assert adapter.async_data()["edges"][0]["dashed"] is True
 
@@ -183,7 +183,7 @@ def test_history_is_only_offered_for_edges(adapter):
 def test_empty_coordinator_data_yields_an_empty_payload():
     coordinator = FakeCoordinator()
     coordinator.data = None
-    adapter = PowerlineFloorplanAdapter(FakeHass(), coordinator)
+    adapter = PowerlineSpatialAdapter(FakeHass(), coordinator)
 
     assert adapter.async_data() == {"nodes": [], "edges": []}
 

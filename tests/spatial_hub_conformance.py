@@ -1,4 +1,4 @@
-"""Floorplan-Hub conformance kit -- copy this file into your test suite.
+"""Spatial Hub conformance kit -- copy this file into your test suite.
 
 Answers one question: *does my provider actually satisfy the contract?*
 Not "does it import", but the things that really break floor plans in the
@@ -12,20 +12,20 @@ integration publishes, which is the same thing the hub sees.
 
 Usage -- one class in your test suite::
 
-    from .floorplan_hub_conformance import FloorplanHubConformance
+    from .spatial_hub_conformance import SpatialHubConformance
 
-    class TestFloorplanHub(FloorplanHubConformance):
+    class TestSpatialHub(SpatialHubConformance):
         def build_registration(self):
             hass = FakeHass()                      # yours, or ours below
             async_create_provider(hass, FakeEntry(), FakeCoordinator())
-            return hass.data["floorplan_hub_providers"]["my_integration"]
+            return hass.data["spatial_hub_providers"]["my_integration"]
 
 That is it. You get a dozen named tests, each of which tells you what is
 wrong and why it matters.
 
 Outside pytest -- in a script, a CI step, a scratch file::
 
-    from floorplan_hub_conformance import check
+    from spatial_hub_conformance import check
 
     for problem in check(registration):
         print(problem)
@@ -39,7 +39,7 @@ import re
 from typing import Any
 
 API_VERSION = 1
-DATA_PROVIDERS = "floorplan_hub_providers"
+DATA_PROVIDERS = "spatial_hub_providers"
 
 # Which revision of the kit you copied. Kept in step with the shim, so a
 # mismatch between the two files in your repository is visible.
@@ -96,11 +96,11 @@ def check(registration: dict[str, Any]) -> list[str]:
     """Every problem found, as plain sentences. Empty list means conformant.
 
     Use this outside pytest. Inside pytest, subclass
-    :class:`FloorplanHubConformance` instead -- the failures are easier to
+    :class:`SpatialHubConformance` instead -- the failures are easier to
     read when each rule is its own test.
     """
     problems: list[str] = []
-    suite = FloorplanHubConformance()
+    suite = SpatialHubConformance()
     suite._registration = registration
     for name in sorted(dir(suite)):
         if not name.startswith("test_"):
@@ -112,7 +112,7 @@ def check(registration: dict[str, Any]) -> list[str]:
     return problems
 
 
-class FloorplanHubConformance:
+class SpatialHubConformance:
     """Subclass this in your test suite and implement build_registration()."""
 
     _registration: dict[str, Any] | None = None
@@ -123,11 +123,11 @@ class FloorplanHubConformance:
         """Return the registration dict your integration publishes.
 
         Usually: set your integration up against a fake hass, then read
-        ``hass.data["floorplan_hub_providers"]["<your id>"]``.
+        ``hass.data["spatial_hub_providers"]["<your id>"]``.
         """
         raise NotImplementedError(
             "implement build_registration() -- return the dict your "
-            "integration writes into hass.data['floorplan_hub_providers']"
+            "integration writes into hass.data['spatial_hub_providers']"
         )
 
     @property

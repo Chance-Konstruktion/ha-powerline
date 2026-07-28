@@ -30,7 +30,7 @@
           "scan_interval": "Scan interval (seconds)",
           "sidebar_panel": "Show 'Powerline' sidebar panel (topology view)",
           "topology_alerts": "Smart alerts (slow link, adapter added/removed)",
-          "floorplan_hub": "Provide data to Floorplan-Hub (network layer on the floor plan)"
+          "spatial_hub": "Provide data to Spatial Hub (network layer on the floor plan)"
         }
       }
     }
