@@ -269,3 +269,83 @@ def test_the_popup_can_get_back_to_our_own_panel():
 
     assert registration["panel_url"] == "/powerline"
     assert registration["panel_url"].startswith("/"), "inside this instance"
+
+
+# ── The way back into Home Assistant ──────────────────────
+
+
+class FakeEntity:
+    def __init__(self, entity_id, entity_category=None):
+        self.entity_id = entity_id
+        self.entity_category = entity_category
+
+
+class FakeDevice:
+    def __init__(self, device_id="dev1", area_id="kitchen"):
+        self.id = device_id
+        self.area_id = area_id
+
+
+def _with_registries(monkeypatch, device, entities):
+    """Point the adapter's two registry lookups at fixed answers."""
+    from custom_components.powerline import spatial as module
+
+    monkeypatch.setattr(
+        module.dr, "async_get",
+        lambda hass: type("R", (), {"async_get_device": lambda self, **kw: device})(),
+        raising=False,
+    )
+    monkeypatch.setattr(module.er, "async_get", lambda hass: object(), raising=False)
+    monkeypatch.setattr(
+        module.er, "async_entries_for_device",
+        lambda reg, device_id, **kw: entities,
+        raising=False,
+    )
+
+
+def test_a_node_carries_the_doors_into_home_assistant(monkeypatch):
+    """Without these the hub's popup is an empty card."""
+    _with_registries(
+        monkeypatch, FakeDevice(), [FakeEntity("sensor.powerline_link_rate")]
+    )
+    adapter = PowerlineSpatialAdapter(FakeHass(), FakeCoordinator())
+    first = adapter.async_data()["nodes"][0]
+
+    assert first["entity_id"] == "sensor.powerline_link_rate"
+    assert first["area_id"] == "kitchen"
+
+
+def test_a_diagnostic_entity_is_the_last_resort(monkeypatch):
+    """"Firmware" is a poor answer to "show me this adapter"."""
+    _with_registries(
+        monkeypatch,
+        FakeDevice(),
+        [
+            FakeEntity("sensor.powerline_firmware", entity_category="diagnostic"),
+            FakeEntity("sensor.powerline_link_rate"),
+        ],
+    )
+    adapter = PowerlineSpatialAdapter(FakeHass(), FakeCoordinator())
+
+    assert adapter.async_data()["nodes"][0]["entity_id"] == (
+        "sensor.powerline_link_rate"
+    )
+
+
+def test_an_adapter_with_no_device_still_draws(monkeypatch):
+    _with_registries(monkeypatch, None, [])
+    adapter = PowerlineSpatialAdapter(FakeHass(), FakeCoordinator())
+    first = adapter.async_data()["nodes"][0]
+
+    assert "entity_id" not in first
+    assert first["label"], "a node with no registry entry is still a node"
+
+
+def test_a_device_with_no_entities_costs_nothing(monkeypatch):
+    """No entity is no link -- but the node, and its area, still stand."""
+    _with_registries(monkeypatch, FakeDevice(), [])
+    adapter = PowerlineSpatialAdapter(FakeHass(), FakeCoordinator())
+    first = adapter.async_data()["nodes"][0]
+
+    assert "entity_id" not in first
+    assert first["area_id"] == "kitchen"

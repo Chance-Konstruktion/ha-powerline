@@ -208,6 +208,7 @@ if "homeassistant.helpers.entity_registry" not in sys.modules:
     er.EntityEntry = EntityEntry
     er.async_get = lambda hass: None
     er.async_entries_for_config_entry = lambda reg, entry_id: []
+    er.async_entries_for_device = lambda reg, device_id, **kw: []
     sys.modules["homeassistant.helpers.entity_registry"] = er
     sys.modules["homeassistant.helpers"].entity_registry = er
 
