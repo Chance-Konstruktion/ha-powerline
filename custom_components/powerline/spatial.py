@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import DOMAIN, PANEL_URL_PATH, PROVIDER_ID, PROVIDER_LAYER_ID
 from .coordinator import TpLinkPowerlineCoordinator
@@ -168,6 +168,7 @@ class PowerlineSpatialAdapter:
         online = bool(adapter.get("online"))
         is_cco = adapter.get("role") == "CCo"
         registry_name = self.coordinator.adapter_name(mac)
+        device = self._device(mac)
         return node(
             mac,
             # The user's own rename wins over whatever the adapter calls
@@ -180,7 +181,12 @@ class PowerlineSpatialAdapter:
             ),
             # No position: the hub centres the adapter in its area and the
             # user drags it from there. We genuinely don't know where it is.
-            area_id=self._area_id(mac),
+            area_id=getattr(device, "area_id", None),
+            # The door into Home Assistant itself. Without it the hub's
+            # popup has nothing to link to and reads as an empty card: no
+            # more-info dialog, no device page, no settings. The hub fills
+            # in the device behind the entity on its own.
+            entity_id=self._entity_id(device),
             state="online" if online else "offline",
             icon="mdi:router-network" if is_cco else (
                 "mdi:lan-connect" if online else "mdi:lan-disconnect"
@@ -221,15 +227,40 @@ class PowerlineSpatialAdapter:
             estimated=bool(link.get("estimated")),
         )
 
-    def _area_id(self, mac: str) -> str | None:
-        """The area the user put this adapter in, if any."""
+    def _device(self, mac: str) -> Any | None:
+        """This adapter's registry entry -- its area and its device page."""
         try:
-            device = dr.async_get(self.hass).async_get_device(
+            return dr.async_get(self.hass).async_get_device(
                 identifiers={(DOMAIN, mac)}
             )
         except (AttributeError, KeyError):  # pragma: no cover - registry absent
             return None
-        return device.area_id if device else None
+
+    def _entity_id(self, device: Any | None) -> str | None:
+        """One entity to stand for the adapter in the more-info dialog.
+
+        Any of them opens the same dialog, so the only thing that matters
+        is picking a useful one: diagnostics sort last, because "Firmware"
+        is a poor answer to "show me this adapter".
+        """
+        if device is None:
+            return None
+        try:
+            entries = er.async_entries_for_device(
+                er.async_get(self.hass), device.id, include_disabled_entities=False
+            )
+        except (AttributeError, KeyError, TypeError):  # pragma: no cover
+            return None
+        if not entries:
+            return None
+        entries = sorted(
+            entries,
+            key=lambda entry: (
+                getattr(entry, "entity_category", None) is not None,
+                entry.entity_id,
+            ),
+        )
+        return entries[0].entity_id
 
     # ── History ───────────────────────────────────────────
 
