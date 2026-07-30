@@ -349,3 +349,71 @@ def test_a_device_with_no_entities_costs_nothing(monkeypatch):
 
     assert "entity_id" not in first
     assert first["area_id"] == "kitchen"
+
+
+def test_the_icons_are_our_adapter_and_not_a_generic_symbol():
+    """The plan should show the same device our own dashboard shows.
+
+    For a while these were three MDI-ish line drawings: an adapter on our
+    panel, a router on the floor plan, and nothing saying the two were the
+    same box on the same shelf.
+    """
+    hass = FakeHass()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
+    icons = hass.data[DATA_PROVIDERS]["powerline"]["icon_set"]
+
+    for name, icon in icons.items():
+        svg = icon["svg"]
+        # Gehaeuse, Frontblende und Kabel -- die drei Teile, an denen ein
+        # Adapter als Adapter zu erkennen ist.
+        assert 'stroke="currentColor"' in svg, f"{name} has no body outline"
+        assert svg.count("<rect") >= 3, f"{name} is missing body, panel or cable"
+        assert svg.count("<circle") >= 3, f"{name} has no status LEDs"
+
+
+def test_an_offline_adapter_is_dark_not_missing():
+    hass = FakeHass()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
+    icons = hass.data[DATA_PROVIDERS]["powerline"]["icon_set"]
+
+    online = icons["mdi:lan-connect"]["svg"]
+    offline = icons["mdi:lan-disconnect"]["svg"]
+    cco = icons["mdi:router-network"]["svg"]
+
+    assert online != offline, "an offline adapter must look different"
+    assert "#5fe08a" in online and "#5fe08a" not in offline, (
+        "the LEDs carry the state; a dark adapter still has its housing"
+    )
+    assert cco != online, "the one everything else hangs off must stand out"
+
+
+def test_no_part_of_an_icon_falls_outside_its_own_box():
+    """A renderer scales the 24x24 box, it does not extend it.
+
+    The CCo's arc was drawn with a radius that put its apex above y=0, so
+    the top of it was simply cut off -- visible only once rendered.
+    """
+    import re
+
+    hass = FakeHass()
+    async_create_provider(hass, FakeEntry(), FakeCoordinator())
+    icons = hass.data[DATA_PROVIDERS]["powerline"]["icon_set"]
+
+    for name, icon in icons.items():
+        svg = icon["svg"]
+        for attribute in ("x", "y", "cx", "cy"):
+            for value in re.findall(rf'\b{attribute}="([-\d.]+)"', svg):
+                assert 0 <= float(value) <= 24, (
+                    f"{name}: {attribute}={value} is outside the 24x24 box"
+                )
+        # Der Scheitel des Bogens ist keine Koordinate im Markup, sondern
+        # faellt aus Radius und Sehne: r - sqrt(r^2 - (d/2)^2) unter dem
+        # Startpunkt. Er muss ebenfalls drinbleiben.
+        for start_x, start_y, radius, end_x in re.findall(
+            r'M([\d.]+) ([\d.]+)A([\d.]+) [\d.]+ 0 0 1 ([\d.]+)', svg
+        ):
+            half = (float(end_x) - float(start_x)) / 2
+            rise = float(radius) - (float(radius) ** 2 - half**2) ** 0.5
+            assert float(start_y) - rise >= 0, (
+                f"{name}: the arc's apex is clipped at the top"
+            )
