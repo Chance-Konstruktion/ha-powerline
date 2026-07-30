@@ -46,36 +46,74 @@ _QUALITY = {
 #
 # Keyed by the icon name a node asks for, so the same node definition
 # degrades to the plain MDI icon on a renderer that ignores icon sets.
+#
+# Es ist derselbe Adapter, den unser eigenes Panel zeichnet -- Gehaeuse,
+# Frontblende, drei LEDs, Kabel nach unten -- und nicht ein allgemeines
+# Netzwerksymbol. Vorher lagen hier drei MDI-artige Strichzeichnungen: auf
+# unserem Dashboard stand ein Adapter, auf dem Grundriss ein Router, und
+# dass beides dasselbe Geraet ist, musste man wissen.
+#
+# Statisch statt gerechnet. Das Panel skaliert seine Grafik und schaltet
+# die LEDs nach dem echten Zustand; ein Icon-Set kann das nicht, es ist
+# ein Bild je Name. Also drei Bilder fuer die drei Namen, die unsere
+# Knoten ohnehin schon anfragen -- der Zustand steckt im Namen.
+#
+# `currentColor` ist Absicht: der Hub faerbt ein Node nach seinem Zustand,
+# und ein Icon, das seine Farbe selbst festlegt, wuerde dem widersprechen.
+# Nur die LEDs tragen eigene Farben, denn eine dunkle LED an einem gruenen
+# Adapter ist genau die Aussage, um die es geht.
+_ADAPTER_BODY = (
+    # Kabel nach unten, hinter dem Gehaeuse. Es beginnt noch darunter, damit
+    # kein heller Spalt zwischen Kabel und Gehaeuse steht.
+    '<rect x="10.9" y="19.4" width="2.2" height="4.4" rx="1.1" fill="#8a949c"/>'
+    # Gehaeuse: Kartenfarbe innen, Zustandsfarbe als Kontur.
+    '<rect x="4.6" y="3.6" width="14.8" height="16.6" rx="3.2"'
+    ' fill="var(--card-background-color, #fff)" stroke="currentColor"'
+    ' stroke-width="1.7"/>'
+    # Frontblende, in der Zustandsfarbe angedeutet.
+    '<rect x="7" y="9.8" width="10" height="8.6" rx="1.8"'
+    ' fill="currentColor" opacity="0.14"/>'
+)
+
+
+def _adapter_icon(lit: bool, cco: bool = False) -> str:
+    """Ein Adapter in 24x24, mit LEDs an oder aus.
+
+    Der CCo bekommt zusaetzlich zwei Funkboegen. Er ist das Geraet, an dem
+    alle anderen haengen, und auf einem Grundriss voller gleicher Kaesten
+    ist genau das die eine Information, die man auf einen Blick braucht.
+    """
+    glow = "#5fe08a" if lit else "#9aa4ad"
+    leds = "".join(
+        (
+            f'<circle cx="{cx}" cy="7" r="2.2" fill="#5fe08a"'
+            ' opacity="0.28"/>' if lit else ""
+        )
+        + f'<circle cx="{cx}" cy="7" r="1.05" fill="{glow}"/>'
+        for cx in ("8.6", "12", "15.4")
+    )
+    # Der Bogen woelbt sich nach oben. Zu gross gewaehlt liegt sein
+    # Scheitel ausserhalb des 24er-Feldes und wird abgeschnitten -- ein
+    # Radius von 7 laesst ihn bei y≈1,2 enden und damit knapp drin.
+    crown = (
+        '<path d="M7.6 2.8A7 7 0 0 1 16.4 2.8" fill="none"'
+        ' stroke="currentColor" stroke-width="1.3" stroke-linecap="round"'
+        ' opacity="0.75"/>'
+        if cco
+        else ""
+    )
+    return f'<svg viewBox="0 0 24 24">{crown}{_ADAPTER_BODY}{leds}</svg>'
+
+
+# Keyed by the icon name a node asks for, so the same node definition
+# degrades to the plain MDI icon on a renderer that ignores icon sets.
 _ICON_SET = {
-    "mdi:router-network": {
-        # The CCo: the adapter the others answer to.
-        "svg": (
-            '<svg viewBox="0 0 24 24">'
-            '<path d="M12 2 4 6v5h2V7.2l6-3 6 3V11h2V6l-8-4z"/>'
-            '<path d="M3 13h18a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-7'
-            'a1 1 0 0 1 1-1zm2 3v3h2v-3H5zm4 0v3h2v-3H9zm8 0v3h2v-3h-2z"/>'
-            "</svg>"
-        ),
-    },
-    "mdi:lan-connect": {
-        "svg": (
-            '<svg viewBox="0 0 24 24">'
-            '<path d="M9 3h6v4h3l-6 6-6-6h3V3z"/>'
-            '<path d="M3 15h18a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5'
-            'a1 1 0 0 1 1-1zm2 2v3h2v-3H5zm4 0v3h2v-3H9z"/>'
-            "</svg>"
-        ),
-    },
-    "mdi:lan-disconnect": {
-        "svg": (
-            '<svg viewBox="0 0 24 24">'
-            '<path d="M9 3h6v4h3l-6 6-6-6h3V3z" opacity=".45"/>'
-            '<path d="M3 15h18a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5'
-            'a1 1 0 0 1 1-1z" opacity=".45"/>'
-            '<path d="M4 4l16 16-1.4 1.4L2.6 5.4 4 4z"/>'
-            "</svg>"
-        ),
-    },
+    # The CCo: the adapter the others answer to.
+    "mdi:router-network": {"svg": _adapter_icon(lit=True, cco=True)},
+    "mdi:lan-connect": {"svg": _adapter_icon(lit=True)},
+    # Offline: das Gehaeuse steht noch da, die LEDs sind aus. Ein Adapter,
+    # der nicht antwortet, ist nicht verschwunden -- er ist dunkel.
+    "mdi:lan-disconnect": {"svg": _adapter_icon(lit=False)},
 }
 
 _NODE_ACTIONS = [
