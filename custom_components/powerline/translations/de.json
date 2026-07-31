@@ -3,8 +3,12 @@
     "step": {
       "user": {
         "title": "Powerline Netzwerk",
-        "description": "Klicke 'Absenden' um nach Powerline-Adaptern in deinem Netzwerk zu suchen.\n\nBen\u00f6tigt Raw-Socket-Zugriff (CAP_NET_RAW).\n\nUnterst\u00fctzt: TP-Link, FRITZ!Powerline, devolo und andere HomePlug AV Adapter.",
-        "submit": "Absenden"
+        "description": "W\u00e4hle das Netzwerk-Interface, an dem deine Powerline-Adapter h\u00e4ngen, und klicke 'Absenden' um zu suchen.\n\nBelasse es auf 'auto', damit die Integration das erste nutzbare Ethernet-Interface w\u00e4hlt \u2014 w\u00e4hle ein bestimmtes, wenn dieser Host mehrere Netzwerkkarten hat (z. B. ein VLAN-Interface).\n\nBen\u00f6tigt Raw-Socket-Zugriff (CAP_NET_RAW).\n\nUnterst\u00fctzt: TP-Link, FRITZ!Powerline, devolo und andere HomePlug AV Adapter.",
+        "submit": "Absenden",
+        "data": { "interface": "Netzwerk-Interface" },
+        "data_description": {
+          "interface": "'auto' w\u00e4hlt das erste physische Ethernet-Interface, das up ist."
+        }
       },
       "confirm": {
         "title": "Ger\u00e4te gefunden",
@@ -14,7 +18,7 @@
     },
     "error": {
       "no_devices_found": "Keine Powerline-Adapter gefunden. Pr\u00fcfe ob die Adapter eingesteckt, gepairt und per Ethernet-Kabel verbunden sind. Home Assistant ben\u00f6tigt CAP_NET_RAW.",
-      "no_interface": "Kein geeignetes Netzwerk-Interface gefunden. Stelle sicher, dass ein Ethernet-Kabel angeschlossen ist."
+      "no_interface": "Kein geeignetes Netzwerk-Interface gefunden. Stelle sicher, dass ein Ethernet-Kabel angeschlossen ist, oder w\u00e4hle ein Interface explizit aus."
     },
     "abort": {
       "already_configured": "Dieses Powerline-Netzwerk ist bereits konfiguriert.",

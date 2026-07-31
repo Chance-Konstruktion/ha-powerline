@@ -3,7 +3,7 @@ import asyncio
 import socket
 
 from .const import ETHERTYPE_HPAV
-from .frames import _find_interface
+from .frames import _find_interface, _list_interfaces
 from ._base import _HomeplugBase
 from .discovery import DiscoveryMixin
 from .state import StateMixin
@@ -40,6 +40,10 @@ async def async_diagnose(interface: str | None = None,
 def find_interface() -> str | None:
     return _find_interface()
 
+def list_interfaces() -> list[str]:
+    """List selectable network interfaces, best auto-pick first."""
+    return _list_interfaces()
+
 def is_available() -> bool:
     try:
         s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW,
@@ -50,5 +54,5 @@ def is_available() -> bool:
         return False
 
 
-__all__ = ["HomeplugAV", "find_interface", "is_available",
+__all__ = ["HomeplugAV", "find_interface", "list_interfaces", "is_available",
            "async_discover", "async_diagnose"]

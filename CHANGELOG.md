@@ -4,6 +4,14 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Network interface selector in the config flow.** Hosts with several NICs
+  can now pick the interface the adapters actually live on (e.g. a VLAN leg)
+  instead of always probing the first one found. The dropdown lists every up,
+  non-virtual interface and defaults to `auto`, which keeps the previous
+  auto-pick behaviour. The chosen interface is stored in the config entry, so
+  discovery stays on the same NIC across restarts.
+
 ### Changed
 - **Quality colours no longer collide with "no connection".** The `< 150 Mbit/s`
   tier now has its own colour (🟣) instead of red. Red is reserved exclusively

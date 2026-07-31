@@ -18,16 +18,16 @@ def mac_to_str(b: bytes) -> str:
 def mac_to_bytes(s: str) -> bytes:
     return bytes.fromhex(s.replace(":", "").replace("-", "").replace(" ", ""))
 
-def _find_interface() -> str | None:
-    """Find the best Ethernet interface for HomePlug AV.
+def _list_interfaces() -> list[str]:
+    """List usable Ethernet interfaces, best candidate first.
 
     Prioritizes physical Ethernet (eth*, en*) over other interfaces.
-    Skips virtual/container interfaces.
+    Skips virtual/container interfaces and anything that is not up.
     """
     try:
         ifaces = os.listdir("/sys/class/net/")
     except OSError:
-        return None
+        return []
 
     skip_prefixes = ("lo", "veth", "docker", "br-", "vir", "wl", "ww", "tun", "tap")
     # Prefer eth*/en* (physical Ethernet), then anything else
@@ -47,7 +47,11 @@ def _find_interface() -> str | None:
         else:
             fallback.append(iface)
 
-    return (prefer or fallback or [None])[0]
+    return prefer + fallback
+
+def _find_interface() -> str | None:
+    """Return the best Ethernet interface for HomePlug AV, if any."""
+    return next(iter(_list_interfaces()), None)
 
 def get_iface_mac(iface: str) -> bytes:
     try:

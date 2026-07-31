@@ -12,6 +12,12 @@ CONF_SCAN_INTERVAL = "scan_interval"
 MIN_SCAN_INTERVAL = 10
 MAX_SCAN_INTERVAL = 600
 
+# Network interface used for raw HomePlug AV frames.
+# INTERFACE_AUTO keeps the historic behaviour (auto-pick the first usable NIC);
+# any other value pins discovery to that interface (multi-NIC hosts, VLAN legs).
+CONF_INTERFACE = "interface"
+INTERFACE_AUTO = "auto"
+
 # Platforms
 PLATFORMS = ["sensor", "binary_sensor", "switch", "select", "button"]
 

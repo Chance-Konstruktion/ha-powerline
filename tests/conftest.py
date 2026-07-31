@@ -29,7 +29,42 @@ if "homeassistant" not in sys.modules:
 
 
 # -- homeassistant.config_entries ---------------------------------------------
-_ensure("homeassistant.config_entries", ConfigEntry=object)
+class _FlowBase:
+    """Minimal stand-in for ConfigFlow / OptionsFlow.
+
+    Flow results are plain dicts tagged with a ``type`` so tests can assert on
+    them the way Home Assistant's own flow-result helpers do.
+    """
+
+    def __init_subclass__(cls, **kwargs):  # domain=... on ConfigFlow subclasses
+        super().__init_subclass__()
+
+    def async_show_form(self, **kwargs):
+        return {"type": "form", **kwargs}
+
+    def async_abort(self, *, reason, **kwargs):
+        return {"type": "abort", "reason": reason}
+
+    def async_create_entry(self, **kwargs):
+        return {"type": "create_entry", **kwargs}
+
+    def _async_current_entries(self):
+        return []
+
+    async def async_set_unique_id(self, unique_id):
+        self.unique_id = unique_id
+
+    def _abort_if_unique_id_configured(self):
+        return None
+
+
+_ensure(
+    "homeassistant.config_entries",
+    ConfigEntry=object,
+    ConfigFlow=_FlowBase,
+    OptionsFlow=_FlowBase,
+    ConfigFlowResult=dict,
+)
 
 
 # -- homeassistant.core -------------------------------------------------------

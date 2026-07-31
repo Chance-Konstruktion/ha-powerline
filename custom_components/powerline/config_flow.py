@@ -17,6 +17,7 @@ except ImportError:
     from homeassistant.data_entry_flow import FlowResult as ConfigFlowResult
 
 from .const import (
+    CONF_INTERFACE,
     CONF_SPATIAL_HUB,
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
@@ -26,10 +27,11 @@ from .const import (
     DEFAULT_SIDEBAR_PANEL,
     DEFAULT_TOPOLOGY_ALERTS,
     DOMAIN,
+    INTERFACE_AUTO,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
-from .homeplug import HomeplugAV, find_interface, is_available
+from .homeplug import HomeplugAV, find_interface, is_available, list_interfaces
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,10 +59,17 @@ class TpLinkPowerlineConfigFlow(ConfigFlow, domain=DOMAIN):
         if not available:
             return self.async_abort(reason="raw_socket_unavailable")
 
+        interfaces = await self.hass.async_add_executor_job(list_interfaces)
+
         if user_input is not None:
-            # User confirmed — run discovery
-            self._interface = await self.hass.async_add_executor_job(
+            # User confirmed — run discovery on the chosen (or auto) interface
+            choice = user_input.get(CONF_INTERFACE, INTERFACE_AUTO)
+            if choice == INTERFACE_AUTO:
+                self._interface = await self.hass.async_add_executor_job(
                     find_interface)
+            else:
+                self._interface = choice
+
             if not self._interface:
                 errors["base"] = "no_interface"
             else:
@@ -79,7 +88,13 @@ class TpLinkPowerlineConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_INTERFACE, default=INTERFACE_AUTO
+                    ): vol.In([INTERFACE_AUTO, *interfaces]),
+                }
+            ),
             errors=errors,
         )
 

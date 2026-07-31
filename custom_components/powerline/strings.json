@@ -3,8 +3,12 @@
     "step": {
       "user": {
         "title": "Powerline Network",
-        "description": "Click 'Submit' to scan for Powerline adapters on your network.\n\nRequires raw socket access (CAP_NET_RAW).\n\nSupports: TP-Link, FRITZ!Powerline, devolo, and other HomePlug AV adapters.",
-        "submit": "Submit"
+        "description": "Choose the network interface your Powerline adapters are connected to, then click 'Submit' to scan.\n\nLeave it on 'auto' to let the integration pick the first usable Ethernet interface \u2014 select a specific one if this host has several NICs (e.g. a VLAN leg).\n\nRequires raw socket access (CAP_NET_RAW).\n\nSupports: TP-Link, FRITZ!Powerline, devolo, and other HomePlug AV adapters.",
+        "submit": "Submit",
+        "data": { "interface": "Network interface" },
+        "data_description": {
+          "interface": "'auto' picks the first physical Ethernet interface that is up."
+        }
       },
       "confirm": {
         "title": "Devices Found",
@@ -14,7 +18,7 @@
     },
     "error": {
       "no_devices_found": "No Powerline adapters found. Check that adapters are plugged in, paired, and connected via Ethernet cable. Home Assistant needs CAP_NET_RAW.",
-      "no_interface": "No suitable network interface found. Make sure an Ethernet cable is connected."
+      "no_interface": "No suitable network interface found. Make sure an Ethernet cable is connected, or pick an interface explicitly."
     },
     "abort": {
       "already_configured": "This Powerline network is already configured.",
