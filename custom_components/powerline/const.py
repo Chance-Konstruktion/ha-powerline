@@ -63,3 +63,7 @@ def get_mac(dev: dict[str, Any]) -> str:
     """Extract and normalize MAC address from a device dict."""
     raw = dev.get("mac") or dev.get("plcmac") or ""
     return normalize_mac(raw) if raw else ""
+
+# Config flow: network interface selection
+CONF_INTERFACE = "interface"
+INTERFACE_AUTO = "auto"
