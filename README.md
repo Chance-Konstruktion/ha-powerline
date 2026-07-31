@@ -421,6 +421,21 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the wire-level reference in [`PROTO
 
 ## 🙏 Acknowledgments
 
+### Thanks to
+
+Everyone who found a problem on their own hardware and helped fix it. Every
+setup out there is different, and reports from real installations are what
+makes this integration work beyond the adapters sitting on my desk.
+
+| Who | What |
+|---|---|
+| [@monhomelab](https://github.com/monhomelab) | Spotted that discovery always probed the first NIC, so multi-NIC hosts never found their adapters — and fixed it with the config-flow interface selector ([#97](https://github.com/Chance-Konstruktion/ha-powerline/issues/97), [#98](https://github.com/Chance-Konstruktion/ha-powerline/pull/98)) |
+
+Found something? Open an [issue](https://github.com/Chance-Konstruktion/ha-powerline/issues)
+— a good report is a contribution, a pull request even more so, and both land here.
+
+### Projects & references
+
 - [`serock/mediaxtream-dissector`](https://github.com/serock/mediaxtream-dissector) · [`serock/pla-util`](https://github.com/serock/pla-util) · [`jbit/powerline`](https://github.com/jbit/powerline) · [`qca/open-plc-utils`](https://github.com/qca/open-plc-utils)
 - [peanball.net powerline monitoring guide](https://peanball.net/2023/08/powerline-monitoring/)
 
