@@ -4,6 +4,8 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [260801] - 2026-08-01
+
 ### Added
 - **Network interface selector in the config flow.** Hosts with several NICs can
   now pick the interface the adapters actually live on (e.g. a VLAN leg) instead
