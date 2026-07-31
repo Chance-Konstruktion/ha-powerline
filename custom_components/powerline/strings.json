@@ -4,6 +4,12 @@
       "user": {
         "title": "Powerline Network",
         "description": "Click 'Submit' to scan for Powerline adapters on your network.\n\nRequires raw socket access (CAP_NET_RAW).\n\nSupports: TP-Link, FRITZ!Powerline, devolo, and other HomePlug AV adapters.",
+        "data": {
+          "interface": "Network interface"
+        },
+        "data_description": {
+          "interface": "'auto' picks the first wired interface. Choose a specific one if your adapters live on another network segment (e.g. a VLAN interface)."
+        },
         "submit": "Submit"
       },
       "confirm": {
