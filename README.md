@@ -263,8 +263,6 @@ quality and shows the LED state. Positions, background, icon size and icon
 style are stored and served over websocket (`powerline/topology/layout/get`
 and `powerline/topology/layout/set`).
 
-</details>
-
 **History & analysis.** The integration keeps a rolling link-rate history —
 raw samples for the last hour, 15-minute aggregates for 30 days, persisted
 across restarts. Click a connection in the graph and pick **1 h / 24 h /
@@ -291,6 +289,7 @@ available over websocket as `powerline/topology` returning
 `{nodes, edges, analysis}`, where `analysis` names the worst link, the best
 adapter, and any offline or newly discovered adapters.
 
+</details>
 ---
 
 ## 🗺️ Spatial Hub Provider
