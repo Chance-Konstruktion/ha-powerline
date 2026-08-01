@@ -8,7 +8,7 @@
 
 Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` + Broadcom MEDIAXTREAM `0x8912`) — exactly like the official *tpPLC* app, but native in Home Assistant. Works with adapters that have **no IP address and no web UI**.
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-03A9F4.svg)](https://www.home-assistant.io/)
 [![Release](https://img.shields.io/badge/release-260706-22D3EE.svg)](https://github.com/Chance-Konstruktion/ha-powerline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
@@ -98,12 +98,10 @@ details live in **[`PROTOCOL.md`](PROTOCOL.md)**.
 
 ## 🚀 Quick Start
 
-**1. Install via HACS** (Custom repository → Integration)
+**1. Install via HACS**
 
 ```text
-HACS → ⋮ → Custom repositories
-Repository: Chance-Konstruktion/ha-powerline
-Category:   Integration
+HACS → Integrations → Explore & download repositories → search "Powerline"
 ```
 
 **2. Restart Home Assistant**, then add the integration:
@@ -249,7 +247,10 @@ refresh_interval: 30           # optional, seconds
 - **Names** come from the Home Assistant device registry, so renaming an
   adapter ("Wohnzimmer", "Keller") renames its node.
 
-**Arrange on your floor plan.** Click **Arrange** on the card to upload your
+<details>
+<summary><strong>Arrange on your floor plan.</strong></summary>
+
+Click **Arrange** on the card to upload your
 own background image (e.g. a floor plan) and drag each adapter to where it
 physically sits. The positions and the background are saved server-side by the
 integration, so the same arrangement shows up on every device. Newly
@@ -261,6 +262,8 @@ vector adapter that stays sharp at any size, colours its outline by link
 quality and shows the LED state. Positions, background, icon size and icon
 style are stored and served over websocket (`powerline/topology/layout/get`
 and `powerline/topology/layout/set`).
+
+</details>
 
 **History & analysis.** The integration keeps a rolling link-rate history —
 raw samples for the last hour, 15-minute aggregates for 30 days, persisted
@@ -394,6 +397,9 @@ Capture the official tpPLC app performing an action and compare with
 
 ## 🗺️ Roadmap
 
+<details>
+<summary>Show roadmap</summary>
+
 - [x] **0.1 — Broadcom / AV1000 (verified):** discovery, TX/RX rates, LED, power saving, QoS — all confirmed on TL-PA7017.
 - [x] **0.2 — Qualcomm / AV500 (verified):** LED, QoS and power saving via the PIB, with the universal open checksum (`~xorfold32` of the whole PIB) so config writes apply on every adapter — confirmed applying on **two** AV500s, no reset needed ([details](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified)).
 - [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
@@ -401,6 +407,8 @@ Capture the official tpPLC app performing an action and compare with
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
+
+</details>
 
 ---
 
