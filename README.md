@@ -124,12 +124,15 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** | ✅ **verified** |
 | Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* | ✅ *(expected)* |
 | Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
+| Netgear **Powerline AV500** / XAV5602 | ✅ **confirmed by user** | — | — |
 | **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
 | devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
 > TX/RX rates, LED, power saving and QoS — on the **AV1000 (TL-PA7017)**
 > (Broadcom, since 0.1) and on **two AV500 / QCA7420** adapters (Qualcomm, 0.2).
+> The **Netgear XAV5602** (QCA7420-based) was confirmed working by a user —
+> see [issue #104](https://github.com/Chance-Konstruktion/ha-powerline/issues/104).
 
 > 🟦 **FRITZ!Powerline (AVM):** these adapters use a QCA7420 chip but ship AVM's
 > own "Custom" firmware, so they get a **dedicated module** (`homeplug/fritz.py`).
