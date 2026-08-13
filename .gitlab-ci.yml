@@ -1,0 +1,131 @@
+# CI-Vorlage
+#
+# Dieselbe Datei liegt in allen Repositories. Sie passt sich selbst an:
+# Jeder Job hat eine `exists`-Regel und laeuft nur, wenn es in diesem
+# Repository etwas fuer ihn zu tun gibt. Ein Repo ohne tests/ bekommt also
+# keinen roten pytest-Job, sondern gar keinen.
+#
+# Der Grund fuer diese Bauweise: Eine Vorlage, die man pro Repo anpassen
+# muss, wird nach dem dritten Repo nicht mehr angepasst.
+
+stages:
+  - test
+  - validate
+  - release
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+# ── Tests ─────────────────────────────────────────────────────────────
+# Node wird ausdruecklich installiert. Tests, die Node brauchen,
+# ueberspringen sich sonst selbst -- die Pipeline waere gruen, ohne dass
+# sie je gelaufen waeren. -rs schreibt jede Auslassung samt Grund ins Log.
+pytest:
+  stage: test
+  image: python:3.13
+  cache:
+    key: pip-$CI_COMMIT_REF_SLUG
+    paths:
+      - .cache/pip
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq nodejs
+    - node --version && python --version
+    - |
+      if [ -f requirements_test.txt ]; then
+        pip install -q -r requirements_test.txt
+      else
+        pip install -q pytest pytest-asyncio voluptuous pyyaml jsonschema
+      fi
+  script:
+    - python -m pytest -q -rs --junitxml=report.xml
+  artifacts:
+    when: always
+    expire_in: 30 days
+    reports:
+      junit: report.xml
+  rules:
+    - exists:
+        - tests/**/*.py
+
+# ── hassfest ──────────────────────────────────────────────────────────
+# Home Assistants eigener Manifest-Pruefer, aus dem offiziellen Image.
+# Prueft jede Integration unterhalb von custom_components/ einzeln.
+hassfest:
+  stage: validate
+  image:
+    name: ghcr.io/home-assistant/hassfest:latest
+    entrypoint: [""]
+  script:
+    - cd /usr/src/homeassistant
+    - |
+      status=0
+      for dir in "$CI_PROJECT_DIR"/custom_components/*/; do
+        [ -f "$dir/manifest.json" ] || continue
+        echo "── $(basename "$dir")"
+        python -m script.hassfest --action validate --integration-path "$dir" || status=1
+      done
+      exit $status
+  rules:
+    - exists:
+        - custom_components/*/manifest.json
+
+# ── HACS-Angaben ──────────────────────────────────────────────────────
+# Die offizielle HACS-Pruefung laeuft nicht: Sie liest Beschreibung,
+# Themen und Releases eines GitHub-Repositories, und das gibt es hier
+# nicht. Was sich ohne GitHub pruefen laesst, wird hier geprueft --
+# damit die Angaben stimmen, wenn das Projekt doch wieder dorthin geht.
+hacs-angaben:
+  stage: validate
+  image: python:3.13
+  script:
+    - |
+      python - <<'PY'
+      import json, pathlib, sys
+
+      fehler = []
+      hacs = json.loads(pathlib.Path("hacs.json").read_text(encoding="utf-8"))
+
+      if not hacs.get("name"):
+          fehler.append("hacs.json: 'name' fehlt")
+
+      manifeste = sorted(pathlib.Path("custom_components").glob("*/manifest.json")) \
+          if pathlib.Path("custom_components").is_dir() else []
+
+      if not manifeste:
+          fehler.append("keine Integration unter custom_components/ gefunden")
+
+      for m in manifeste:
+          daten = json.loads(m.read_text(encoding="utf-8"))
+          ordner = m.parent.name
+          if daten.get("domain") != ordner:
+              fehler.append(f"{m}: domain '{daten.get('domain')}' passt nicht zum Ordner '{ordner}'")
+          for pflicht in ("domain", "name", "version", "documentation", "codeowners"):
+              if not daten.get(pflicht):
+                  fehler.append(f"{m}: '{pflicht}' fehlt")
+          print(f"── {ordner}: Version {daten.get('version')}")
+
+      if fehler:
+          print("\nGefunden:")
+          for f in fehler:
+              print(f"  • {f}")
+          sys.exit(1)
+      print("\nAngaben stimmig.")
+      PY
+  rules:
+    - exists:
+        - hacs.json
+
+# ── Release ───────────────────────────────────────────────────────────
+# Tag setzen genuegt: GitLab legt den Release-Eintrag an. Das hattest du
+# auf GitHub nur bei einem einzigen Projekt.
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Release fuer $CI_COMMIT_TAG"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "$CI_COMMIT_TAG"
+    description: "Automatisch erzeugt aus Tag $CI_COMMIT_TAG."
+  rules:
+    - if: $CI_COMMIT_TAG
