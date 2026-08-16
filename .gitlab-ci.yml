@@ -47,6 +47,100 @@ pytest:
     - exists:
         - tests/**/*.py
 
+# ── Tests gegen ein echtes Home Assistant ─────────────────────────────
+# Laeuft nur, wo es ein tests_ha/ gibt. Getrennt von pytest, weil dessen
+# conftest.py das Paket ``homeassistant`` in sys.modules durch Attrappen
+# ersetzt -- im selben Lauf bekaeme auch dieser Job die Attrappe zu sehen,
+# egal wie echt die Installation daneben ist.
+pytest-ha:
+  stage: test
+  image: python:3.13
+  timeout: 30m
+  cache:
+    key: pip-ha
+    paths:
+      - .cache/pip
+    when: always
+  before_script:
+    - pip install -q -r requirements_test_ha.txt
+    - python -c "from homeassistant.const import __version__; print('Home Assistant', __version__)"
+    # Eine Integration, die "frontend" als Abhaengigkeit fuehrt -- also ein
+    # eigenes Panel oder eine eigene Karte mitbringt -- laedt ohne das
+    # gebaute Frontend-Paket gar nicht erst: Home Assistant bricht das
+    # Einrichten mit "No module named 'hass_frontend'" ab, bevor ein
+    # einziger Test etwas geprueft hat. Das Paket kommt nicht mit
+    # pytest-homeassistant-custom-component mit, weil Home Assistant es im
+    # Betrieb selbst nachzieht.
+    #
+    # Die Version wird aus Home Assistants eigenem Manifest gelesen statt
+    # hier eingetragen: eine feste Nummer waere beim naechsten Update
+    # falsch, und zwar auf die stille Art -- pip nimmt sie klaglos und die
+    # Tests laufen gegen ein Frontend, das nicht zu diesem Kern gehoert.
+    - |
+      if grep -qs '"frontend"' custom_components/*/manifest.json; then
+        paket=$(python -c "import json, pathlib, homeassistant.components.frontend as f; print(json.loads((pathlib.Path(f.__file__).parent / 'manifest.json').read_text())['requirements'][0])")
+        echo "Frontend-Paket fuer diesen Kern: $paket"
+        pip install -q "$paket"
+      fi
+    # Integrationen, die ein Test wirklich importieren muss.
+    #
+    # Der Adapter holt sie zur Laufzeit und faengt ImportError ab, damit
+    # er auch ohne sie laeuft. Ein Test, der den Weg MIT ihnen prueft,
+    # braucht ihre Python-Pakete aber tatsaechlich -- und die bringt
+    # pytest-homeassistant-custom-component nicht mit.
+    #
+    # In requirements_test_ha_components.txt stehen nur die Namen der
+    # Integrationen. Die Pakete kommen aus Home Assistants eigenen
+    # Manifesten, samt denen ihrer Abhaengigkeiten (bluetooth zieht usb
+    # nach, thread zieht zeroconf). Eingetragene Versionen waeren beim
+    # naechsten Update still falsch: pip nimmt sie klaglos.
+    - |
+      if [ -f requirements_test_ha_components.txt ]; then
+        pakete=$(python - <<'PY'
+      import json, pathlib
+      import homeassistant.components as komponenten
+
+      wurzel = pathlib.Path(komponenten.__file__).parent
+      offen = [
+          zeile.strip()
+          for zeile in pathlib.Path(
+              "requirements_test_ha_components.txt"
+          ).read_text(encoding="utf-8").splitlines()
+          if zeile.strip() and not zeile.lstrip().startswith("#")
+      ]
+
+      gesehen, pakete = set(), []
+      while offen:
+          name = offen.pop()
+          if name in gesehen:
+              continue
+          gesehen.add(name)
+          manifest = wurzel / name / "manifest.json"
+          if not manifest.is_file():
+              continue
+          daten = json.loads(manifest.read_text(encoding="utf-8"))
+          pakete.extend(daten.get("requirements") or [])
+          offen.extend(daten.get("dependencies") or [])
+
+      print(" ".join(sorted(set(pakete))))
+      PY
+      )
+        if [ -n "$pakete" ]; then
+          echo "Pakete fuer die genannten Integrationen: $pakete"
+          pip install -q $pakete
+        fi
+      fi
+  script:
+    - python -m pytest -c pytest-ha.ini -q -rs --junitxml=report-ha.xml
+  artifacts:
+    when: always
+    expire_in: 30 days
+    reports:
+      junit: report-ha.xml
+  rules:
+    - exists:
+        - tests_ha/**/*.py
+
 # ── hassfest ──────────────────────────────────────────────────────────
 # Home Assistants eigener Manifest-Pruefer, aus dem offiziellen Image.
 # Prueft jede Integration unterhalb von custom_components/ einzeln.
@@ -129,3 +223,55 @@ release:
     description: "Automatisch erzeugt aus Tag $CI_COMMIT_TAG."
   rules:
     - if: $CI_COMMIT_TAG
+
+# ── Die Vorlage gegen ihre Quelle ─────────────────────────────────────
+# Oben steht "dieselbe Datei liegt in allen Repositories". Das stimmte
+# nicht: ha-powerline und espeasy-p2p trugen eine aeltere Fassung -- ohne
+# den Job pytest-ha. Beide Pipelines waren gruen, und niemand konnte
+# sehen, dass der halbe Testlauf schlicht fehlte. Eine Behauptung, die
+# nichts prueft, haelt genau bis zum ersten Mal, wo es darauf ankommt.
+#
+# Der Vergleich laeuft nur auf dem Hauptzweig: Auf einem Feature-Zweig
+# soll man die Vorlage aendern koennen, ohne dass die eigene Pipeline
+# darueber rot wird. Und nicht im Hub selbst -- dort IST die Quelle, und
+# genau der Commit, der sie aendert, wuerde sich sonst selbst umbringen.
+ci-vorlage:
+  stage: validate
+  image: python:3.13
+  script:
+    - |
+      python - <<'PY'
+      import pathlib, sys, urllib.request
+
+      QUELLE = ("https://gitlab.schanz.ipv64.net/chance-konstruktion/"
+                "ha-spatial-hub/-/raw/main/.gitlab-ci.yml")
+      try:
+          quelle = urllib.request.urlopen(QUELLE, timeout=20).read().decode()
+      except Exception as fehler:
+          # Kein Netz ist kein Grund fuer Rot. Ein Job, der bei einer
+          # Stoerung rot wird, wird nach dem zweiten Mal ignoriert.
+          print(f"Quelle nicht erreichbar ({fehler}) - uebersprungen.")
+          sys.exit(0)
+
+      hier = pathlib.Path(".gitlab-ci.yml").read_text(encoding="utf-8")
+      if hier.replace("\r\n", "\n") == quelle.replace("\r\n", "\n"):
+          print("Die CI-Vorlage ist auf dem Stand des Hubs.")
+          sys.exit(0)
+
+      print(
+          "Diese .gitlab-ci.yml weicht von der Quelle im Hub ab.\n"
+          "Das ist der Fall, in dem Jobs still verschwinden - genau so hat\n"
+          "hier zweimal der Job pytest-ha gefehlt, ohne dass etwas rot war.\n"
+          "\n"
+          "Uebernehmen:\n"
+          "  curl -s " + QUELLE + " -o .gitlab-ci.yml\n"
+          "\n"
+          "Soll die Aenderung fuer ALLE gelten, gehoert sie in den Hub -\n"
+          "und von dort in jedes Repository."
+      )
+      sys.exit(1)
+      PY
+  rules:
+    - if: $CI_PROJECT_NAME == "ha-spatial-hub"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
