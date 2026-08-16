@@ -224,6 +224,49 @@ release:
   rules:
     - if: $CI_COMMIT_TAG
 
+# ── Tests gegen echte Hardware ────────────────────────────────────────
+# Laeuft nur, wo es tests/test_hardware_integration.py gibt (heute: nur
+# ha-powerline). Die Adapter haengen im selben Netz wie der Runner, also
+# soll dagegen wirklich geprueft werden statt uebersprungen zu werden.
+#
+# ABER: HomePlug arbeitet auf Schicht 2. Ein Docker-Container sieht das
+# LAN dort nur mit host-Netzwerk und CAP_NET_RAW -- beides steht in der
+# config.toml des Runners, nicht hier. Solange das fehlt, ueberspringt
+# sich der Test mit dem Grund "Raw HomePlug sockets are not available",
+# und genau der steht dann dank -rs im Log. Kein stilles Gruen: Der Job
+# ist sichtbar da und sagt, was ihm fehlt.
+pytest-hardware:
+  stage: test
+  image: python:3.13
+  variables:
+    POWERLINE_HARDWARE_TESTS: "1"
+  before_script:
+    - |
+      if [ -f requirements_test.txt ]; then
+        pip install -q -r requirements_test.txt
+      else
+        pip install -q pytest pytest-asyncio voluptuous pyyaml jsonschema
+      fi
+    - |
+      python - <<'PY'
+      # Was der Job vorfindet, gehoert ins Log -- sonst raetselt man beim
+      # naechsten Uebersprungen wieder, ob es an der Konfiguration liegt.
+      import socket
+      try:
+          s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
+          s.close()
+          print("Rohe Sockets: verfuegbar")
+      except Exception as fehler:
+          print(f"Rohe Sockets: NICHT verfuegbar ({fehler})")
+          print("  -> config.toml des Runners: network_mode = \"host\" und")
+          print("     cap_add = [\"NET_RAW\", \"NET_ADMIN\"]")
+      PY
+  script:
+    - python -m pytest tests/test_hardware_integration.py -q -rs
+  rules:
+    - exists:
+        - tests/test_hardware_integration.py
+
 # ── Die Vorlage gegen ihre Quelle ─────────────────────────────────────
 # Oben steht "dieselbe Datei liegt in allen Repositories". Das stimmte
 # nicht: ha-powerline und espeasy-p2p trugen eine aeltere Fassung -- ohne
