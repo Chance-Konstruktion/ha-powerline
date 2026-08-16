@@ -1,0 +1,7 @@
+# Nur fuer tests_ha/ -- die Tests gegen ein echtes Home Assistant.
+#
+# Das Paket zieht Home Assistant selbst mit und bringt die Fixtures mit,
+# die eine echte Instanz im Test hochfahren (hass, Registries, States).
+# Die Suite in tests/ braucht davon nichts: sie laeuft mit der
+# Standardbibliothek.
+pytest-homeassistant-custom-component
