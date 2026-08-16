@@ -43,7 +43,7 @@ DATA_PROVIDERS = "spatial_hub_providers"
 
 # Which revision of the kit you copied. Kept in step with the shim, so a
 # mismatch between the two files in your repository is visible.
-SDK_VERSION = 4
+SDK_VERSION = 5
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _QUALITY = {"good", "fair", "poor", "unknown", ""}
@@ -54,7 +54,8 @@ _KNOWN_KEYS = {
 }
 _NODE_KEYS = {
     "id", "label", "area_id", "floor_id", "position", "state", "icon",
-    "color", "entity_id", "actions", "metadata", "layer_id",
+    "color", "entity_id", "device_id", "anchors", "actions", "metadata",
+    "layer_id",
 }
 _EDGE_KEYS = {
     "id", "source", "target", "label", "value", "quality", "color", "width",
@@ -265,6 +266,65 @@ class SpatialHubConformance:
                     "pixels. Unless you truly know where the device is, omit "
                     "position entirely and let the hub place it in its area"
                 )
+
+    def test_anchors_are_well_formed(self) -> None:
+        """Anchors must point somewhere and pull with a usable weight.
+
+        An anchor is the one field the hub does arithmetic with: it places
+        a node at the weighted centre of the nodes it names. That makes
+        two mistakes expensive in a way a wrong label never is.
+
+        A weight of zero or below is almost always a division that went
+        wrong. Averaged in, it drags the answer to a place nobody
+        measured; a negative one can push it clean off the plan. The hub
+        drops them, but a provider that emits them has already
+        miscalculated upstream and should hear about it here.
+
+        An anchor naming a node you did not deliver resolves to nothing.
+        The hub survives it -- the node falls back to the middle of the
+        plan -- but that is a device drawn in the wrong place, which is
+        worse than one drawn nowhere.
+        """
+        payload = fetch(self.registration)
+        ids = {str(node.get("id")) for node in payload["nodes"]}
+        for node in payload["nodes"]:
+            anchors = node.get("anchors")
+            if anchors is None:
+                continue
+            assert isinstance(anchors, list), (
+                f"node {node.get('id')}: anchors must be a list, "
+                f"got {type(anchors).__name__}"
+            )
+            for anchor in anchors:
+                assert isinstance(anchor, dict), (
+                    f"node {node.get('id')}: an anchor must be a dict, "
+                    f"got {type(anchor).__name__} -- use anchor() from the shim"
+                )
+                target = str(anchor.get("id") or "")
+                assert target, f"node {node.get('id')}: anchor without an id"
+                assert target in ids, (
+                    f"node {node.get('id')}: anchors at {target!r}, which is "
+                    f"not one of your own nodes. Anchor ids are unnamespaced "
+                    f"and must name a node from this same payload"
+                )
+                assert target != str(node.get("id")), (
+                    f"node {node.get('id')}: anchors at itself"
+                )
+                weight = anchor.get("weight", 1.0)
+                assert isinstance(weight, (int, float)) and not isinstance(
+                    weight, bool
+                ), (
+                    f"node {node.get('id')}: anchor weight must be a number, "
+                    f"got {weight!r}"
+                )
+                assert weight > 0, (
+                    f"node {node.get('id')}: anchor weight {weight} is not "
+                    f"positive. Higher means nearer -- zero or below is "
+                    f"almost always a division that went wrong"
+                )
+                assert weight == weight and weight not in (
+                    float("inf"), float("-inf")
+                ), f"node {node.get('id')}: anchor weight {weight} is not finite"
 
     def test_unknown_keys_are_not_used_on_nodes_or_edges(self) -> None:
         payload = fetch(self.registration)

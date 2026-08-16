@@ -56,7 +56,9 @@ API_VERSION = 1
 #
 # Bumped only when the shim gains something worth going back for. The
 # contract above is frozen; this is not part of it.
-SDK_VERSION = 4
+#
+# 5 -- `anchors`: say what a node is near when you cannot say where it is.
+SDK_VERSION = 5
 
 # ── Spatial vocabulary (Specification 1.0) ───────────────────────────
 #
@@ -211,6 +213,7 @@ def node(
     color: str = "",
     position: dict[str, float] | None = None,
     actions: Iterable[dict[str, Any]] = (),
+    anchors: Iterable[dict[str, Any]] = (),
     **metadata: Any,
 ) -> dict[str, Any]:
     """One thing that sits somewhere.
@@ -219,6 +222,21 @@ def node(
     the hub centres it in its area and the user drags it from there.
     Anything extra you pass lands in the node's metadata and shows up in
     the popup, so ``node("a", tx_rate=560)`` just works.
+
+    ``anchors`` is for the case in between -- you cannot say *where* this
+    is, but you can measure what it is *near*. Name your own nodes and how
+    strongly, with :func:`anchor`, and the hub places this one between
+    them::
+
+        node("tag-4c1f", anchors=[anchor("proxy-kitchen", 0.8),
+                                  anchor("proxy-hall", 0.2)])
+
+    The weights are relative and unitless -- only the proportions inside
+    one list are ever compared, so derive them from RSSI, LQI, link rate
+    or anything else, as long as higher means nearer. The hub resolves
+    them against wherever the user actually placed those anchors, which is
+    knowledge you do not have and are not given: positions travel one way.
+    A node the user has dragged themselves ignores its anchors for good.
     """
     result: dict[str, Any] = {"id": id}
     optional = {
@@ -234,9 +252,28 @@ def node(
     result.update({key: value for key, value in optional.items() if value})
     if actions:
         result["actions"] = list(actions)
+    if anchors:
+        result["anchors"] = list(anchors)
     if metadata:
         result["metadata"] = metadata
     return result
+
+
+def anchor(
+    id: str,  # noqa: A002 - matches the node field it points at
+    weight: float = 1.0,
+) -> dict[str, Any]:
+    """One node this node is near, and how strongly. Higher means nearer.
+
+    ``id`` is one of *your own* node ids, unnamespaced, exactly as you
+    wrote it. You cannot anchor to another provider's node: you have no
+    way of knowing it will still be there on the next refresh.
+
+    A weight of zero or below is dropped rather than treated as "very far
+    away" -- it is almost always a division that went wrong, and averaging
+    with it would move the answer somewhere nobody measured.
+    """
+    return {"id": id, "weight": float(weight)}
 
 
 def edge(
