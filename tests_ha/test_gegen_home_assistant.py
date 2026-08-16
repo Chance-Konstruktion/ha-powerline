@@ -82,6 +82,19 @@ class KoordinatorDoppel:
         # Wie im Betrieb ohne Umbenennung: die Abfrage gibt die MAC zurueck.
         return mac
 
+    # Die beiden ruft nur async_action auf. Der Konformitaetssatz prueft,
+    # dass Aktionen deklariert und aufrufbar sind -- ausgefuehrt werden sie
+    # nicht. Sie stehen hier trotzdem: Die Liste kommt aus
+    #   grep -o "coordinator\.[a-zA-Z_]*" custom_components/powerline/spatial.py
+    # und ein Doppel, das nur zufaellig reicht, reicht beim naechsten Umbau
+    # nicht mehr. Bei espeasy-p2p hat genau diese Luecke die Pipeline
+    # umgeworfen.
+    async def async_set_led(self, mac: str, an: bool) -> bool:
+        return True
+
+    async def async_restart_adapter(self, mac: str) -> bool:
+        return True
+
 
 @pytest.fixture
 def eintrag(hass: HomeAssistant):
