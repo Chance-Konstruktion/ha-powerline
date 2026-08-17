@@ -43,7 +43,7 @@ DATA_PROVIDERS = "spatial_hub_providers"
 
 # Which revision of the kit you copied. Kept in step with the shim, so a
 # mismatch between the two files in your repository is visible.
-SDK_VERSION = 5
+SDK_VERSION = 6
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _QUALITY = {"good", "fair", "poor", "unknown", ""}
@@ -93,7 +93,7 @@ def fetch(registration: dict[str, Any]) -> dict[str, list]:
     return {"nodes": nodes, "edges": list(payload.get("edges") or [])}
 
 
-def check(registration: dict[str, Any]) -> list[str]:
+def check(registration: dict[str, Any], expects_data: bool = True) -> list[str]:
     """Every problem found, as plain sentences. Empty list means conformant.
 
     Use this outside pytest. Inside pytest, subclass
@@ -103,6 +103,7 @@ def check(registration: dict[str, Any]) -> list[str]:
     problems: list[str] = []
     suite = SpatialHubConformance()
     suite._registration = registration
+    suite.expects_data = expects_data
     for name in sorted(dir(suite)):
         if not name.startswith("test_"):
             continue
@@ -130,6 +131,12 @@ class SpatialHubConformance:
             "implement build_registration() -- return the dict your "
             "integration writes into hass.data['spatial_hub_providers']"
         )
+
+    #: Set to False when the run is deliberately against an empty setup --
+    #: no devices paired, nothing to report. The kit then stops insisting
+    #: that `data()` return anything. Everything it can still check, it
+    #: still checks; it simply stops pretending the run proved much.
+    expects_data = True
 
     @property
     def registration(self) -> dict[str, Any]:
@@ -204,6 +211,46 @@ class SpatialHubConformance:
                 "drop your whole layer for that refresh. Return partial data "
                 "instead of raising"
             ) from err
+
+    def test_it_reports_something_at_all(self) -> None:
+        """The rule without which every other rule here is free.
+
+        Sixteen rules, and each one of them is a loop over `nodes` or
+        `edges`. Hand this kit a provider whose `data()` returns
+        ``{"nodes": [], "edges": []}`` and all sixteen pass: the ids are
+        unique, they are stable, no edge points anywhere wrong, no key is
+        unknown. A loop over nothing is always in the right.
+
+        The renderer kit has had this rule from the start and says so in
+        its own docstring. This one is older and never got it, so for
+        months it handed out clean bills of health to nothing at all --
+        which is exactly the failure it exists to prevent, one level up.
+
+        If your test setup genuinely has no devices, say so with
+        ``expects_data = False`` and the rule steps aside. Then at least
+        the exemption is written down instead of being an accident.
+        """
+        if not self.expects_data:
+            return
+
+        payload = fetch(self.registration)
+        capabilities = self.registration.get("capabilities") or {}
+        gemeldet = {
+            art: len(payload.get(art) or [])
+            for art in ("nodes", "edges")
+            if capabilities.get(art)
+        }
+        assert gemeldet, (
+            "the provider declares neither nodes nor edges -- there is "
+            "nothing for the hub to draw, and every other rule in this kit "
+            "is satisfied by that"
+        )
+        assert any(gemeldet.values()), (
+            f"data() returned nothing: {gemeldet}. Every other rule here is "
+            "a loop over these lists, so an empty provider passes them all. "
+            "Point the kit at a setup that has devices -- or set "
+            "expects_data = False if this run is deliberately empty"
+        )
 
     def test_nodes_have_unique_ids(self) -> None:
         ids = [node.get("id") for node in fetch(self.registration)["nodes"]]
