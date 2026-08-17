@@ -318,3 +318,39 @@ ci-vorlage:
     - if: $CI_PROJECT_NAME == "ha-spatial-hub"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ── Seite ─────────────────────────────────────────────────────────────
+# Die Dokumentation ist der groesste Teil dieses Projekts und war bisher
+# nur lesbar, wenn man sich durch GitLab klickt. Pages laeuft, also
+# bekommt sie eine Adresse:
+#
+#   https://pages.schanz.ipv64.net/chance-konstruktion/ha-spatial-hub
+#
+# Nur auf main. Ein Vorschau-Zweig, der die veroeffentlichte Seite
+# ueberschreibt, waere schlimmer als keine Vorschau.
+pages:
+  stage: release
+  image: python:3.13
+  script:
+    - pip install -q markdown
+    - python tools/seite.py public
+    # Der Job ist erst fertig, wenn die Verweise auch stimmen. Ein
+    # Verzeichnis voller Seiten, die aufeinander ins Leere zeigen, waere
+    # sonst ein gruener Haken -- und die Seite existiert ja, sie fuehrt
+    # nur nirgendwohin.
+    - pip install -q pytest
+    - python -m pytest -q tests/test_seite.py
+    - |
+      anzahl=$(ls public/*.html 2>/dev/null | wc -l)
+      echo "$anzahl Seiten"
+      if [ "$anzahl" -lt 8 ]; then
+        echo "Zu wenige -- die Seitenliste in tools/seite.py ist geschrumpft."
+        exit 1
+      fi
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists:
+        - tools/seite.py
