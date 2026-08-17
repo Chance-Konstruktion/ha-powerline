@@ -142,7 +142,13 @@ def test_die_anmeldung_haelt_den_hub_vertrag_ein(welche, request):
     und Kanten auf Knoten, die es nicht gibt, sind der Klassiker, der
     Grundrisse zerlegt.
     """
-    probleme = check(request.getfixturevalue(welche))
+    # "leer" ist der Lauf ohne Antwort des Koordinators: keine Knoten,
+    # keine Kanten, und damit nichts, worueber die Regeln laufen
+    # koennten. Das ist hier gewollt -- gesagt werden muss es
+    # trotzdem, sonst besteht ein Provider, der nichts liefert,
+    # jede einzelne Regel.
+    probleme = check(request.getfixturevalue(welche),
+                     expects_data=(welche == "besetzt"))
     assert not probleme, "Verstoesse gegen den Hub-Vertrag:\n  " + "\n  ".join(probleme)
 
 
