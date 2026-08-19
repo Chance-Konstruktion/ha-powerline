@@ -1,3 +1,10 @@
+# Sucht Zugangsdaten im Code UND in der ganzen Historie. Geloescht
+# heisst bei git nicht weg -- ein einmal committetes Token bleibt
+# auffindbar, bis es beim Anbieter zurueckgezogen wird.
+include:
+  - project: 'Kimi/ci-vorlagen'
+    file: '/vorlagen/geheimnisse.yml'
+
 # CI-Vorlage
 #
 # Dieselbe Datei liegt in allen Repositories. Sie passt sich selbst an:
