@@ -31,7 +31,19 @@ pytest:
   stage: test
   image: python:3.13
   cache:
-    key: pip-$CI_COMMIT_REF_SLUG
+    # Fester Schluessel, ausdruecklich OHNE $CI_COMMIT_REF_SLUG.
+    #
+    # Caches sind in GitLab ohnehin schon pro Projekt getrennt. Der
+    # Zweigname im Schluessel bringt keine Trennung dazu, die man
+    # braucht, sondern zwei Nachteile: Auf der Runner-Platte sammelt
+    # sich pro Zweig ein Cache an, den niemand mehr abraeumt -- und
+    # zwei Zweige koennen verschiedene Paketstaende installieren.
+    #
+    # Das ist keine Theorie: In kontinuum-core lief derselbe Commit
+    # auf main gruen und auf einem Zweig rot -- gleiches Abbild,
+    # gleiche Python-Version, gleicher Code. Verschieden war der
+    # Cache, und damit der Paketstand.
+    key: pip
     paths:
       - .cache/pip
   before_script:
@@ -44,10 +56,16 @@ pytest:
         pip install -q pytest pytest-asyncio voluptuous pyyaml jsonschema
       fi
   script:
+    # Aufschreiben, was tatsaechlich installiert wurde. Ohne diese
+    # Zeile laesst sich hinterher nicht mehr feststellen, ob zwei
+    # Laeufe desselben Commits dieselben Pakete hatten.
+    - pip freeze > installierte-pakete.txt
     - python -m pytest -q -rs --junitxml=report.xml
   artifacts:
     when: always
     expire_in: 30 days
+    paths:
+      - installierte-pakete.txt
     reports:
       junit: report.xml
   rules:
