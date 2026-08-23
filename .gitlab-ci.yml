@@ -2,8 +2,9 @@
 # heisst bei git nicht weg -- ein einmal committetes Token bleibt
 # auffindbar, bis es beim Anbieter zurueckgezogen wird.
 include:
-  - project: 'Kimi/ci-vorlagen'
+  - project: 'claude/ci-vorlagen'
     file: '/vorlagen/geheimnisse.yml'
+    ref: 65c48c20f447f46baaa1a46cda655b656cca15e3
 
 # CI-Vorlage
 #
