@@ -14,7 +14,7 @@ This integration is **stable** and supports the following features:
 
 ## Reporting Bugs
 
-Please use the [bug report template](https://github.com/Chance-Konstruktion/ha-tp-link-powerline/issues/new?template=bug_report.yml) and include:
+Please use the [bug report template](https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-powerline/-/issues/new) and include:
 
 - Home Assistant version + integration version
 - Adapter model(s) + firmware version
@@ -71,7 +71,7 @@ Small, focused PRs are preferred:
 ## Development Setup
 
 ```bash
-git clone https://github.com/Chance-Konstruktion/ha-tp-link-powerline.git
+git clone https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-powerline.git
 cd ha-tp-link-powerline
 
 # Validate syntax

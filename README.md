@@ -293,7 +293,7 @@ adapter, and any offline or newly discovered adapters.
 ## 🗺️ Spatial Hub Provider
 
 Powerline is the first provider for
-[**Spatial Hub**](https://github.com/Chance-Konstruktion/ha-spatial-hub) —
+[**Spatial Hub**](https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-spatial-hub) —
 the spatial bus that puts every integration's data onto *one* floor plan
 instead of one card each. With the hub installed, the adapters appear as a
 **Network layer**: each adapter in the area you assigned it to in Home
