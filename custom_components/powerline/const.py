@@ -43,7 +43,7 @@ PANEL_URL_PATH = "powerline"
 CONF_TOPOLOGY_ALERTS = "topology_alerts"
 DEFAULT_TOPOLOGY_ALERTS = True
 
-# Spatial Hub provider (https://github.com/Chance-Konstruktion/ha-spatial-hub).
+# Spatial Hub provider (https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-spatial-hub).
 # Registration is free when the hub is absent -- it is a dict in hass.data
 # that nobody reads -- so this defaults to on. Users who want the adapters
 # off their floor plan can switch it off in the options flow.
