@@ -14,7 +14,7 @@ This integration is **stable** and supports the following features:
 
 ## Reporting Bugs
 
-Please use the [bug report template](https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-powerline/-/issues/new) and include:
+Please use the [bug report template](https://github.com/Chance-Konstruktion/ha-powerline/issues/new) and include:
 
 - Home Assistant version + integration version
 - Adapter model(s) + firmware version
