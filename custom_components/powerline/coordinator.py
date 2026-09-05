@@ -263,10 +263,9 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def adapter_name(self, mac: str) -> str:
         """Device-registry name for a MAC (user rename wins), else the MAC."""
         try:
-            from homeassistant.helpers import device_registry as dr
+            from .registry import device_for_mac
 
-            dev_reg = dr.async_get(self.hass)
-            device = dev_reg.async_get_device(identifiers={(DOMAIN, mac)})
+            device = device_for_mac(self.hass, mac)
             if device:
                 return device.name_by_user or device.name or mac
         except Exception:  # noqa: BLE001 - name lookup must never break polling

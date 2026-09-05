@@ -287,13 +287,17 @@ class FakeDevice:
 
 
 def _with_registries(monkeypatch, device, entities):
-    """Point the adapter's two registry lookups at fixed answers."""
+    """Point the adapter's two registry lookups at fixed answers.
+
+    The device lookup moved into ``registry.device_for_mac`` -- one place
+    for what three callers used to spell out, now that Core wants the
+    config entry named. The adapter is patched at that seam instead of at
+    the device registry it no longer touches directly.
+    """
     from custom_components.powerline import spatial as module
 
     monkeypatch.setattr(
-        module.dr, "async_get",
-        lambda hass: type("R", (), {"async_get_device": lambda self, **kw: device})(),
-        raising=False,
+        module, "device_for_mac", lambda hass, mac: device, raising=False
     )
     monkeypatch.setattr(module.er, "async_get", lambda hass: object(), raising=False)
     monkeypatch.setattr(
