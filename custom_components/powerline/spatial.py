@@ -16,9 +16,10 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN, PANEL_URL_PATH, PROVIDER_ID, PROVIDER_LAYER_ID
+from .registry import device_for_mac
 from .coordinator import TpLinkPowerlineCoordinator
 from .spatial_hub_provider import (
     SpatialHubProvider,
@@ -267,12 +268,7 @@ class PowerlineSpatialAdapter:
 
     def _device(self, mac: str) -> Any | None:
         """This adapter's registry entry -- its area and its device page."""
-        try:
-            return dr.async_get(self.hass).async_get_device(
-                identifiers={(DOMAIN, mac)}
-            )
-        except (AttributeError, KeyError):  # pragma: no cover - registry absent
-            return None
+        return device_for_mac(self.hass, mac)
 
     def _entity_id(self, device: Any | None) -> str | None:
         """One entity to stand for the adapter in the more-info dialog.

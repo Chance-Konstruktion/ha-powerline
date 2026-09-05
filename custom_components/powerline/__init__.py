@@ -41,6 +41,7 @@ from .const import (
 )
 from .coordinator import TpLinkPowerlineCoordinator
 from .homeplug import is_available
+from .registry import device_for_mac
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -352,11 +353,7 @@ def _async_update_spatial_provider(
 
 def _display_name(hass: HomeAssistant, mac: str) -> str | None:
     """The adapter's device-registry name (user rename wins), if known."""
-    try:
-        dev_reg = dr.async_get(hass)
-        device = dev_reg.async_get_device(identifiers={(DOMAIN, mac)})
-    except AttributeError:
-        return None
+    device = device_for_mac(hass, mac)
     if device is None:
         return None
     return device.name_by_user or device.name
