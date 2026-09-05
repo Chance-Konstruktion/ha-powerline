@@ -126,12 +126,20 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** | ✅ **verified** |
 | Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* | ✅ *(expected)* |
 | Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
+| Netgear **Powerline AV500** / XAV5602 — Qualcomm QCA7420 | ✅ **verified** | ✅ **verified** | ✅ **verified** *(via PIB)* |
 | **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
 | devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
 > TX/RX rates, LED, power saving and QoS — on the **AV1000 (TL-PA7017)**
 > (Broadcom, since 0.1) and on **two AV500 / QCA7420** adapters (Qualcomm, 0.2).
+
+> The **Netgear XAV5602** (QCA7420-based) was verified end-to-end (discovery,
+> TX/RX rates, LED, QoS) by a user — see
+> [issue #104](https://github.com/Chance-Konstruktion/ha-powerline/issues/104).
+> Note: Netgear's own **Powerline Utility has no QoS controls at all** — the
+> setting lives in the adapter's PIB regardless and is set/read there directly,
+> the same way as on any other QCA7420 adapter.
 
 > 🟦 **FRITZ!Powerline (AVM):** these adapters use a QCA7420 chip but ship AVM's
 > own "Custom" firmware, so they get a **dedicated module** (`homeplug/fritz.py`).
@@ -418,6 +426,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the wire-level reference in [`PROTO
 ## 📄 License
 
 [MIT](LICENSE) — © 2026 Chance-Konstruktion
+
+### Thanks to
+
+Everyone who found a problem on their own hardware and helped fix it. Every
+setup out there is different, and reports from real installations are what
+makes this integration work beyond the adapters sitting on my desk.
+
+| Who | What |
+|---|---|
+| [@monhomelab](https://github.com/monhomelab) | Spotted that discovery always probed the first NIC, so multi-NIC hosts never found their adapters — and fixed it with the config-flow interface selector ([#97](https://github.com/Chance-Konstruktion/ha-powerline/issues/97), [#98](https://github.com/Chance-Konstruktion/ha-powerline/pull/98)) |
+| [@lemeshovich](https://github.com/lemeshovich) | Verified the integration end-to-end on Netgear Powerline AV500 (XAV5602) — discovery, rates, LED and QoS all confirmed against the official Netgear utility ([#104](https://github.com/Chance-Konstruktion/ha-powerline/issues/104)) |
+
+Found something? Open an [issue](https://github.com/Chance-Konstruktion/ha-powerline/issues)
+— a good report is a contribution, a pull request even more so, and both land here.
 
 ## 🙏 Acknowledgments
 

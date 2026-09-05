@@ -10,5 +10,5 @@
   "issue_tracker": "https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-powerline/-/work_items",
   "loggers": ["custom_components.powerline"],
   "requirements": [],
-  "version": "260729"
+  "version": "260905"
 }
