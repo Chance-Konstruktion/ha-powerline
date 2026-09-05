@@ -2,6 +2,22 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [260905] - 2026-09-05
+
+### Fixed
+- **Arbeit von GitHub zurueckgeholt, die beim Umzug liegen blieb.** Das
+  GitLab-Repository zweigte am 30.07.2026 bei PR #96 ab; die 16 Commits, die
+  danach noch auf GitHub entstanden, kamen nie mit. Darunter war ein
+  Fremdbeitrag: @monhomelabs Interface-Auswahl (#97 / #98). Sie ist samt
+  Tests und Uebersetzungen wieder da, mit dem urspruenglichen Commit und
+  damit unter seinem Namen. Ebenso zurueck: der Danksagungs-Abschnitt der
+  README und die Netgear XAV5602 in der Hardware-Tabelle, die @lemeshovich
+  Ende-zu-Ende verifiziert hat (#104).
+- **Version von 260729 auf 260905.** Auf GitHub war bereits **260801**
+  veroeffentlicht. Ohne diesen Sprung waere der gespiegelte Stand fuer jeden,
+  der 260801 installiert hat, eine Ruecknahme -- HACS haette nie wieder ein
+  Update angeboten.
+
 ## [Unreleased]
 
 ### Added

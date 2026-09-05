@@ -97,13 +97,29 @@ def flow(monkeypatch):
     return handler
 
 
+def _felder(data_schema):
+    """Die Feldabbildung eines Formulars.
+
+    Ist voluptuous echt installiert, steckt sie in ``.schema``; baut die
+    conftest es nach, ist das Formular selbst schon die Abbildung. Der
+    Test soll beides koennen -- er ist einmal daran zerbrochen, dass
+    voluptuous inzwischen wirklich mitinstalliert wird.
+    """
+    return getattr(data_schema, "schema", data_schema)
+
+
+def _auswahl(pruefer):
+    """Die erlaubten Werte eines ``vol.In`` -- echt oder nachgebaut."""
+    return list(getattr(pruefer, "container", pruefer))
+
+
 def test_form_offers_auto_plus_detected_interfaces(flow):
     result = asyncio.run(flow.async_step_user())
 
     assert result["type"] == "form"
-    schema = result["data_schema"]
-    key = next(k for k in schema if k == CONF_INTERFACE)
-    assert list(schema[key]) == [INTERFACE_AUTO, "enp0s18", "enp0s19"]
+    felder = _felder(result["data_schema"])
+    key = next(k for k in felder if k == CONF_INTERFACE)
+    assert _auswahl(felder[key]) == [INTERFACE_AUTO, "enp0s18", "enp0s19"]
 
 
 def test_auto_uses_find_interface(flow):
