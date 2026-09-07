@@ -400,13 +400,20 @@ three adapters answer `VS_NW_INFO` and every link comes back mirrored from both
 ends — 613/709 from one side, 709/613 from the other — which is what pins the
 offsets down.
 
-The `21/16` factor was held against tpPLC on this hardware and **a factor of
-roughly 1.3 is clearly needed** — without one the display sits ~18% low. The
-exact value could not be pinned down: the two readings were 31 hours apart, and
-across the six directions the observed ratio ranged 1.14–1.30 (the three fast
-links landed within ~2% of `21/16`, the three slow ones 9–15% off, which is the
-signature of drift rather than a wrong constant). Settling it needs a **tpPLC
-screenshot and a Diagnose run taken in the same minute**.
+The `21/16` factor holds on AV1300 as well, **confirmed against tpPLC from a
+Diagnose run and screenshots taken in the same minute** (#108):
+
+| link | raw | tpPLC | `raw * 21/16` |
+|---|---|---|---|
+| PA8010P → 8631P v3 | 694 | 910 | **910** |
+| 8631P v3 → PA8010P | 603 | 791 | **791** |
+| 8631P v3 → 8631P v4 | 184 | 240 | 241 |
+| 8631P v4 → 8631P v3 | 165 | 215 | 216 |
+
+Two three-digit values land exactly and two more within 1 Mbit/s, which settles
+the constant — an earlier attempt with readings 31 hours apart could not, because
+the links themselves drift (a weak link wanders by several percent between two
+polls, so only a simultaneous reading proves anything here).
 
 ### How to add more QCA control safely — capture recipe
 The proven method (every Broadcom feature was built this way): capture the
