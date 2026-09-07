@@ -237,7 +237,8 @@ class TestMixedNetworkChipset(TestCase):
              patch.object(hp, "_qca_read_pib", return_value=None) as pib, \
              patch.object(hp, "_get_param_value", return_value=None) as gp:
             hp.query_device_states([self.AV500, self.AV1000])
-        pib.assert_called_once_with(self.AV500)         # QCA via PIB
+        # the PIB length is passed explicitly now (AV1300 needs a bigger one)
+        pib.assert_called_once_with(self.AV500, size=_MODULE.QCA_PIB_SIZE)
         mx_macs = {c.args[0] for c in gp.call_args_list}
         self.assertIn(self.AV1000, mx_macs)             # AV1000 via MEDIAXTREAM
         self.assertNotIn(self.AV500, mx_macs)

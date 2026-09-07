@@ -226,6 +226,18 @@ class ControlMixin:
             # read-modify-write that flips only the 10-byte LED table and writes
             # every other byte back untouched (see _set_led_qualcomm).
             if cs in ("qualcomm", "unknown"):
+                # AV1300 (TL-PA8010P & co) carries a bigger PIB with the LED
+                # table at different offsets. Checked before the generic write
+                # so we never send a truncated length — and only here, after
+                # Broadcom had its turn, so a Broadcom adapter is never probed
+                # for a PIB it does not have. The probe runs once per adapter
+                # and is remembered. See av1300.py.
+                if self.is_av1300(mac):
+                    if self._set_led_av1300(mac, on):
+                        self._led_success_macs.add(mac.upper())
+                        self._mark_chipset(mac, "qualcomm")
+                        return True
+                    return False
                 if self._set_led_qualcomm(mac, on):
                     self._led_success_macs.add(mac.upper())
                     self._mark_chipset(mac, "qualcomm")
@@ -364,8 +376,12 @@ class ControlMixin:
         if new is None:
             _LOGGER.error("Unknown QoS priority: %s", priority)
             return False
-        pib = self._qca_read_pib(mac)
-        if not pib or len(pib) != QCA_PIB_SIZE:
+        # QoS needs no AV1300 special case: the field and the four values are
+        # identical there (verified on all three adapters in #108). Only the
+        # PIB length differs, and _pib_size supplies it.
+        size = self._pib_size(mac)
+        pib = self._qca_read_pib(mac, size=size)
+        if not pib or len(pib) != size:
             _LOGGER.debug("QCA QoS: could not read PIB from %s", mac)
             return False
 
@@ -387,7 +403,7 @@ class ControlMixin:
         # logging only.
         dst = mac_to_bytes(mac)
         cstart = (QCA_QOS_OFFSET // QCA_PIB_CHUNK) * QCA_PIB_CHUNK
-        clen = min(QCA_PIB_CHUNK, QCA_PIB_SIZE - cstart)
+        clen = min(QCA_PIB_CHUNK, len(buf) - cstart)
         time.sleep(0.4)
         chunk = self._qca_read_chunk(dst, mac, cstart, clen)
         verified = bool(chunk) and len(chunk) > QCA_QOS_OFFSET - cstart + 1 and \
@@ -404,6 +420,13 @@ class ControlMixin:
         Writes the captured power-saving bytes (off = all zero) and maintains
         the two XOR checksums via qca_pib_set_byte. Reproduces tpPLC's bytes.
         """
+        if self.is_av1300(mac):
+            _LOGGER.warning(
+                "Power saving: %s has the 20888-byte AV1300 PIB, where the "
+                "AV500 power-saving offsets are not verified. Refusing to "
+                "write them blind — a capture of tpPLC changing this setting "
+                "would settle it.", mac)
+            return False
         pib = self._qca_read_pib(mac)
         if not pib or len(pib) != QCA_PIB_SIZE:
             _LOGGER.debug("QCA power saving: could not read PIB from %s", mac)

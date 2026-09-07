@@ -1,6 +1,7 @@
 """Read LED / QoS / power-saving state from adapters."""
 import struct
 
+from .av1300 import AV1300_PIB_SIZE
 from .const import (
     ETH_HDR,
     MX_GET_PARAM_CNF,
@@ -57,15 +58,25 @@ class StateMixin:
             qos_rev = {v: k for k, v in QCA_QOS_VALUES.items()}
             try:
                 for mac in qca_macs:
-                    pib = self._qca_read_pib(mac)
-                    if not pib or len(pib) != QCA_PIB_SIZE:
+                    size = self._pib_size(mac)
+                    pib = self._qca_read_pib(mac, size=size)
+                    if not pib or len(pib) != size:
                         continue
-                    if {pib[o] for o in QCA_LED_OFFSETS} <= {0x00, 0x01}:
+                    if size == AV1300_PIB_SIZE:
+                        # AV1300 keeps its LED table elsewhere. Reading the
+                        # AV500 offsets out of a truncated PIB is what made the
+                        # LED report "on" while the lamps were physically off
+                        # (#108) — better no state than a wrong one.
+                        states[mac]["led"] = self.led_state_av1300(pib)
+                    elif {pib[o] for o in QCA_LED_OFFSETS} <= {0x00, 0x01}:
                         states[mac]["led"] = pib[QCA_LED_OFFSETS[0]] == 0x00
+                    # QoS sits at the same offset on both, well inside either
+                    # PIB, and carries the same four values.
                     qv = struct.unpack_from("<H", pib, QCA_QOS_OFFSET)[0]
                     if qv in qos_rev:
                         states[mac]["qos"] = qos_rev[qv]
-                    states[mac]["power_saving"] = pib[QCA_POWERSAVE_PROBE] == 0x01
+                    if size != AV1300_PIB_SIZE:
+                        states[mac]["power_saving"] =                             pib[QCA_POWERSAVE_PROBE] == 0x01
             finally:
                 self._close()
 
