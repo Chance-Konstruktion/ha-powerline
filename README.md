@@ -128,6 +128,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
 | Netgear **Powerline AV500** / XAV5602 — Qualcomm QCA7420 | ✅ **verified** | ✅ **verified** | ✅ **verified** *(via PIB)* |
 | **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
+| TP-Link **AV1300** / TL-WPA8631P v3+v4, TL-PA8010P v4 | ✅ **verified** | ❌ *(not yet)* | ❌ *(not yet)* |
 | devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
@@ -151,6 +152,14 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > setting (the FRITZ!Powerline app only exposes LED, restart and reset). A
 > **Restart** button is provided (soft reboot via `VS_RS_DEV`); factory reset is
 > not implemented yet. See [`PROTOCOL.md` §9b](PROTOCOL.md).
+
+> 🟡 **TP-Link AV1300:** discovery, online status and PHY rates work
+> (verified on three adapters by a user,
+> [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)).
+> **LED, QoS and power saving do not** — these adapters answer the Qualcomm
+> read MMEs, but their PIB layout differs from the QCA7420 the write path was
+> built on, the same way FRITZ!Powerline did. A tpPLC capture of an LED toggle
+> is what that needs; see [`PROTOCOL.md` §9](PROTOCOL.md).
 
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
 > *Parameter Information Block*. We change them exactly the way the vendor app
