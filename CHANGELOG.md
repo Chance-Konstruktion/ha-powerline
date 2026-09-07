@@ -2,6 +2,18 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [Unreleased]
+
+### Documented
+- **Der Umrechnungsfaktor `21/16` gilt auch auf AV1300 — jetzt belegt.** In
+  [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108) hat der
+  Melder Diagnose-Lauf und tpPLC-Anzeige **in derselben Minute** aufgenommen.
+  Zwei dreistellige Werte treffen damit auf die Einheit genau (694→910,
+  603→791), zwei weitere auf 1 Mbit/s. Beim ersten Versuch lagen die Messungen
+  31 Stunden auseinander, und daran scheiterte der Nachweis: eine schwache
+  Strecke wandert zwischen zwei Abfragen um mehrere Prozent. Kein Codeaenderung,
+  nur die Unsicherheit aus `PROTOCOL.md` gestrichen.
+
 ## [260907] - 2026-09-07
 
 ### Fixed
