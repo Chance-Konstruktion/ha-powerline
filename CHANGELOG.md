@@ -2,7 +2,7 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
-## [Unreleased]
+## [260907] - 2026-09-07
 
 ### Fixed
 - **Raten auf AV1300-Adaptern (TL-WPA8631P, TL-PA8010P) bleiben nicht mehr auf
@@ -21,9 +21,15 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   Rahmen aus dem Bericht liegen als Test bei.
 
 ### Known
-- Der Umrechnungsfaktor `21/16`, an QCA7420 gegen tpPLC geprueft, ist auf AV1300
-  **noch nicht** gegen tpPLCs eigene Anzeige gehalten. Roh waeren es 613/709,
-  angezeigt 804/930 Mbit/s.
+- **Der Umrechnungsfaktor `21/16` ist auf AV1300 nur der Groessenordnung nach
+  bestaetigt.** Gegen tpPLC gehalten (Screenshots aus #108) steht fest: ein
+  Faktor um 1,3 ist noetig, ohne ihn liegt die Anzeige rund 18 % zu niedrig.
+  Der genaue Wert bleibt offen — die beiden Messungen lagen 31 Stunden
+  auseinander, und ueber die sechs Richtungen streut das Verhaeltnis von 1,14
+  bis 1,30. Die drei schnellen Strecken liegen dabei innerhalb von ~2 % beim
+  Faktor `21/16`, die drei langsamen 9–15 % daneben; das sieht nach Drift der
+  Messwerte aus, nicht nach falscher Konstante. Klaeren laesst es sich nur mit
+  tpPLC-Anzeige und Diagnose-Lauf **in derselben Minute**.
 - LED, QoS und Energiesparen bleiben auf diesen Adaptern ohne Wirkung, und der
   gemeldete LED-Zustand ist ein Vorgabewert, kein gelesener. Dafuer fehlt ein
   tpPLC-Mitschnitt.
