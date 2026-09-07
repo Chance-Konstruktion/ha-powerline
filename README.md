@@ -446,6 +446,7 @@ makes this integration work beyond the adapters sitting on my desk.
 |---|---|
 | [@monhomelab](https://github.com/monhomelab) | Spotted that discovery always probed the first NIC, so multi-NIC hosts never found their adapters — and fixed it with the config-flow interface selector ([#97](https://github.com/Chance-Konstruktion/ha-powerline/issues/97), [#98](https://github.com/Chance-Konstruktion/ha-powerline/pull/98)) |
 | [@lemeshovich](https://github.com/lemeshovich) | Verified the integration end-to-end on Netgear Powerline AV500 (XAV5602) — discovery, rates, LED and QoS all confirmed against the official Netgear utility ([#104](https://github.com/Chance-Konstruktion/ha-powerline/issues/104)) |
+| [@dan-el](https://github.com/dan-el) | Brought AV1300 to light — three TP-Link adapters (TL-WPA8631P v3 + v4, TL-PA8010P v4) that were found but showed no rates. His debug log was complete enough to locate the cause without a capture at all: the station list in `VS_NW_INFO` that the parser was reading past. He then measured every link in tpPLC as a reference ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)) |
 
 Found something? Open an [issue](https://github.com/Chance-Konstruktion/ha-powerline/issues)
 — a good report is a contribution, a pull request even more so, and both land here.
