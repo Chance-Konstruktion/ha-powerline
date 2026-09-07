@@ -415,6 +415,40 @@ the constant — an earlier attempt with readings 31 hours apart could not, beca
 the links themselves drift (a weak link wanders by several percent between two
 polls, so only a simultaneous reading proves anything here).
 
+### 9c · TP-Link AV1300 (TL-WPA8631P, TL-PA8010P) — implemented
+
+Same Qualcomm mechanics as §9, two differences, both from tpPLC captures of
+three adapters in [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108):
+
+| | AV1300 | generic QCA7420 |
+|---|---|---|
+| PIB size | **20888** (`0x5198`) | 9072 (`0x2370`) |
+| LED table | `0x255F`, `0x2587`–`0x25CF` in an 8-byte raster — 11 bytes | `QCA_LED_OFFSETS` |
+| QoS | `0x0ADC`, same four values | **identical** |
+| checksums | `0x0374` / `0x03BC` | **identical** |
+
+`0x00` = LEDs on, `0x01` = off. Every LED and QoS write in the captures folds
+its delta into the two checksum fields exactly as `qca_pib_set_byte` does, so
+that function is used unchanged — e.g. eleven LED bytes changing by `0x01`
+(an odd count) took checksum byte 3 from `0x61` to `0x60`, which is what the
+capture shows.
+
+**Detection is the PIB length itself.** `VS_SW_VER` returns all zeros on these
+adapters, so there is no firmware string and no model name to match on. The
+probe reads a short window just below a candidate size and again *at* it, and
+only accepts the size when the first read succeeds and the second fails — an
+adapter that answers every offset is therefore never promoted to a larger PIB.
+On failure it falls back to the generic size.
+
+**Power saving is not implemented** on AV1300: no capture contains one, and the
+AV500 byte table is unverified at these offsets.
+
+> ⛔ **LED on the TL-WPA8631P cannot work over powerline.** Those models have a
+> web interface, and tpPLC toggles their LED with an HTTP `POST /userRpm/appPost`
+> to the adapter's IP — no management frame is sent at all (confirmed by a
+> capture in #108). Only the TL-PA8010P, which has no web UI, is reachable at
+> layer 2. This is a property of the hardware, not a gap in the implementation.
+
 ### How to add more QCA control safely — capture recipe
 The proven method (every Broadcom feature was built this way): capture the
 official **tpPLC** app performing the action against your QCA7420, then decode it.

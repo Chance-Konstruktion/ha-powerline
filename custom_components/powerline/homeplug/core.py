@@ -11,11 +11,13 @@ from .pib import QcaPibMixin
 from .control import ControlMixin
 from .diagnostics import DiagnosticsMixin
 from .fritz import FritzMixin
+from .av1300 import Av1300Mixin
 
 
 class HomeplugAV(
     _HomeplugBase,
     FritzMixin,
+    Av1300Mixin,
     DiscoveryMixin,
     StateMixin,
     QcaPibMixin,

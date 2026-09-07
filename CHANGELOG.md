@@ -65,6 +65,48 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 ## [Unreleased]
 
 ### Added
+- **LED und QoS auf TP-Link AV1300 (TL-PA8010P, TL-WPA8631P).** Aus den
+  tpPLC-Mitschnitten in
+  [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)
+  zurueckgebaut. Die Adapter sprechen dieselbe Qualcomm-Mechanik wie bisher,
+  nur ist ihre PIB **20888 Byte** gross statt 9072, und die LED-Tabelle liegt
+  woanders (elf Bytes bei `0x255F` und `0x2587`-`0x25CF`). **QoS brauchte
+  keine einzige neue Konstante**: dasselbe Feld bei `0x0ADC`, dieselben vier
+  Werte, auf allen drei Adaptern bestaetigt. Auch die Pruefsummenregel gilt
+  unveraendert -- `qca_pib_set_byte` reproduziert die Bytes des Herstellers
+  aufs Bit (elf LED-Bytes um `0x01` verschoben ergeben `0x61` -> `0x60`,
+  genau wie im Mitschnitt). Neues Modul `homeplug/av1300.py`.
+- **Erkennung ueber die PIB-Laenge.** `VS_SW_VER` liefert auf diesen Adaptern
+  nur Nullen, es gibt also weder Firmware-Zeichenkette noch Modellnamen. Die
+  Sondierung liest ein kurzes Fenster knapp **unter** einer vermuteten Groesse
+  und noch einmal **auf** ihr und nimmt die Groesse nur an, wenn das erste
+  gelingt und das zweite scheitert. Ein Adapter, der jeden Offset beantwortet,
+  wird damit nie auf eine groessere PIB hochgestuft; schlaegt die Sondierung
+  fehl, gilt die bisherige Groesse. Das Ergebnis wird je Adapter gemerkt.
+
+### Fixed
+- **Die langsamste Verbindung fehlte in der Topologie.** Seit 260907 liest der
+  Parser zwar alle Paar-Raten, uebernommen wurde je Adapter aber nur die
+  schnellste -- in einem Netz aus drei Adaptern fiel die schwaechste Kante
+  damit immer heraus (gemeldet in #108). Jede gemessene Strecke wird jetzt an
+  den Topologiegraphen gemeldet.
+- **Der LED-Zustand auf AV1300 war erfunden, nicht gelesen.** Er wurde mit den
+  AV500-Offsets aus einer abgeschnittenen PIB geholt und meldete deshalb "an",
+  waehrend die Lampen aus waren. Jetzt wird die richtige Tabelle gelesen -- und
+  wenn sie nicht eindeutig ist, bleibt der Zustand **unbekannt** statt falsch.
+
+### Known
+- **Energiesparen bleibt auf AV1300 aus.** Kein Mitschnitt deckt es ab, und die
+  AV500-Bytes sind an diesen Offsets nicht geprueft; blind schreiben koennte
+  fremde Felder treffen. Ein Mitschnitt wuerde es klaeren.
+- **LED auf dem TL-WPA8631P ist ueber Powerline nicht erreichbar.** Diese
+  Modelle haben eine Weboberflaeche, und tpPLC schaltet ihre LED per HTTP an
+  die IP des Adapters -- es geht gar kein Verwaltungsrahmen ueber die Leitung
+  (im Mitschnitt bestaetigt). Das ist die Bauweise der Geraete, keine Luecke
+  hier.
+
+
+### Added
 - **Network interface selector in the config flow.** Hosts with several NICs can
   now pick the interface the adapters actually live on (e.g. a VLAN leg) instead
   of always probing the first one found. The dropdown lists every up,

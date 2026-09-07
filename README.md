@@ -128,7 +128,8 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
 | Netgear **Powerline AV500** / XAV5602 — Qualcomm QCA7420 | ✅ **verified** | ✅ **verified** | ✅ **verified** *(via PIB)* |
 | **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
-| TP-Link **AV1300** / TL-WPA8631P v3+v4, TL-PA8010P v4 | ✅ **verified** | ❌ *(not yet)* | ❌ *(not yet)* |
+| TP-Link **AV1300** / TL-PA8010P v4 — no web UI | ✅ **verified** | ✅ *(from capture)* | ✅ *(from capture)* |
+| TP-Link **AV1300** / TL-WPA8631P v3+v4 — has web UI | ✅ **verified** | ⛔ *(HTTP only)* | ✅ *(from capture)* |
 | devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
@@ -153,13 +154,17 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > **Restart** button is provided (soft reboot via `VS_RS_DEV`); factory reset is
 > not implemented yet. See [`PROTOCOL.md` §9b](PROTOCOL.md).
 
-> 🟡 **TP-Link AV1300:** discovery, online status and PHY rates work
-> (verified on three adapters by a user,
-> [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)).
-> **LED, QoS and power saving do not** — these adapters answer the Qualcomm
-> read MMEs, but their PIB layout differs from the QCA7420 the write path was
-> built on, the same way FRITZ!Powerline did. A tpPLC capture of an LED toggle
-> is what that needs; see [`PROTOCOL.md` §9](PROTOCOL.md).
+> 🟡 **TP-Link AV1300:** discovery, rates and **QoS** work on all models;
+> the **LED** works on the TL-PA8010P. Reverse-engineered from tpPLC captures
+> supplied by a user ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)):
+> these adapters carry a 20888-byte PIB (not the generic 9072) with the LED
+> table at their own offsets. QoS needed no new code at all — same field, same
+> values. **Power saving is not offered**, as no capture covers it.
+>
+> ⛔ **LED on the TL-WPA8631P cannot work here.** Those models have a web
+> interface and tpPLC toggles their LED over **HTTP** to the adapter's IP — no
+> powerline frame is sent at all. That is the hardware's design, not a missing
+> feature: this integration speaks layer 2 only. Use their web UI for the LED.
 
 > ℹ️ On **Qualcomm** adapters, LED/QoS/power-saving live inside the device's
 > *Parameter Information Block*. We change them exactly the way the vendor app

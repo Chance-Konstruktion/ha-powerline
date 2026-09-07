@@ -261,10 +261,16 @@ class DiscoveryMixin:
                     per_peer = parse_qca_nw_info_stations(data, peers)
                     rates = None
                     if per_peer:
+                        # Every pair is a real measurement — hand each one to
+                        # the topology graph, or the slowest edge in a mesh
+                        # never shows up (only each adapter's best link would).
+                        for pmac, (ptx, prx) in per_peer.items():
+                            self._note_link(src, pmac, ptx, prx)
                         peer, rates = max(per_peer.items(),
                                           key=lambda kv: kv[1][0] + kv[1][1])
                         _LOGGER.debug("VS_NW_INFO stations from %s: %s "
-                                      "(using %s)", src, per_peer, peer)
+                                      "(using %s for the adapter's own rates)",
+                                      src, per_peer, peer)
                     if rates is None:
                         rates = parse_qca_nw_info_cnf(data)
                     if rates and src in devices:
