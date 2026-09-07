@@ -365,10 +365,41 @@ implements this; LED/QoS/power saving all go through the PIB read-modify-write.
 > `0x0374`/`0x03BC` unchanged. The whole-PIB **open checksum** (above) still
 > changes on every write and is what the adapter validates before applying.
 
-**PHY rate** comes from `VS_NW_INFO` (`0xA039`): the responder's average PHY data
-rates are the **last two 4-byte LE** values (TX@end-8, RX@end-4). tpPLC displays
-`floor(raw * 21/16)`; the integration applies the same factor (verified
-124→162, 140→183, 141→185, 142→186).
+**PHY rate** comes from `VS_NW_INFO` (`0xA039`). The confirm ends in a **station
+list**, one 24-byte entry per peer:
+
+```
+ MAC        6 bytes   the peer adapter
+ TEI        1 byte
+ BLE_TX     1 byte    bit-loading estimate, 0 on some firmware
+ BLE_RX     1 byte
+ rsvd       1 byte
+ BDA        6 bytes   the device behind that peer (its wired client)
+ AVG_TX     2 bytes   LE, Mbit/s
+ rsvd       2 bytes   0x0022 on AV1300, 0x0000 on AV500
+ AVG_RX     2 bytes   LE, Mbit/s
+ rsvd       2 bytes
+```
+
+Look the **known peer MAC** up in the payload and read the rates that follow it
+(use the *last* occurrence — a peer that is also the CCO appears in the header
+too). The header length varies with the number of AVLNs, so a fixed offset is
+not safe.
+
+> On a 2-adapter AV500 network there is exactly one entry and the middle field
+> is zero, so `AVG_TX`+`rsvd` and `AVG_RX`+`rsvd` read as two 4-byte LE values at
+> the very end — which is why the older "last two 4-byte values" rule worked
+> there. With a third adapter a second entry follows and that rule lands on
+> padding, yielding no rate at all (issue #108).
+
+tpPLC displays `floor(raw * 21/16)`; the integration applies the same factor
+(verified 124→162, 140→183, 141→185, 142→186 on QCA7420).
+
+**Confirmed on AV1300** (TL-WPA8631P v3 + v4, TL-PA8010P v4, issue #108): all
+three adapters answer `VS_NW_INFO` and every link comes back mirrored from both
+ends — 613/709 from one side, 709/613 from the other — which is what pins the
+offsets down. The `21/16` factor on this hardware is **not yet checked against
+tpPLC's own display**.
 
 ### How to add more QCA control safely — capture recipe
 The proven method (every Broadcom feature was built this way): capture the
