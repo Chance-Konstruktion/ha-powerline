@@ -2,6 +2,32 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [Unreleased]
+
+### Fixed
+- **Raten auf AV1300-Adaptern (TL-WPA8631P, TL-PA8010P) bleiben nicht mehr auf
+  0.** Die Adapter antworten sehr wohl auf `VS_NW_INFO` (`0xA039`) — nur las der
+  Parser die falsche Stelle. Die Antwort endet in einer **Stationsliste** mit
+  einem 24-Byte-Eintrag je Gegenstelle; die bisherige Regel "die letzten beiden
+  4-Byte-Werte" trifft ab dem **dritten** Adapter nur noch die Auffuellbytes des
+  zweiten Eintrags. Bei zwei AV500-Adaptern gab es genau einen Eintrag mit einem
+  Null-Mittelfeld, weshalb die alte Regel dort zufaellig passte. Der Parser sucht
+  jetzt die **bekannte MAC der Gegenstelle** im Rahmen und liest die Raten
+  dahinter — unabhaengig von der Kopflaenge.
+
+  Belegt an den drei Adaptern aus [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108):
+  jede Strecke kommt von beiden Enden spiegelverkehrt heraus (613/709 gegen
+  709/613), und genau diese Symmetrie ist der Beweis fuer die Feldgrenzen. Die
+  Rahmen aus dem Bericht liegen als Test bei.
+
+### Known
+- Der Umrechnungsfaktor `21/16`, an QCA7420 gegen tpPLC geprueft, ist auf AV1300
+  **noch nicht** gegen tpPLCs eigene Anzeige gehalten. Roh waeren es 613/709,
+  angezeigt 804/930 Mbit/s.
+- LED, QoS und Energiesparen bleiben auf diesen Adaptern ohne Wirkung, und der
+  gemeldete LED-Zustand ist ein Vorgabewert, kein gelesener. Dafuer fehlt ein
+  tpPLC-Mitschnitt.
+
 ## [260905] - 2026-09-05
 
 ### Fixed

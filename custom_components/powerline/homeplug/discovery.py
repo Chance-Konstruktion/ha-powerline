@@ -41,6 +41,7 @@ from .parsers import (
     parse_mx_nw_stats_cnf,
     parse_mx_status_ind,
     parse_qca_nw_info_cnf,
+    parse_qca_nw_info_stations,
     parse_qca_nw_stats_cnf,
 )
 
@@ -250,7 +251,22 @@ class DiscoveryMixin:
                     self._chipset = "qualcomm"
                     self._mark_chipset(src, "qualcomm")
                     qca = True
-                    rates = parse_qca_nw_info_cnf(data)
+                    # The confirm carries a station list: one entry per peer
+                    # with that link's rates. Read it first — with more than two
+                    # adapters the older "two 4-byte values at the end" reading
+                    # lands on the second entry's padding and yields nothing
+                    # (issue #108). Take the adapter's fastest link, which is
+                    # the one its traffic actually rides on.
+                    peers = [m for m in devices if m != src]
+                    per_peer = parse_qca_nw_info_stations(data, peers)
+                    rates = None
+                    if per_peer:
+                        peer, rates = max(per_peer.items(),
+                                          key=lambda kv: kv[1][0] + kv[1][1])
+                        _LOGGER.debug("VS_NW_INFO stations from %s: %s "
+                                      "(using %s)", src, per_peer, peer)
+                    if rates is None:
+                        rates = parse_qca_nw_info_cnf(data)
                     if rates and src in devices:
                         devices[src]["tx_rate"], devices[src]["rx_rate"] = rates
                         found = True

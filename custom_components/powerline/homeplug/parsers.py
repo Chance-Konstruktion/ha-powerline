@@ -8,7 +8,7 @@ from .const import (
     QCA_CKSUM_OFFSETS,
     _LOGGER,
 )
-from .frames import mac_to_str
+from .frames import mac_to_bytes, mac_to_str
 
 def parse_discover_cnf(data: bytes) -> list[dict]:
     """Parse CC_DISCOVER_LIST.CNF (0x0015) from 0x88E1."""
@@ -278,6 +278,41 @@ def parse_qca_nw_info_cnf(data: bytes) -> tuple[int, int] | None:
     return (tx * 21 // 16, rx * 21 // 16)
 
 
+def parse_qca_nw_info_stations(data: bytes, peers: list[str]) -> dict[str, tuple[int, int]]:
+    """Parse the per-peer PHY rates from a QCA VS_NW_INFO.CNF (0xA039).
+
+    The confirm ends in a station list; each entry is 24 bytes::
+
+        MAC(6) TEI(1) BLE_TX(1) BLE_RX(1) rsvd(1) BDA(6)
+        AVG_TX(2 LE) rsvd(2) AVG_RX(2 LE) rsvd(2)
+
+    Rather than trust a fixed offset (the header length varies with the number
+    of AVLNs), we look up each **known** peer MAC and read the rates that follow
+    it. The last occurrence is the station entry — a peer that happens to be the
+    CCO also appears earlier in the header.
+
+    Confirmed on a 3-adapter AV1300 network (TL-WPA8631P v3/v4 + TL-PA8010P v4,
+    issue #108): every pair reports mirrored values from both ends, e.g.
+    613/709 from one side and 709/613 from the other. The AV500 tail layout the
+    older parser assumes is the same structure with a single entry and a zero
+    middle field, which is why reading it as two 4-byte values worked there.
+
+    Returns ``{peer_mac: (tx, rx)}`` in Mbit/s, scaled the way tpPLC displays
+    them; peers with no plausible entry are omitted.
+    """
+    payload = data[ETH_HDR:]
+    out: dict[str, tuple[int, int]] = {}
+    for peer in peers:
+        needle = mac_to_bytes(peer)
+        pos = payload.rfind(needle)
+        if pos < 0 or pos + 24 > len(payload):
+            continue
+        tx, rx = struct.unpack_from("<H", payload, pos + 16)[0],             struct.unpack_from("<H", payload, pos + 20)[0]
+        if (tx or rx) and tx <= 5000 and rx <= 5000:
+            out[peer] = (tx * 21 // 16, rx * 21 // 16)
+    return out
+
+
 def qca_pib_checksum(pib: bytes) -> bytes:
     """The 4-byte PIB checksum the write-open carries to *apply* the change.
 
@@ -317,6 +352,7 @@ __all__ = [
     "parse_mx_nw_stats_cnf",
     "parse_mx_status_ind",
     "parse_qca_nw_info_cnf",
+    "parse_qca_nw_info_stations",
     "parse_qca_nw_stats_cnf",
     "qca_pib_checksum",
     "qca_pib_set_byte",

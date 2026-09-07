@@ -12,6 +12,7 @@ parse_mx_nw_stats_cnf = _MODULE.parse_mx_nw_stats_cnf
 parse_mx_get_param_cnf = _MODULE.parse_mx_get_param_cnf
 decode_phy_rate = _MODULE.decode_phy_rate
 parse_qca_nw_info_cnf = _MODULE.parse_qca_nw_info_cnf
+parse_qca_nw_info_stations = _MODULE.parse_qca_nw_info_stations
 mac_to_bytes = _MODULE.mac_to_bytes
 HomeplugAV = _MODULE.HomeplugAV
 import struct
@@ -34,6 +35,66 @@ class TestQcaNwInfo(TestCase):
     def test_idle_link_yields_none(self) -> None:
         body = b"\x00" * 60
         self.assertIsNone(parse_qca_nw_info_cnf(self._frame(body)))
+
+
+class TestQcaNwInfoStations(TestCase):
+    """Per-peer PHY rates from the station list — real AV1300 frames (#108).
+
+    Three TP-Link adapters (TL-WPA8631P v3 + v4, TL-PA8010P v4) captured by a
+    user. Every link must come out mirrored from both ends; that symmetry is
+    what proves the field offsets are right.
+    """
+
+    # from → full 0xA039 payload as logged by Diagnose
+    FRAMES = {
+        "9C:A2:F4:B0:E7:C0":
+            "0139a0000000b052000052000001788862a27e690a00000f08000000000"
+            "05ce931550c92020000000200000000005ce931550c920226200068ec8a"
+            "0f7194c3002200b70000003c52a1a91c4f0a141400c84d4421e5e065022"
+            "200c5020000",
+        "3C:52:A1:A9:1C:4F":
+            "0139a0000000b052000052000001788862a27e690a00000f0a000000000"
+            "05ce931550c92020000000200000000005ce931550c92021c1c00d41ad1"
+            "419c8c73012200280100009ca2f4b0e7c0081a14009009d088e643c5022"
+            "20065020000",
+        "5C:E9:31:55:0C:92":
+            "0139a0000000b052000052000001788862a27e690a00000f02000000000"
+            "25ce931550c92020000000200000000009ca2f4b0e7c00800000090"
+            "09d088e643b7002200c30000003c52a1a91c4f0a000000c84d4421e5"
+            "e02801220073010000",
+    }
+    ALL = list(FRAMES)
+
+    def _frame(self, src: str) -> bytes:
+        eth = b"\xaa" * 6 + mac_to_bytes(src) + struct.pack("!H", 0x88E1)
+        return eth + bytes.fromhex(self.FRAMES[src])
+
+    def _rates(self, src: str) -> dict:
+        peers = [m for m in self.ALL if m != src]
+        return parse_qca_nw_info_stations(self._frame(src), peers)
+
+    def test_every_peer_is_found(self) -> None:
+        for src in self.ALL:
+            with self.subTest(src=src):
+                self.assertEqual(len(self._rates(src)), 2)
+
+    def test_links_are_mirrored_between_both_ends(self) -> None:
+        for a in self.ALL:
+            for b, (tx, rx) in self._rates(a).items():
+                with self.subTest(link=f"{a}->{b}"):
+                    # what A sends to B is what B receives from A
+                    self.assertEqual((tx, rx), self._rates(b)[a][::-1])
+
+    def test_rates_match_the_capture(self) -> None:
+        # raw 613/709 scaled the way tpPLC displays them (x21/16)
+        self.assertEqual(
+            self._rates("9C:A2:F4:B0:E7:C0")["3C:52:A1:A9:1C:4F"],
+            (613 * 21 // 16, 709 * 21 // 16))
+
+    def test_unknown_peer_is_omitted(self) -> None:
+        rates = parse_qca_nw_info_stations(
+            self._frame("9C:A2:F4:B0:E7:C0"), ["00:11:22:33:44:55"])
+        self.assertEqual(rates, {})
 
 
 class TestMirrorLinkRate(TestCase):
