@@ -425,6 +425,7 @@ three adapters in [#108](https://github.com/Chance-Konstruktion/ha-powerline/iss
 | PIB size | **22344** (`0x5748`) | 9072 (`0x2370`) |
 | LED table | `0x255F`, `0x2587`–`0x25CF` in an 8-byte raster — 11 bytes | `QCA_LED_OFFSETS` |
 | QoS | `0x0ADC`, same four values | **identical** |
+| power saving | `0x27D5`, `0x27D6`, `0x287E`, `0x28F8`, `0x2907` | `QCA_POWERSAVE_BYTES` |
 | checksums | `0x0374` / `0x03BC` | **identical** |
 
 `0x00` = LEDs on, `0x01` = off. Every LED and QoS write in the captures folds
@@ -446,8 +447,10 @@ only accepts the size when the first read succeeds and the second fails — an
 adapter that answers every offset is therefore never promoted to a larger PIB.
 On failure it falls back to the generic size.
 
-**Power saving is not implemented** on AV1300: no capture contains one, and the
-AV500 byte table is unverified at these offsets.
+**Power saving** carries the *same five values in the same order* as the AV500
+table, shifted by a constant `0x694`. Like the LED table it lives beyond the
+generic 9072 bytes — the other reason it could not work before the PIB size was
+right.
 
 > ⛔ **LED on the TL-WPA8631P cannot work over powerline.** Those models have a
 > web interface, and tpPLC toggles their LED with an HTTP `POST /userRpm/appPost`

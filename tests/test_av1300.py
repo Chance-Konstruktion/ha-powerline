@@ -10,6 +10,7 @@ from unittest.mock import patch
 from custom_components.powerline import homeplug as _MODULE
 from custom_components.powerline.homeplug.av1300 import (
     AV1300_LED_OFFSETS,
+    AV1300_POWERSAVE_BYTES,
     AV1300_LED_OFF,
     AV1300_LED_ON,
     AV1300_PIB_SIZE,
@@ -189,3 +190,68 @@ class TestCcoAndVendor(TestCase):
         self.assertEqual("AVM", vendor_for_mac("5c:49:79:11:22:33"))
         self.assertEqual(MANUFACTURER, vendor_for_mac("00:11:22:33:44:55"))
         self.assertEqual(MANUFACTURER, vendor_for_mac(""))
+
+
+class TestAv1300PowerSaving(TestCase):
+    """Power saving, from the on/off capture pair of the TL-PA8010P (#108).
+
+    All eight checksum bytes below are the ones tpPLC actually wrote.
+    """
+
+    def _pib(self, on: bool, ck0: bytes, ck1: bytes) -> bytearray:
+        buf = bytearray(AV1300_PIB_SIZE)
+        for off, val in AV1300_POWERSAVE_BYTES.items():
+            buf[off] = val if on else 0x00
+        buf[CK0:CK0 + 4] = ck0
+        buf[CK1:CK1 + 4] = ck1
+        return buf
+
+    def test_switching_on_matches_capture(self) -> None:
+        buf = self._pib(False, bytes.fromhex("c81354fa"),
+                        bytes.fromhex("71bcea05"))
+        for off, val in AV1300_POWERSAVE_BYTES.items():
+            qca_pib_set_byte(buf, off, val)
+        self.assertEqual(bytes.fromhex("c91bc3f8"), bytes(buf[CK0:CK0 + 4]))
+        self.assertEqual(bytes.fromhex("70b47d07"), bytes(buf[CK1:CK1 + 4]))
+
+    def test_switching_off_matches_capture(self) -> None:
+        buf = self._pib(True, bytes.fromhex("8c2a6d1e"),
+                        bytes.fromhex("3585d3e1"))
+        for off in AV1300_POWERSAVE_BYTES:
+            qca_pib_set_byte(buf, off, 0x00)
+        self.assertEqual(bytes.fromhex("8d22fa1c"), bytes(buf[CK0:CK0 + 4]))
+        self.assertEqual(bytes.fromhex("348d44e3"), bytes(buf[CK1:CK1 + 4]))
+
+    def test_five_bytes_and_the_checksums_only(self) -> None:
+        buf = self._pib(False, bytes.fromhex("c81354fa"),
+                        bytes.fromhex("71bcea05"))
+        before = bytes(buf)
+        for off, val in AV1300_POWERSAVE_BYTES.items():
+            qca_pib_set_byte(buf, off, val)
+        changed = {i for i in range(len(buf)) if buf[i] != before[i]}
+        expected = set(AV1300_POWERSAVE_BYTES) |             {CK0 + i for i in range(4)} | {CK1 + i for i in range(4)}
+        self.assertEqual(expected, changed)
+
+    def test_same_values_as_av500_shifted_by_a_constant(self) -> None:
+        # The relationship that makes these offsets believable rather than
+        # merely observed: same five values, in order, at a fixed distance.
+        av500 = sorted(_MODULE.QCA_POWERSAVE_BYTES.items())
+        av1300 = sorted(AV1300_POWERSAVE_BYTES.items())
+        self.assertEqual([v for _, v in av500], [v for _, v in av1300])
+        shifts = {b - a for (a, _), (b, _) in zip(av500, av1300)}
+        self.assertEqual({0x694}, shifts)
+
+    def test_state_reads_both_ways_and_refuses_a_mix(self) -> None:
+        hp = HomeplugAV("eth0")
+        on = self._pib(True, b"\x00" * 4, b"\x00" * 4)
+        off = self._pib(False, b"\x00" * 4, b"\x00" * 4)
+        self.assertIs(True, hp.power_saving_state_av1300(bytes(on)))
+        self.assertIs(False, hp.power_saving_state_av1300(bytes(off)))
+        mixed = bytearray(on)
+        mixed[max(AV1300_POWERSAVE_BYTES)] = 0x00
+        self.assertIsNone(hp.power_saving_state_av1300(bytes(mixed)))
+        self.assertIsNone(hp.power_saving_state_av1300(b"\x00" * 32))
+
+    def test_power_saving_lies_beyond_the_generic_pib(self) -> None:
+        self.assertGreater(min(AV1300_POWERSAVE_BYTES), _MODULE.QCA_PIB_SIZE)
+        self.assertLess(max(AV1300_POWERSAVE_BYTES), AV1300_PIB_SIZE)
