@@ -159,7 +159,8 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > supplied by a user ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)):
 > these adapters carry a 20888-byte PIB (not the generic 9072) with the LED
 > table at their own offsets. QoS needed no new code at all — same field, same
-> values. **Power saving is not offered**, as no capture covers it.
+> values. **Power saving** works too — the same five values as AV500, at
+> their own offsets.
 >
 > ⛔ **LED on the TL-WPA8631P cannot work here.** Those models have a web
 > interface and tpPLC toggles their LED over **HTTP** to the adapter's IP — no

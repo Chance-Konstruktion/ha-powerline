@@ -65,6 +65,17 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 ## [Unreleased]
 
 ### Added
+- **Energiesparen auf AV1300.** Aus einem Mitschnittpaar (ein/aus) des
+  TL-PA8010P in [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108).
+  Es sind **dieselben fuenf Werte in derselben Reihenfolge** wie in der
+  AV500-Tabelle, nur um konstant `0x694` verschoben -- diese Beziehung macht die
+  Offsets glaubwuerdig statt bloss beobachtet, und ein Test haelt sie fest. Die
+  Bytes liegen bei `0x27D5` bis `0x2907`, also jenseits der generischen 9072;
+  das war der zweite Grund, warum es vor der richtigen PIB-Groesse nicht gehen
+  konnte. Die acht Pruefsummenbytes aus beiden Richtungen stehen als Test im
+  Code -- darunter der Fall, in dem zwei geaenderte Bytes auf dieselbe
+  Pruefsummenstelle fallen und sich zu `0x97` verrechnen, genau wie im
+  Mitschnitt.
 - **LED und QoS auf TP-Link AV1300 (TL-PA8010P, TL-WPA8631P).** Aus den
   tpPLC-Mitschnitten in
   [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)

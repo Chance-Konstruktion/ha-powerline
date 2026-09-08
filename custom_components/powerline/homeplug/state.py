@@ -75,7 +75,9 @@ class StateMixin:
                     qv = struct.unpack_from("<H", pib, QCA_QOS_OFFSET)[0]
                     if qv in qos_rev:
                         states[mac]["qos"] = qos_rev[qv]
-                    if size != AV1300_PIB_SIZE:
+                    if size == AV1300_PIB_SIZE:
+                        states[mac]["power_saving"] =                             self.power_saving_state_av1300(pib)
+                    else:
                         states[mac]["power_saving"] =                             pib[QCA_POWERSAVE_PROBE] == 0x01
             finally:
                 self._close()

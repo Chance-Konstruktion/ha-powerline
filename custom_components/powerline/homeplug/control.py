@@ -420,13 +420,9 @@ class ControlMixin:
         Writes the captured power-saving bytes (off = all zero) and maintains
         the two XOR checksums via qca_pib_set_byte. Reproduces tpPLC's bytes.
         """
+        # AV1300 keeps the same five power-saving values at its own offsets.
         if self.is_av1300(mac):
-            _LOGGER.warning(
-                "Power saving: %s has the 20888-byte AV1300 PIB, where the "
-                "AV500 power-saving offsets are not verified. Refusing to "
-                "write them blind — a capture of tpPLC changing this setting "
-                "would settle it.", mac)
-            return False
+            return self._set_power_saving_av1300(mac, on)
         pib = self._qca_read_pib(mac)
         if not pib or len(pib) != QCA_PIB_SIZE:
             _LOGGER.debug("QCA power saving: could not read PIB from %s", mac)

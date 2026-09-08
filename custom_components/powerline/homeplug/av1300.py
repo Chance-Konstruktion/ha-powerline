@@ -29,9 +29,11 @@ checksum rule: every LED and QoS write in the captures folds its delta into
 ``0x0374``/``0x03BC`` exactly the way ``qca_pib_set_byte`` does it, so that
 function is used unchanged.
 
-**Power saving is not implemented here.** The captures contain no power-saving
-write, and the AV500 byte table (``QCA_POWERSAVE_BYTES``) is not verified at
-these offsets — writing it blind could hit unrelated fields.
+**Power saving** works the same way, from a later pair of captures in the same
+issue. Its five bytes carry the *same values in the same order* as the AV500
+table (``QCA_POWERSAVE_BYTES``), shifted by a constant ``0x694``. They sit at
+0x27D5..0x2907, again beyond the generic 9072 bytes — which is the other reason
+this never worked here before the PIB size was right.
 
 **LED on the TL-WPA8631P models does not work over powerline at all.** Those
 have a web interface, and tpPLC drives their LED with an HTTP ``POST
@@ -61,6 +63,15 @@ AV1300_LED_OFFSETS = (0x255F, 0x2587, 0x258F, 0x2597, 0x259F, 0x25A7,
                       0x25AF, 0x25B7, 0x25BF, 0x25C7, 0x25CF)
 AV1300_LED_ON = 0x00
 AV1300_LED_OFF = 0x01
+
+# Power-saving bytes; "off" is all zero. Same five values as the AV500 table,
+# shifted by a constant 0x694 — derived from a tpPLC on/off capture pair of the
+# TL-PA8010P (#108), where exactly these five bytes (plus the checksums that
+# qca_pib_set_byte maintains) change, symmetrically in both directions.
+AV1300_POWERSAVE_BYTES = {0x27D5: 0x08, 0x27D6: 0x96,
+                          0x287E: 0x01, 0x28F8: 0x01, 0x2907: 0x02}
+# One of the bytes above, used to read the state back.
+AV1300_POWERSAVE_PROBE = 0x287E
 
 # Probe window: read this many bytes just below a candidate PIB end.
 _PROBE = 16
@@ -115,13 +126,13 @@ class Av1300Mixin:
         return bool(chunk) and len(chunk) == _PROBE
 
     def is_av1300(self, mac: str) -> bool:
-        """True if this adapter carries the 20888-byte AV1300 PIB."""
+        """True if this adapter carries the 22344-byte AV1300 PIB."""
         return bool(mac) and self._pib_size(mac) == AV1300_PIB_SIZE
 
     def _set_led_av1300(self, mac: str, on: bool) -> bool:
         """Toggle the LEDs on an AV1300 adapter via a full-size PIB RMW.
 
-        Reads the adapter's own 20888-byte PIB, flips the eleven LED-enable
+        Reads the adapter's own 22344-byte PIB, flips the eleven LED-enable
         bytes through ``qca_pib_set_byte`` (which keeps the two section
         checksums valid) and writes it back — the same sequence tpPLC sends.
         """
@@ -151,6 +162,46 @@ class Av1300Mixin:
         _LOGGER.info("AV1300 LED %s written on %s", "ON" if on else "OFF", mac)
         return True
 
+    def _set_power_saving_av1300(self, mac: str, on: bool) -> bool:
+        """Set power saving on an AV1300 adapter via a full-size PIB RMW."""
+        size = self._pib_size(mac)
+        pib = self._qca_read_pib(mac, size=size)
+        if not pib or len(pib) != size:
+            _LOGGER.debug("AV1300 power saving: could not read %d-byte PIB "
+                          "from %s (got %s)", size, mac,
+                          len(pib) if pib else 0)
+            return False
+
+        # Same safety net as the LED path: every byte must currently hold either
+        # its "on" value or zero. Anything else means this is not the table we
+        # decoded, and guessing is not worth a corrupt PIB.
+        for off, on_val in AV1300_POWERSAVE_BYTES.items():
+            if pib[off] not in (0x00, on_val):
+                _LOGGER.warning("AV1300 power saving: unexpected byte %#04x at "
+                                "%#06x on %s; aborting", pib[off], off, mac)
+                return False
+
+        buf = bytearray(pib)
+        for off, on_val in AV1300_POWERSAVE_BYTES.items():
+            qca_pib_set_byte(buf, off, on_val if on else 0x00)
+        if not self._qca_write_pib(mac, bytes(buf), close_retries=8):
+            return False
+        _LOGGER.info("AV1300 power saving %s written on %s",
+                     "ON" if on else "OFF", mac)
+        return True
+
+    def power_saving_state_av1300(self, pib: bytes) -> bool | None:
+        """Read power saving out of an AV1300 PIB, or None if inconsistent."""
+        if not pib or len(pib) <= max(AV1300_POWERSAVE_BYTES):
+            return None
+        on = {pib[o] == v for o, v in AV1300_POWERSAVE_BYTES.items()}
+        off = {pib[o] == 0x00 for o in AV1300_POWERSAVE_BYTES}
+        if on == {True}:
+            return True
+        if off == {True}:
+            return False
+        return None
+
     def led_state_av1300(self, pib: bytes) -> bool | None:
         """Read the LED state out of an AV1300 PIB, or None if unreadable."""
         if not pib or len(pib) < AV1300_LED_OFFSETS[-1] + 1:
@@ -165,6 +216,8 @@ class Av1300Mixin:
 
 __all__ = [
     "AV1300_LED_OFFSETS",
+    "AV1300_POWERSAVE_BYTES",
+    "AV1300_POWERSAVE_PROBE",
     "AV1300_LED_OFF",
     "AV1300_LED_ON",
     "AV1300_PIB_SIZE",
