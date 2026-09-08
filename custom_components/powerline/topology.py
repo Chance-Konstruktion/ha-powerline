@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from .const import MANUFACTURER, get_mac, normalize_mac
+from .const import MANUFACTURER, get_mac, normalize_mac, vendor_for_mac
 
 DEFAULT_OFFLINE_RETENTION_SECONDS = 3600
 
@@ -134,7 +134,7 @@ class TopologyManager:
         return {
             "mac": mac,
             "name": dev.get("name") or dev.get("alias") or mac,
-            "manufacturer": dev.get("manufacturer") or MANUFACTURER,
+            "manufacturer": dev.get("manufacturer") or vendor_for_mac(mac),
             "model": dev.get("model") or "",
             "firmware": dev.get("firmware_ver") or dev.get("firmware") or "",
             "chipset": dev.get("chipset") or "",

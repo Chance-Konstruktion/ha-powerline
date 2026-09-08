@@ -313,6 +313,25 @@ def parse_qca_nw_info_stations(data: bytes, peers: list[str]) -> dict[str, tuple
     return out
 
 
+def parse_qca_nw_info_cco(data: bytes) -> str | None:
+    """The network's central coordinator (CCo) MAC from VS_NW_INFO.CNF.
+
+    It sits at payload offset 30, followed by its TEI. Verified across six
+    captured confirms from three adapters in two separate runs (#108): within a
+    run all three name the same CCo, and between runs it had changed — which is
+    normal, powerline networks re-elect the coordinator.
+
+    Without this the topology view labels every adapter's role "unknown".
+    """
+    payload = data[ETH_HDR:]
+    if len(payload) < 36:
+        return None
+    mac = payload[30:36]
+    if not any(mac) or mac == b"\xff" * 6:
+        return None
+    return mac_to_str(mac)
+
+
 def qca_pib_checksum(pib: bytes) -> bytes:
     """The 4-byte PIB checksum the write-open carries to *apply* the change.
 
@@ -351,6 +370,7 @@ __all__ = [
     "parse_mx_nw_info_cnf",
     "parse_mx_nw_stats_cnf",
     "parse_mx_status_ind",
+    "parse_qca_nw_info_cco",
     "parse_qca_nw_info_cnf",
     "parse_qca_nw_info_stations",
     "parse_qca_nw_stats_cnf",
