@@ -69,13 +69,18 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   tpPLC-Mitschnitten in
   [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)
   zurueckgebaut. Die Adapter sprechen dieselbe Qualcomm-Mechanik wie bisher,
-  nur ist ihre PIB **20888 Byte** gross statt 9072, und die LED-Tabelle liegt
+  nur ist ihre PIB **22344 Byte** gross statt 9072, und die LED-Tabelle liegt
   woanders (elf Bytes bei `0x255F` und `0x2587`-`0x25CF`). **QoS brauchte
   keine einzige neue Konstante**: dasselbe Feld bei `0x0ADC`, dieselben vier
   Werte, auf allen drei Adaptern bestaetigt. Auch die Pruefsummenregel gilt
   unveraendert -- `qca_pib_set_byte` reproduziert die Bytes des Herstellers
   aufs Bit (elf LED-Bytes um `0x01` verschoben ergeben `0x61` -> `0x60`,
   genau wie im Mitschnitt). Neues Modul `homeplug/av1300.py`.
+  Die 22344 sind die Laenge, die tpPLC beim Schreiben ankuendigt; die 20888,
+  die es vorher liest, sind es nicht. Der Unterschied ist nicht akademisch:
+  faellt die Groesse zu klein aus, tut die LED stillschweigend nichts, waehrend
+  QoS weiter funktioniert -- `0x0ADC` liegt auch in der kleinen PIB, `0x255F`
+  nicht.
 - **Erkennung ueber die PIB-Laenge.** `VS_SW_VER` liefert auf diesen Adaptern
   nur Nullen, es gibt also weder Firmware-Zeichenkette noch Modellnamen. Die
   Sondierung liest ein kurzes Fenster knapp **unter** einer vermuteten Groesse
@@ -94,6 +99,15 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   AV500-Offsets aus einer abgeschnittenen PIB geholt und meldete deshalb "an",
   waehrend die Lampen aus waren. Jetzt wird die richtige Tabelle gelesen -- und
   wenn sie nicht eindeutig ist, bleibt der Zustand **unbekannt** statt falsch.
+
+- **Rolle und Hersteller in der Karte.** Die Rolle stand immer auf "unknown",
+  weil die MAC des Koordinators (CCo) nirgends ankam -- sie steht in jedem
+  `VS_NW_INFO` bei Offset 30 und wird jetzt gelesen. Und als Hersteller stand
+  bei jedem Geraet "Powerline": die Adapter nennen ihren Hersteller selbst
+  nicht, deshalb gibt es jetzt eine kurze Zuordnung ueber die MAC-Kennung.
+  Bewusst kurz -- sie enthaelt nur Kennungen von Geraeten, die wirklich
+  geprueft wurden; alles andere behaelt die neutrale Bezeichnung, statt zu
+  raten. Beides in #108 gemeldet.
 
 ### Known
 - **Energiesparen bleibt auf AV1300 aus.** Kein Mitschnitt deckt es ab, und die

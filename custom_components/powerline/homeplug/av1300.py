@@ -6,10 +6,18 @@ the QCA7420 path. Two things differ, and both were reverse-engineered from
 tpPLC captures of three adapters (TL-WPA8631P v3 + v4, TL-PA8010P v4) supplied
 in issue #108:
 
-  1. The PIB is **20888 bytes** (``0x5198``) instead of the generic 9072
+  1. The PIB is **22344 bytes** (``0x5748``) instead of the generic 9072
      (``QCA_PIB_SIZE``) or AVM's 9796. Reading only the first 9072 bytes would
      truncate it and produce a wrong open length and checksum, which the
      firmware rejects — the same failure mode FRITZ!Powerline had.
+
+     This is the length tpPLC declares in its write-open, identically in all
+     fourteen captures across all three adapters. Note that tpPLC first *reads*
+     only the leading 20888 bytes and then writes all 22344 back. Taking that
+     read length for the PIB size was the first attempt here, and it failed on
+     hardware in an instructive way: QoS kept working, because offset 0x0ADC
+     sits inside even the generic 9072 bytes, while the LED table at 0x255F
+     lies beyond them and so was never written at all.
 
   2. The **LED table sits elsewhere**: 11 enable bytes at
      ``AV1300_LED_OFFSETS`` rather than ``QCA_LED_OFFSETS``.
@@ -40,9 +48,10 @@ from .frames import mac_to_bytes
 from .fritz import AVM_PIB_SIZE
 from .parsers import qca_pib_set_byte
 
-# Verified PIB length of TL-WPA8631P v3/v4 and TL-PA8010P v4 (#108). All three
-# adapters read back exactly this many bytes.
-AV1300_PIB_SIZE = 0x5198        # 20888 bytes
+# PIB length of TL-WPA8631P v3/v4 and TL-PA8010P v4 (#108): the value tpPLC
+# puts in its write-open, the same in every capture from all three adapters.
+# NOT the amount it reads back first (20888) — see the module docstring.
+AV1300_PIB_SIZE = 0x5748        # 22344 bytes
 
 # LED-enable bytes: 0x00 = LEDs on, 0x01 = off. Ten of them sit in an 8-byte
 # raster (0x2587…0x25CF), one stands apart at 0x255F. Derived from a tpPLC

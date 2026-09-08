@@ -40,6 +40,7 @@ from .parsers import (
     parse_mx_nw_info_cnf,
     parse_mx_nw_stats_cnf,
     parse_mx_status_ind,
+    parse_qca_nw_info_cco,
     parse_qca_nw_info_cnf,
     parse_qca_nw_info_stations,
     parse_qca_nw_stats_cnf,
@@ -257,6 +258,9 @@ class DiscoveryMixin:
                     # lands on the second entry's padding and yields nothing
                     # (issue #108). Take the adapter's fastest link, which is
                     # the one its traffic actually rides on.
+                    cco = parse_qca_nw_info_cco(data)
+                    if cco and src in devices:
+                        devices[src]["cco_mac"] = cco
                     peers = [m for m in devices if m != src]
                     per_peer = parse_qca_nw_info_stations(data, peers)
                     rates = None

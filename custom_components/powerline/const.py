@@ -6,6 +6,33 @@ from typing import Any
 DOMAIN = "powerline"
 MANUFACTURER = "Powerline"
 
+# Vendor per MAC prefix. Deliberately short: only prefixes seen on hardware
+# this integration was actually tested against, because a half-remembered OUI
+# table that mislabels someone's adapter is worse than the neutral fallback.
+# Adapters report no vendor name of their own (VS_SW_VER is empty on several
+# models), so without this every device shows up as plain "Powerline".
+OUI_VENDORS = {
+    # TP-Link — the three AV1300 adapters from issue #108 ...
+    "9C:A2:F4": "TP-Link",
+    "5C:E9:31": "TP-Link",
+    "3C:52:A1": "TP-Link",
+    # ... and the AV1000 / AV500 units this integration was developed on
+    "EC:08:6B": "TP-Link",
+    "B0:19:21": "TP-Link",
+    # AVM FRITZ!Powerline (same list as homeplug/fritz.py)
+    "5C:49:79": "AVM",
+    "9C:C7:A6": "AVM",
+    "38:10:D5": "AVM",
+    "C0:25:06": "AVM",
+    "E0:28:6D": "AVM",
+    "00:04:0E": "AVM",
+}
+
+
+def vendor_for_mac(mac: str) -> str:
+    """Vendor name for a MAC, or the neutral fallback when unknown."""
+    return OUI_VENDORS.get((mac or "")[:8].upper(), MANUFACTURER)
+
 # Polling interval (seconds)
 DEFAULT_SCAN_INTERVAL = 120
 CONF_SCAN_INTERVAL = "scan_interval"

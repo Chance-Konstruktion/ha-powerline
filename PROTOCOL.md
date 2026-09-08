@@ -422,7 +422,7 @@ three adapters in [#108](https://github.com/Chance-Konstruktion/ha-powerline/iss
 
 | | AV1300 | generic QCA7420 |
 |---|---|---|
-| PIB size | **20888** (`0x5198`) | 9072 (`0x2370`) |
+| PIB size | **22344** (`0x5748`) | 9072 (`0x2370`) |
 | LED table | `0x255F`, `0x2587`–`0x25CF` in an 8-byte raster — 11 bytes | `QCA_LED_OFFSETS` |
 | QoS | `0x0ADC`, same four values | **identical** |
 | checksums | `0x0374` / `0x03BC` | **identical** |
@@ -432,6 +432,12 @@ its delta into the two checksum fields exactly as `qca_pib_set_byte` does, so
 that function is used unchanged — e.g. eleven LED bytes changing by `0x01`
 (an odd count) took checksum byte 3 from `0x61` to `0x60`, which is what the
 capture shows.
+
+The 22344 is the length tpPLC declares in its **write-open** — identical in
+all fourteen captures. It first reads back only the leading 20888 bytes and
+then writes all 22344; mistaking that read length for the PIB size makes the
+LED silently do nothing while QoS still works, because `0x0ADC` sits inside
+even the generic 9072 bytes and `0x255F` does not.
 
 **Detection is the PIB length itself.** `VS_SW_VER` returns all zeros on these
 adapters, so there is no firmware string and no model name to match on. The

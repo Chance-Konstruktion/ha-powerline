@@ -63,6 +63,25 @@ class TestAv1300LedBytes(TestCase):
         self.assertEqual(11, len(AV1300_LED_OFFSETS))
 
 
+class TestAv1300Geometry(TestCase):
+    """Guards the mistake that made the first hardware test fail.
+
+    The LED table sits beyond the generic PIB, so if the size ever falls back
+    to QCA_PIB_SIZE the LED bytes are silently never written — while QoS keeps
+    working, because its offset is inside even the small PIB. That asymmetry is
+    exactly what was observed on hardware, so it is worth a test.
+    """
+
+    def test_led_table_lies_beyond_the_generic_pib(self) -> None:
+        self.assertGreater(min(AV1300_LED_OFFSETS), _MODULE.QCA_PIB_SIZE)
+
+    def test_led_table_fits_inside_the_av1300_pib(self) -> None:
+        self.assertLess(max(AV1300_LED_OFFSETS), AV1300_PIB_SIZE)
+
+    def test_qos_is_inside_every_pib_size(self) -> None:
+        self.assertLess(_MODULE.QCA_QOS_OFFSET + 1, _MODULE.QCA_PIB_SIZE)
+
+
 class TestAv1300LedState(TestCase):
     """State reads must never guess."""
 
@@ -138,3 +157,35 @@ class TestAv1300Qos(TestCase):
                          _MODULE.QCA_QOS_VALUES["audio_video"])
         self.assertEqual(0x42, buf[_MODULE.QCA_QOS_OFFSET])
         self.assertEqual(0xFA, buf[_MODULE.QCA_QOS_OFFSET + 1])
+
+
+class TestCcoAndVendor(TestCase):
+    """The two cosmetic gaps reported alongside the LED test in #108."""
+
+    # One real VS_NW_INFO.CNF payload; the CCo it names is 3C:52:A1:A9:1C:4F.
+    FRAME = bytes.fromhex(
+        "0139a0000000b052000052000001788862a27e690a00000f0a0000000000"
+        "3c52a1a91c4f120000000200000000005ce931550c9205221e00d41ad141"
+        "9c8cb8002200a40000003c52a1a91c4f1214140098e7f4ecdfb65a022200"
+        "b6020000")
+
+    def _framed(self) -> bytes:
+        eth = b"\xaa" * 6 + b"\xbb" * 6 + struct.pack("!H", 0x88E1)
+        return eth + self.FRAME
+
+    def test_cco_is_read_from_the_confirm(self) -> None:
+        # Without this the topology view calls every adapter's role "unknown".
+        self.assertEqual("3C:52:A1:A9:1C:4F",
+                         _MODULE.parse_qca_nw_info_cco(self._framed()))
+
+    def test_short_or_empty_frame_yields_no_cco(self) -> None:
+        eth = b"\xaa" * 6 + b"\xbb" * 6 + struct.pack("!H", 0x88E1)
+        self.assertIsNone(_MODULE.parse_qca_nw_info_cco(eth + b"\x00" * 20))
+        self.assertIsNone(_MODULE.parse_qca_nw_info_cco(eth + b"\x00" * 60))
+
+    def test_known_vendor_and_neutral_fallback(self) -> None:
+        from custom_components.powerline.const import MANUFACTURER, vendor_for_mac
+        self.assertEqual("TP-Link", vendor_for_mac("3C:52:A1:A9:1C:4F"))
+        self.assertEqual("AVM", vendor_for_mac("5c:49:79:11:22:33"))
+        self.assertEqual(MANUFACTURER, vendor_for_mac("00:11:22:33:44:55"))
+        self.assertEqual(MANUFACTURER, vendor_for_mac(""))
