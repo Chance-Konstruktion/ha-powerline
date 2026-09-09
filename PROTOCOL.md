@@ -452,6 +452,17 @@ table, shifted by a constant `0x694`. Like the LED table it lives beyond the
 generic 9072 bytes — the other reason it could not work before the PIB size was
 right.
 
+LED, QoS and power saving are all **confirmed on the reporter's hardware**, not
+merely decoded: the LED (individually and via "All LEDs on/off") and power
+saving on the TL-PA8010P, QoS on all three adapters.
+
+Note that the **TL-WPA8631P has no power-saving setting of its own** — tpPLC
+offers it only on the TL-PA8010P and gives the Wi-Fi models "Lower PLC-to-VDSL
+Interference Mode" instead. Nothing in the protocol reports that capability, so
+the switch is still created; what these five bytes mean on those models is
+untested. The write checks first that every one of them holds either its "on"
+value or zero, and refuses rather than guessing if it does not.
+
 > ⛔ **LED on the TL-WPA8631P cannot work over powerline.** Those models have a
 > web interface, and tpPLC toggles their LED with an HTTP `POST /userRpm/appPost`
 > to the adapter's IP — no management frame is sent at all (confirmed by a

@@ -35,6 +35,13 @@ table (``QCA_POWERSAVE_BYTES``), shifted by a constant ``0x694``. They sit at
 0x27D5..0x2907, again beyond the generic 9072 bytes — which is the other reason
 this never worked here before the PIB size was right.
 
+LED, QoS and power saving are confirmed on the reporter's hardware, not only
+decoded. The TL-WPA8631P, however, has no power-saving setting in tpPLC at all
+(the Wi-Fi models offer "Lower PLC-to-VDSL Interference Mode" instead), so what
+these five bytes mean there is untested — hence the guard in
+``_set_power_saving_av1300``, which writes only when every byte already holds
+either its "on" value or zero.
+
 **LED on the TL-WPA8631P models does not work over powerline at all.** Those
 have a web interface, and tpPLC drives their LED with an HTTP ``POST
 /userRpm/appPost`` to the adapter's IP instead of a management frame (confirmed

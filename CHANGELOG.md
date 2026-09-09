@@ -4,6 +4,67 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [260909] - 2026-09-09
+
+### Added
+- **Energiesparen auf AV1300.** Aus einem Mitschnittpaar (ein/aus) des
+  TL-PA8010P in [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108).
+  Es sind **dieselben fuenf Werte in derselben Reihenfolge** wie in der
+  AV500-Tabelle, nur um konstant `0x694` verschoben -- diese Beziehung macht die
+  Offsets glaubwuerdig statt bloss beobachtet, und ein Test haelt sie fest. Die
+  Bytes liegen bei `0x27D5` bis `0x2907`, also jenseits der generischen 9072;
+  das war der zweite Grund, warum es vor der richtigen PIB-Groesse nicht gehen
+  konnte. Die acht Pruefsummenbytes aus beiden Richtungen stehen als Test im
+  Code -- darunter der Fall, in dem zwei geaenderte Bytes auf dieselbe
+  Pruefsummenstelle fallen und sich zu `0x97` verrechnen, genau wie im
+  Mitschnitt. Am Geraet bestaetigt: der Melder hat den Schalter auf dem
+  TL-PA8010P ein- und ausgeschaltet und die Wirkung in tpPLC nachgesehen.
+- **LED und QoS auf TP-Link AV1300 (TL-PA8010P, TL-WPA8631P).** Aus den
+  tpPLC-Mitschnitten in
+  [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)
+  zurueckgebaut. Die Adapter sprechen dieselbe Qualcomm-Mechanik wie bisher,
+  nur ist ihre PIB **22344 Byte** gross statt 9072, und die LED-Tabelle liegt
+  woanders (elf Bytes bei `0x255F` und `0x2587`-`0x25CF`). **QoS brauchte
+  keine einzige neue Konstante**: dasselbe Feld bei `0x0ADC`, dieselben vier
+  Werte, auf allen drei Adaptern bestaetigt. Auch die Pruefsummenregel gilt
+  unveraendert -- `qca_pib_set_byte` reproduziert die Bytes des Herstellers
+  aufs Bit (elf LED-Bytes um `0x01` verschoben ergeben `0x61` -> `0x60`,
+  genau wie im Mitschnitt). Neues Modul `homeplug/av1300.py`.
+  Die 22344 sind die Laenge, die tpPLC beim Schreiben ankuendigt; die 20888,
+  die es vorher liest, sind es nicht. Der Unterschied ist nicht akademisch:
+  faellt die Groesse zu klein aus, tut die LED stillschweigend nichts, waehrend
+  QoS weiter funktioniert -- `0x0ADC` liegt auch in der kleinen PIB, `0x255F`
+  nicht. Beides ist am Geraet bestaetigt: die LED auf dem
+  TL-PA8010P (einzeln und ueber "Alle LEDs an/aus"), QoS auf allen drei
+  Adaptern.
+- **Erkennung ueber die PIB-Laenge.** `VS_SW_VER` liefert auf diesen Adaptern
+  nur Nullen, es gibt also weder Firmware-Zeichenkette noch Modellnamen. Die
+  Sondierung liest ein kurzes Fenster knapp **unter** einer vermuteten Groesse
+  und noch einmal **auf** ihr und nimmt die Groesse nur an, wenn das erste
+  gelingt und das zweite scheitert. Ein Adapter, der jeden Offset beantwortet,
+  wird damit nie auf eine groessere PIB hochgestuft; schlaegt die Sondierung
+  fehl, gilt die bisherige Groesse. Das Ergebnis wird je Adapter gemerkt.
+
+### Fixed
+- **Die langsamste Verbindung fehlte in der Topologie.** Seit 260907 liest der
+  Parser zwar alle Paar-Raten, uebernommen wurde je Adapter aber nur die
+  schnellste -- in einem Netz aus drei Adaptern fiel die schwaechste Kante
+  damit immer heraus (gemeldet in #108). Jede gemessene Strecke wird jetzt an
+  den Topologiegraphen gemeldet.
+- **Der LED-Zustand auf AV1300 war erfunden, nicht gelesen.** Er wurde mit den
+  AV500-Offsets aus einer abgeschnittenen PIB geholt und meldete deshalb "an",
+  waehrend die Lampen aus waren. Jetzt wird die richtige Tabelle gelesen -- und
+  wenn sie nicht eindeutig ist, bleibt der Zustand **unbekannt** statt falsch.
+
+- **Rolle und Hersteller in der Karte.** Die Rolle stand immer auf "unknown",
+  weil die MAC des Koordinators (CCo) nirgends ankam -- sie steht in jedem
+  `VS_NW_INFO` bei Offset 30 und wird jetzt gelesen. Und als Hersteller stand
+  bei jedem Geraet "Powerline": die Adapter nennen ihren Hersteller selbst
+  nicht, deshalb gibt es jetzt eine kurze Zuordnung ueber die MAC-Kennung.
+  Bewusst kurz -- sie enthaelt nur Kennungen von Geraeten, die wirklich
+  geprueft wurden; alles andere behaelt die neutrale Bezeichnung, statt zu
+  raten. Beides in #108 gemeldet.
+
 ### Documented
 - **Der Umrechnungsfaktor `21/16` gilt auch auf AV1300 — jetzt belegt.** In
   [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108) hat der
@@ -13,6 +74,21 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   31 Stunden auseinander, und daran scheiterte der Nachweis: eine schwache
   Strecke wandert zwischen zwei Abfragen um mehrere Prozent. Kein Codeaenderung,
   nur die Unsicherheit aus `PROTOCOL.md` gestrichen.
+
+### Known
+- **LED auf dem TL-WPA8631P ist ueber Powerline nicht erreichbar.** Diese
+  Modelle haben eine Weboberflaeche, und tpPLC schaltet ihre LED per HTTP an
+  die IP des Adapters -- es geht gar kein Verwaltungsrahmen ueber die Leitung
+  (im Mitschnitt bestaetigt). Das ist die Bauweise der Geraete, keine Luecke
+  hier.
+- **Energiesparen kennt der TL-WPA8631P gar nicht.** tpPLC bietet den Schalter
+  nur auf dem TL-PA8010P an; die WLAN-Modelle haben stattdessen "Lower
+  PLC-to-VDSL Interference Mode" ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)).
+  Der Schalter erscheint hier trotzdem, denn ausgelesen wird die Faehigkeit
+  nicht -- was er auf diesen Modellen bewirkt, ist ungeprueft. Die Sicherung im
+  Code schreibt nur, wenn alle fuenf Bytes vorher entweder auf ihrem Ein-Wert
+  oder auf Null stehen; steht dort etwas anderes, bricht der Schreibvorgang ab,
+  statt zu raten.
 
 ## [260907] - 2026-09-07
 
@@ -62,74 +138,7 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   der 260801 installiert hat, eine Ruecknahme -- HACS haette nie wieder ein
   Update angeboten.
 
-## [Unreleased]
-
-### Added
-- **Energiesparen auf AV1300.** Aus einem Mitschnittpaar (ein/aus) des
-  TL-PA8010P in [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108).
-  Es sind **dieselben fuenf Werte in derselben Reihenfolge** wie in der
-  AV500-Tabelle, nur um konstant `0x694` verschoben -- diese Beziehung macht die
-  Offsets glaubwuerdig statt bloss beobachtet, und ein Test haelt sie fest. Die
-  Bytes liegen bei `0x27D5` bis `0x2907`, also jenseits der generischen 9072;
-  das war der zweite Grund, warum es vor der richtigen PIB-Groesse nicht gehen
-  konnte. Die acht Pruefsummenbytes aus beiden Richtungen stehen als Test im
-  Code -- darunter der Fall, in dem zwei geaenderte Bytes auf dieselbe
-  Pruefsummenstelle fallen und sich zu `0x97` verrechnen, genau wie im
-  Mitschnitt.
-- **LED und QoS auf TP-Link AV1300 (TL-PA8010P, TL-WPA8631P).** Aus den
-  tpPLC-Mitschnitten in
-  [#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)
-  zurueckgebaut. Die Adapter sprechen dieselbe Qualcomm-Mechanik wie bisher,
-  nur ist ihre PIB **22344 Byte** gross statt 9072, und die LED-Tabelle liegt
-  woanders (elf Bytes bei `0x255F` und `0x2587`-`0x25CF`). **QoS brauchte
-  keine einzige neue Konstante**: dasselbe Feld bei `0x0ADC`, dieselben vier
-  Werte, auf allen drei Adaptern bestaetigt. Auch die Pruefsummenregel gilt
-  unveraendert -- `qca_pib_set_byte` reproduziert die Bytes des Herstellers
-  aufs Bit (elf LED-Bytes um `0x01` verschoben ergeben `0x61` -> `0x60`,
-  genau wie im Mitschnitt). Neues Modul `homeplug/av1300.py`.
-  Die 22344 sind die Laenge, die tpPLC beim Schreiben ankuendigt; die 20888,
-  die es vorher liest, sind es nicht. Der Unterschied ist nicht akademisch:
-  faellt die Groesse zu klein aus, tut die LED stillschweigend nichts, waehrend
-  QoS weiter funktioniert -- `0x0ADC` liegt auch in der kleinen PIB, `0x255F`
-  nicht.
-- **Erkennung ueber die PIB-Laenge.** `VS_SW_VER` liefert auf diesen Adaptern
-  nur Nullen, es gibt also weder Firmware-Zeichenkette noch Modellnamen. Die
-  Sondierung liest ein kurzes Fenster knapp **unter** einer vermuteten Groesse
-  und noch einmal **auf** ihr und nimmt die Groesse nur an, wenn das erste
-  gelingt und das zweite scheitert. Ein Adapter, der jeden Offset beantwortet,
-  wird damit nie auf eine groessere PIB hochgestuft; schlaegt die Sondierung
-  fehl, gilt die bisherige Groesse. Das Ergebnis wird je Adapter gemerkt.
-
-### Fixed
-- **Die langsamste Verbindung fehlte in der Topologie.** Seit 260907 liest der
-  Parser zwar alle Paar-Raten, uebernommen wurde je Adapter aber nur die
-  schnellste -- in einem Netz aus drei Adaptern fiel die schwaechste Kante
-  damit immer heraus (gemeldet in #108). Jede gemessene Strecke wird jetzt an
-  den Topologiegraphen gemeldet.
-- **Der LED-Zustand auf AV1300 war erfunden, nicht gelesen.** Er wurde mit den
-  AV500-Offsets aus einer abgeschnittenen PIB geholt und meldete deshalb "an",
-  waehrend die Lampen aus waren. Jetzt wird die richtige Tabelle gelesen -- und
-  wenn sie nicht eindeutig ist, bleibt der Zustand **unbekannt** statt falsch.
-
-- **Rolle und Hersteller in der Karte.** Die Rolle stand immer auf "unknown",
-  weil die MAC des Koordinators (CCo) nirgends ankam -- sie steht in jedem
-  `VS_NW_INFO` bei Offset 30 und wird jetzt gelesen. Und als Hersteller stand
-  bei jedem Geraet "Powerline": die Adapter nennen ihren Hersteller selbst
-  nicht, deshalb gibt es jetzt eine kurze Zuordnung ueber die MAC-Kennung.
-  Bewusst kurz -- sie enthaelt nur Kennungen von Geraeten, die wirklich
-  geprueft wurden; alles andere behaelt die neutrale Bezeichnung, statt zu
-  raten. Beides in #108 gemeldet.
-
-### Known
-- **Energiesparen bleibt auf AV1300 aus.** Kein Mitschnitt deckt es ab, und die
-  AV500-Bytes sind an diesen Offsets nicht geprueft; blind schreiben koennte
-  fremde Felder treffen. Ein Mitschnitt wuerde es klaeren.
-- **LED auf dem TL-WPA8631P ist ueber Powerline nicht erreichbar.** Diese
-  Modelle haben eine Weboberflaeche, und tpPLC schaltet ihre LED per HTTP an
-  die IP des Adapters -- es geht gar kein Verwaltungsrahmen ueber die Leitung
-  (im Mitschnitt bestaetigt). Das ist die Bauweise der Geraete, keine Luecke
-  hier.
-
+## [260801] - 2026-08-01
 
 ### Added
 - **Network interface selector in the config flow.** Hosts with several NICs can
