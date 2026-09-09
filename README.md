@@ -128,8 +128,8 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
 | Netgear **Powerline AV500** / XAV5602 — Qualcomm QCA7420 | ✅ **verified** | ✅ **verified** | ✅ **verified** *(via PIB)* |
 | **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
-| TP-Link **AV1300** / TL-PA8010P v4 — no web UI | ✅ **verified** | ✅ *(from capture)* | ✅ *(from capture)* |
-| TP-Link **AV1300** / TL-WPA8631P v3+v4 — has web UI | ✅ **verified** | ⛔ *(HTTP only)* | ✅ *(from capture)* |
+| TP-Link **AV1300** / TL-PA8010P v4 — no web UI | ✅ **verified** | ✅ **verified** | ✅ **verified** |
+| TP-Link **AV1300** / TL-WPA8631P v3+v4 — has web UI | ✅ **verified** | ⛔ *(HTTP only)* | ✅ QoS · — *(no PS setting)* |
 | devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
@@ -155,12 +155,20 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > not implemented yet. See [`PROTOCOL.md` §9b](PROTOCOL.md).
 
 > 🟡 **TP-Link AV1300:** discovery, rates and **QoS** work on all models;
-> the **LED** works on the TL-PA8010P. Reverse-engineered from tpPLC captures
-> supplied by a user ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)):
-> these adapters carry a 20888-byte PIB (not the generic 9072) with the LED
-> table at their own offsets. QoS needed no new code at all — same field, same
-> values. **Power saving** works too — the same five values as AV500, at
-> their own offsets.
+> **LED** and **power saving** work on the TL-PA8010P. Reverse-engineered from
+> tpPLC captures supplied by a user
+> ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)) and
+> then confirmed on his hardware: these adapters carry a **22344-byte** PIB (not
+> the generic 9072) with the LED table at their own offsets. QoS needed no new
+> code at all — same field, same values. Power saving turned out to be the same
+> five values as AV500, shifted by a constant `0x694`.
+>
+> The TL-WPA8631P has **no power-saving setting of its own** — tpPLC offers it
+> only on the TL-PA8010P and gives the Wi-Fi models "Lower PLC-to-VDSL
+> Interference Mode" instead. The switch still appears here, because the
+> capability is not something the adapter reports; what it does on those models
+> is untested. The write refuses rather than guesses if the five bytes do not
+> already hold either their "on" value or zero.
 >
 > ⛔ **LED on the TL-WPA8631P cannot work here.** Those models have a web
 > interface and tpPLC toggles their LED over **HTTP** to the adapter's IP — no
@@ -452,7 +460,7 @@ makes this integration work beyond the adapters sitting on my desk.
 |---|---|
 | [@monhomelab](https://github.com/monhomelab) | Spotted that discovery always probed the first NIC, so multi-NIC hosts never found their adapters — and fixed it with the config-flow interface selector ([#97](https://github.com/Chance-Konstruktion/ha-powerline/issues/97), [#98](https://github.com/Chance-Konstruktion/ha-powerline/pull/98)) |
 | [@lemeshovich](https://github.com/lemeshovich) | Verified the integration end-to-end on Netgear Powerline AV500 (XAV5602) — discovery, rates, LED and QoS all confirmed against the official Netgear utility ([#104](https://github.com/Chance-Konstruktion/ha-powerline/issues/104)) |
-| [@dan-el](https://github.com/dan-el) | Brought AV1300 to light — three TP-Link adapters (TL-WPA8631P v3 + v4, TL-PA8010P v4) that were found but showed no rates. His debug log was complete enough to locate the cause without a capture at all: the station list in `VS_NW_INFO` that the parser was reading past. He then measured every link in tpPLC as a reference ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)) |
+| [@dan-el](https://github.com/dan-el) | Brought AV1300 to light — three TP-Link adapters (TL-WPA8631P v3 + v4, TL-PA8010P v4) that were found but showed no rates. His debug log was complete enough to locate the cause without a capture at all: the station list in `VS_NW_INFO` that the parser was reading past. He then measured every link in tpPLC as a reference, captured tpPLC driving LED, QoS and power saving, and verified each one on his own adapters ([#108](https://github.com/Chance-Konstruktion/ha-powerline/issues/108)) |
 
 Found something? Open an [issue](https://github.com/Chance-Konstruktion/ha-powerline/issues)
 — a good report is a contribution, a pull request even more so, and both land here.
