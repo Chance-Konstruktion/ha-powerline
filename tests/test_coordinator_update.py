@@ -5,7 +5,10 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 # conftest.py installs all HA stubs before this module is collected.
-from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
+from custom_components.powerline.coordinator import (
+    OFFLINE_AFTER_MISSED_POLLS,
+    TpLinkPowerlineCoordinator,
+)
 from custom_components.powerline.const import TOPOLOGY_EVENT, get_mac
 from custom_components.powerline.topology import TopologyManager
 
@@ -47,6 +50,7 @@ def _build_coordinator(discover_result, state_result=None):
     coord.hp.plc_links = {}
     coord.devices = {}
     coord._known_macs = set()
+    coord._missed_polls = {}
     coord._new_device_callbacks = []
     coord.led_states = {}
     coord.power_saving_states = {}
@@ -71,6 +75,14 @@ def _preload(coord, devices):
         if mac:
             coord.devices[mac] = dict(dev)
             coord._known_macs.add(mac)
+
+
+async def _poll_until_offline(coord):
+    """Run enough polls for a missing adapter to cross the offline threshold."""
+    data = None
+    for _ in range(OFFLINE_AFTER_MISSED_POLLS):
+        data = await coord._async_update_data()
+    return data
 
 
 class TestAsyncUpdateData(IsolatedAsyncioTestCase):
@@ -119,7 +131,7 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
         coord = _build_coordinator(discover_result=[device_a])
         _preload(coord, [device_a, device_b])
 
-        data = await coord._async_update_data()
+        data = await _poll_until_offline(coord)
 
         self.assertEqual(data["plc_device_count"], 1)        # online only
         self.assertEqual(data["plc_device_count_total"], 2)  # includes offline
@@ -169,10 +181,58 @@ class TestAdapterOnline(IsolatedAsyncioTestCase):
         coord = _build_coordinator(discover_result=[device_a])
         _preload(coord, [device_a, device_b])
 
-        await coord._async_update_data()
+        await _poll_until_offline(coord)
 
         self.assertTrue(coord.adapter_online(MAC_A))    # online -> available
         self.assertFalse(coord.adapter_online(MAC_B))   # offline -> unavailable
+
+    async def test_single_missed_poll_keeps_adapter_online(self):
+        # Issue #109: on noisy wiring one discovery can come back empty.
+        # That alone must not flip every adapter to "unavailable".
+        device_a = _make_device(MAC_A)
+        device_b = _make_device(MAC_B)
+        coord = _build_coordinator(discover_result=[])
+        _preload(coord, [device_a, device_b])
+
+        data = await coord._async_update_data()
+
+        self.assertTrue(coord.adapter_online(MAC_A))
+        self.assertTrue(coord.adapter_online(MAC_B))
+        self.assertEqual(data["plc_device_count"], 2)
+        self.assertFalse(data["network_problem"])
+
+    async def test_answer_resets_the_miss_counter(self):
+        # miss, answer, miss: never two misses in a row -> never offline.
+        device_a = _make_device(MAC_A)
+        coord = _build_coordinator(discover_result=[])
+        _preload(coord, [device_a])
+
+        for result in ([], [device_a], []):
+            coord.hp.discover.return_value = result
+            await coord._async_update_data()
+            self.assertTrue(coord.adapter_online(MAC_A))
+
+    async def test_offline_adapter_comes_back_on_first_answer(self):
+        device_a = _make_device(MAC_A)
+        coord = _build_coordinator(discover_result=[])
+        _preload(coord, [device_a])
+        await _poll_until_offline(coord)
+        self.assertFalse(coord.adapter_online(MAC_A))
+
+        coord.hp.discover.return_value = [device_a]
+        await coord._async_update_data()
+
+        self.assertTrue(coord.adapter_online(MAC_A))
+
+    def test_forget_device_clears_miss_counter(self):
+        coord = _build_coordinator(discover_result=[])
+        coord._tracked_mac_sets = []
+        _preload(coord, [_make_device(MAC_A)])
+        coord._missed_polls[MAC_A] = 1
+
+        coord.forget_device(MAC_A)
+
+        self.assertNotIn(MAC_A, coord._missed_polls)
 
     def test_unknown_mac_is_offline(self):
         coord = _build_coordinator(discover_result=[])

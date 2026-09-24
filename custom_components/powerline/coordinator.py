@@ -26,6 +26,13 @@ _LOGGER = logging.getLogger(__name__)
 # actually succeeds gets reported as a timeout failure in the UI.
 LED_SET_TIMEOUT = 30.0
 
+# A known adapter only counts as offline after this many polls in a row
+# without an answer. One missed discovery is noise, not an outage: on noisy
+# wiring or across phases a single 5 s broadcast window can come back short or
+# even empty, and flipping every entity to "unavailable" for one cycle is
+# exactly the "lost all device status, then it recovers" from issue #109.
+OFFLINE_AFTER_MISSED_POLLS = 2
+
 
 class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Polls Powerline adapters via HomePlug AV Layer 2."""
@@ -45,6 +52,8 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.interface = interface or self.hp.interface
         self.devices: dict[str, dict[str, Any]] = {}
         self._known_macs: set[str] = set()
+        # Consecutive polls each known adapter did not answer.
+        self._missed_polls: dict[str, int] = {}
         self._new_device_callbacks: list[Callable[[list[dict[str, Any]]], None]] = []
         # Each platform shares the set of MACs it has already created entities
         # for. forget_device() clears a MAC from all of them so a rediscovered
@@ -102,6 +111,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         mac = normalize_mac(mac)
         self.devices.pop(mac, None)
         self._known_macs.discard(mac)
+        self._missed_polls.pop(mac, None)
         self.led_states.pop(mac, None)
         self.power_saving_states.pop(mac, None)
         self.qos_states.pop(mac, None)
@@ -186,10 +196,21 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.power_saving_states.setdefault(mac, False)
                 self.qos_states.setdefault(mac, "internet")
 
-            # Mark devices not seen in this scan
+            # Mark devices not seen in this scan -- but only after
+            # OFFLINE_AFTER_MISSED_POLLS misses in a row (see there).
             seen_macs = {get_mac(d) for d in discovered}
             for mac in self.devices:
-                self.devices[mac]["_online"] = mac in seen_macs
+                if mac in seen_macs:
+                    self._missed_polls.pop(mac, None)
+                    self.devices[mac]["_online"] = True
+                    continue
+                missed = self._missed_polls.get(mac, 0) + 1
+                self._missed_polls[mac] = missed
+                if missed >= OFFLINE_AFTER_MISSED_POLLS:
+                    self.devices[mac]["_online"] = False
+                else:
+                    _LOGGER.debug("Adapter %s missed poll %d/%d, keeping it online",
+                                  mac, missed, OFFLINE_AFTER_MISSED_POLLS)
 
             # Notify platforms about new devices so they create entities
             if new_devices:
