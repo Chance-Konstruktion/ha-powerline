@@ -21,6 +21,7 @@ def _coordinator_with(macs):
     coord = TpLinkPowerlineCoordinator.__new__(TpLinkPowerlineCoordinator)
     coord.devices = {m: {"mac": m} for m in macs}
     coord._known_macs = set(macs)
+    coord._missed_polls = {}
     coord.led_states = {m: True for m in macs}
     coord.power_saving_states = {m: False for m in macs}
     coord.qos_states = {m: "internet" for m in macs}

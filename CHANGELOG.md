@@ -4,6 +4,21 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Ein verpasster Suchlauf macht keinen Adapter mehr "nicht verfuegbar".**
+  Bisher galt ein Adapter als offline, sobald er in einem einzigen
+  Discovery-Fenster (5 s) nicht antwortete. Auf verrauschten Leitungen oder
+  ueber Phasengrenzen kommt so ein Fenster mal kurz oder ganz leer zurueck --
+  dann sprangen alle Geraete fuer einen Zyklus auf "unavailable" und fingen
+  sich danach wieder
+  ([#109](https://github.com/Chance-Konstruktion/ha-powerline/issues/109)).
+  Jetzt braucht es zwei Fehlrunden in Folge (`OFFLINE_AFTER_MISSED_POLLS`);
+  die erste Antwort danach setzt den Zaehler zurueck.
+
+### Added
+- **Zyxel PLA5456** in der Hardwaretabelle: Discovery vom Melder bestaetigt
+  (#109), LED / Energiesparen / QoS noch offen.
+
 ## [260909] - 2026-09-09
 
 ### Added

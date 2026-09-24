@@ -130,6 +130,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
 | TP-Link **AV1300** / TL-PA8010P v4 — no web UI | ✅ **verified** | ✅ **verified** | ✅ **verified** |
 | TP-Link **AV1300** / TL-WPA8631P v3+v4 — has web UI | ✅ **verified** | ⛔ *(HTTP only)* | ✅ QoS · — *(no PS setting)* |
+| Zyxel **PLA5456** | ✅ *(discovery, user-reported)* | ❔ *(not yet reported)* | ❔ *(not yet reported)* |
 | devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
 
 > ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
@@ -142,6 +143,11 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > Note: Netgear's own **Powerline Utility has no QoS controls at all** — the
 > setting lives in the adapter's PIB regardless and is set/read there directly,
 > the same way as on any other QCA7420 adapter.
+
+> 🟨 **Zyxel PLA5456:** a user found all four of their adapters with this
+> integration ([#109](https://github.com/Chance-Konstruktion/ha-powerline/issues/109)).
+> Which chipset path they take, and whether LED, power saving and QoS work, is
+> still open — the row gets filled in once it is confirmed on the hardware.
 
 > 🟦 **FRITZ!Powerline (AVM):** these adapters use a QCA7420 chip but ship AVM's
 > own "Custom" firmware, so they get a **dedicated module** (`homeplug/fritz.py`).
