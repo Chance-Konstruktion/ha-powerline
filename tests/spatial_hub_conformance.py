@@ -43,7 +43,7 @@ DATA_PROVIDERS = "spatial_hub_providers"
 
 # Which revision of the kit you copied. Kept in step with the shim, so a
 # mismatch between the two files in your repository is visible.
-SDK_VERSION = 6
+SDK_VERSION = 7
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _QUALITY = {"good", "fair", "poor", "unknown", ""}
