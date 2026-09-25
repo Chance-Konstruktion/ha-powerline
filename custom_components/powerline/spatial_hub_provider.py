@@ -58,7 +58,7 @@ API_VERSION = 1
 # contract above is frozen; this is not part of it.
 #
 # 5 -- `anchors`: say what a node is near when you cannot say where it is.
-SDK_VERSION = 5
+SDK_VERSION = 7
 
 # ── Spatial vocabulary (Specification 1.0) ───────────────────────────
 #
