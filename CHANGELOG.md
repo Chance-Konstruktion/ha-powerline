@@ -4,6 +4,8 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [261007] - 2026-10-07
+
 ### Fixed
 - **Ein verpasster Suchlauf macht keinen Adapter mehr "nicht verfuegbar".**
   Bisher galt ein Adapter als offline, sobald er in einem einzigen
