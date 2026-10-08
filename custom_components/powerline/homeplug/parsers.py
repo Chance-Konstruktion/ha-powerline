@@ -186,6 +186,12 @@ def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
     Format: NumStations(1) + [DA(6) + AvgTX(2 LE) + AvgRX(2 LE)] per station.
     Each rate's top nibble (0xF000) is a status field; decode_phy_rate() keeps
     only the low 12 bits.
+
+    The FIRST record is the responder itself, and its "rate" is the adapter's rated PLC
+    capability, not a link rate: a TL-PA9020P (AV2000) self-reports ~2100 and a TL-PA7017
+    (AV1000) ~1000 — matching the "PLC 2000/1000 Mbps" the tpPLC app prints under each device.
+    Treating it as a link rate invented a ~2100 Mbps link between the two AV2000 units while
+    the real link was 43-55 Mbps, so self-records are skipped.
     """
     stations = []
     off = ETH_HDR + MX_MME_HDR
@@ -195,6 +201,7 @@ def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
 
     if len(payload) < 1:
         return stations
+    responder = mac_to_str(data[6:12]).upper()
     n = payload[0]; p = 1
     for _ in range(n):
         if p + 10 > len(payload):
@@ -203,6 +210,8 @@ def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
         tx = decode_phy_rate(struct.unpack("<H", payload[p+6:p+8])[0])
         rx = decode_phy_rate(struct.unpack("<H", payload[p+8:p+10])[0])
         p += 10
+        if mac.upper() == responder:
+            continue            # own PLC capability, not a link rate
         stations.append({"mac": mac, "plcmac": mac, "tx_rate": tx, "rx_rate": rx})
     return stations
 

@@ -192,6 +192,23 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual(422, stations[0]["tx_rate"])
         self.assertEqual(274, stations[0]["rx_rate"])
 
+    def test_parse_mx_nw_stats_cnf_skips_responder_self_record(self) -> None:
+        # Real TL-PA9020P (AV2000) capture from #110: the first record is the
+        # responder itself and carries its rated capability (0x683c -> 2108),
+        # not a link rate. Only the real peer (0x40e6/0x40f4 -> 230/244) counts.
+        responder = bytes.fromhex("5091e3a0e1c8")
+        peer = bytes.fromhex("5091e3a0380a")
+        frame = (bytes.fromhex("ffffffffffff") + responder
+                 + bytes(ETH_HDR + MX_MME_HDR - 12) + bytes([2])
+                 + responder + bytes.fromhex("3c682c68")
+                 + peer + bytes.fromhex("e640f440"))
+        stations = parse_mx_nw_stats_cnf(frame)
+
+        self.assertEqual(1, len(stations))
+        self.assertEqual("50:91:E3:A0:38:0A", stations[0]["mac"].upper())
+        self.assertEqual(230, stations[0]["tx_rate"])
+        self.assertEqual(244, stations[0]["rx_rate"])
+
     def test_parse_mx_get_param_cnf_hfid_string(self) -> None:
         # Real capture: octets=1, num=0x40 (64), value = HFID string.
         payload = bytes.fromhex("014000") + b"tpver_701E14_190426_901".ljust(64, b"\x00")
