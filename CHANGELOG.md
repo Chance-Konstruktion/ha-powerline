@@ -4,6 +4,21 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+## [261008] - 2026-10-08
+
+### Fixed
+- **Keine Phantom-Verbindung mehr mit der Nennleistung des Adapters.**
+  Der erste Eintrag jeder MEDIAXTREAM-`NW_STATS`-Antwort ist der antwortende
+  Adapter selbst, und sein Ratenfeld traegt die Nennleistung (AV2000 ~2100,
+  AV1000 ~1000) statt einer Verbindungsrate. Sie wurde als Rate des Adapters
+  uebernommen und gespiegelt; zwischen zwei AV2000 stand so eine Kante mit
+  2098 Mbit/s, wo tpPLC 43-55 misst. Der Eigeneintrag wird jetzt
+  uebersprungen, `decode_phy_rate()` bleibt unveraendert. Gefunden, mit
+  Mitschnitten belegt und behoben von @fboundy
+  ([#110](https://github.com/Chance-Konstruktion/ha-powerline/issues/110),
+  [#111](https://github.com/Chance-Konstruktion/ha-powerline/pull/111));
+  ein Test haelt seinen Mitschnitt fest.
+
 ## [261007] - 2026-10-07
 
 ### Fixed
