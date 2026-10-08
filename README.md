@@ -8,7 +8,7 @@
 
 Talks **directly** to pure PLC adapters over raw Ethernet (HomePlug AV `0x88E1` + Broadcom MEDIAXTREAM `0x8912`) — exactly like the official *tpPLC* app, but native in Home Assistant. Works with adapters that have **no IP address and no web UI**.
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Integration-03A9F4.svg)](https://www.home-assistant.io/)
 [![Release](https://img.shields.io/badge/release-260706-22D3EE.svg)](https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-powerline/-/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
@@ -98,15 +98,19 @@ details live in **[`PROTOCOL.md`](PROTOCOL.md)**.
 
 ## 🚀 Quick Start
 
-**1. Install via HACS** (Custom repository → Integration)
+**1. Install via HACS.** Powerline is in the default HACS store, so no custom repository is needed. One click opens it in your own Home Assistant:
+
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Chance-Konstruktion&repository=ha-powerline&category=integration)
+
+or by hand:
 
 ```text
-HACS → ⋮ → Custom repositories
-Repository: Chance-Konstruktion/ha-powerline
-Category:   Integration
+HACS → Integrations → search "Powerline" → Download
 ```
 
 **2. Restart Home Assistant**, then add the integration:
+
+[![Open your Home Assistant instance and start setting up the integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=powerline)
 
 ```text
 Settings → Devices & Services → Add Integration → "Powerline"
