@@ -168,16 +168,35 @@ def parse_mx_get_param_cnf(data: bytes) -> bytes:
     # Fallback: best-effort, skip the 3-byte header.
     return payload[3:]
 
+#: A rate field with this bit set carries the peer's rated PLC capability, not a link rate.
+RATE_CAPABILITY_FLAG = 0x0800
+
 def decode_phy_rate(raw: int) -> int:
     """Decode a MEDIAXTREAM PHY rate (Mbps) from its 16-bit LE field.
 
-    Confirmed on TL-PA7017 (BCM60355) across two link types: the rate is the
-    low 12 bits, the top nibble is a status/flag field (0x8xxx on the AV500
-    link, 0x4xxx on the AV1000<->AV1000 link). e.g.
+    Confirmed on TL-PA7017 (BCM60355) across two link types: the rate lives in the
+    low bits and the top nibble is a status/flag field (0x8xxx on the AV500 link,
+    0x4xxx on the AV1000<->AV1000 link). e.g.
       0x819D -> 413 Mbps (AV500 link)
       0x4223 -> 547 Mbps (AV1000<->AV1000 link)
     Masking only the top bit (0x8000) was wrong: it left 0x4223 as 16931.
+
+    The field is 11 bits, not 12: **bit 11 (0x0800) belongs to the flag field and
+    marks a rated PLC capability rather than a measured rate.** On an AV2000<->AV2000
+    link both adapters report the pairing with 0x68xx -- 0x68F4, 0x682C, 0x6839, 0x683C
+    -> 2292/2092/2105/2108 -- which is the TL-PA9020P's "PLC 2000 Mbps" rating, the
+    figure the tpPLC app prints as a device property and does not draw as a link.
+    Returning it as a rate invented a ~2100 Mbps link (#110, and again after that fix).
+    Across 20 known-good samples (34-547 Mbps, flags 0x4xxx/0x6xxx/0x8xxx) bit 11 is
+    always clear, and in all 4 known capability samples it is always set, so the bit
+    separates them cleanly. 11 bits still allow 2047 Mbps, well above any rate observed.
+
+    Returns 0 -- the sentinel this module already uses for "rate unknown" -- so the
+    caller's peer-mirroring can fill the gap from the other end of the link if that
+    end measured it, instead of publishing a fabricated number.
     """
+    if raw & RATE_CAPABILITY_FLAG:
+        return 0
     return raw & 0x0FFF
 
 def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
@@ -192,6 +211,12 @@ def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
     (AV1000) ~1000 — matching the "PLC 2000/1000 Mbps" the tpPLC app prints under each device.
     Treating it as a link rate invented a ~2100 Mbps link between the two AV2000 units while
     the real link was 43-55 Mbps, so self-records are skipped.
+
+    Skipping self-records is not sufficient on its own. Where both ends of a link are AV2000,
+    each adapter reports the OTHER with the same capability value, in a peer record that no
+    MAC comparison can catch; decode_phy_rate() filters those on the capability bit. Only the
+    affected direction is dropped - a station can legitimately carry a good rate in one field
+    and a capability in the other, e.g. 0x60EE/0x68F4 -> TX 238, RX unknown.
     """
     stations = []
     off = ETH_HDR + MX_MME_HDR
@@ -373,6 +398,7 @@ def qca_pib_set_byte(buf: bytearray, offset: int, value: int) -> None:
 
 __all__ = [
     "decode_phy_rate",
+    "RATE_CAPABILITY_FLAG",
     "parse_discover_cnf",
     "parse_mx_discover_cnf",
     "parse_mx_get_param_cnf",
