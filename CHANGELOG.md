@@ -4,6 +4,22 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Auch zwischen zwei AV2000 keine Phantomrate mehr.** Dort meldet jeder
+  Adapter den anderen mit seiner Nennleistung (z. B. `0x68F4` = 2292), in
+  einem Fremdeintrag, den der MAC-Vergleich aus 261008 nicht erwischt.
+  Bit 11 (`0x0800`) des Ratenfelds kennzeichnet die Nennleistung; solche
+  Werte gelten jetzt als „Rate unbekannt“ (0), die Gegenstelle kann die
+  Luecke per Spiegelung fuellen. Belegt an 24 echten Werten ohne Fehltreffer.
+  Gefunden und behoben von @fboundy
+  ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
+
+### Documentation
+- Die README behauptete, die Karte werde als Lovelace-Ressource
+  registriert. Sie wird als Frontend-Modul geladen; eine Ressource braucht
+  es nicht. Hinweis: nach Installation oder Update einmal Strg+F5. Gemeldet
+  von @fboundy ([#113](https://github.com/Chance-Konstruktion/ha-powerline/issues/113)).
+
 ## [261008] - 2026-10-08
 
 ### Fixed

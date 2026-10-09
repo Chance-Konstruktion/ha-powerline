@@ -209,6 +209,49 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual(230, stations[0]["tx_rate"])
         self.assertEqual(244, stations[0]["rx_rate"])
 
+    def test_decode_phy_rate_capability_bit_is_not_a_rate(self) -> None:
+        # Bit 11 (0x0800) marks a rated PLC capability, not a measurement. Real
+        # TL-PA9020P (AV2000) values: 2292/2092/2105/2108 "Mbps", i.e. the unit's
+        # "PLC 2000 Mbps" rating. Reported as 0 = "unknown", the sentinel this
+        # module already uses, so peer-mirroring can fill it from the other end.
+        self.assertEqual(0, decode_phy_rate(0x68F4))
+        self.assertEqual(0, decode_phy_rate(0x682C))
+        self.assertEqual(0, decode_phy_rate(0x6839))
+        self.assertEqual(0, decode_phy_rate(0x683C))
+        # The top nibble is NOT the discriminator: 0x6xxx also carries real rates,
+        # and those must survive untouched.
+        self.assertEqual(238, decode_phy_rate(0x60EE))
+        self.assertEqual(67, decode_phy_rate(0x6043))
+
+    def test_parse_mx_nw_stats_cnf_av2000_peer_capability(self) -> None:
+        # Real capture, AV2000 responder (Shed) listing its three peers. Both AV2000
+        # units report the OTHER with the capability value 0x68f4, in a PEER record
+        # that no MAC comparison can catch — skipping self-records is not enough.
+        # Only the affected direction is dropped: TX becomes unknown (0), while RX
+        # on the same station (0x6043 -> 67) and both AV1000 peers stay intact.
+        responder = bytes.fromhex("98ded0da380a")
+        payload = bytes.fromhex(
+            "03"
+            "ec086b6ae1c8" "f468" "4360"   # 3D     (AV2000): TX capability, RX 67
+            "d4d6df585d4e" "5440" "2d40"   # Attic  (AV1000): 84 / 45
+            "d4d6df585095" "af41" "df41"   # Garage (AV1000): 431 / 479
+        )
+        frame = (bytes.fromhex("ffffffffffff") + responder
+                 + bytes(ETH_HDR + MX_MME_HDR - 12) + payload)
+        stations = parse_mx_nw_stats_cnf(frame)
+
+        self.assertEqual(3, len(stations))
+        by_mac = {s["mac"].upper(): s for s in stations}
+        self.assertEqual(0, by_mac["EC:08:6B:6A:E1:C8"]["tx_rate"])
+        self.assertEqual(67, by_mac["EC:08:6B:6A:E1:C8"]["rx_rate"])
+        self.assertEqual(84, by_mac["D4:D6:DF:58:5D:4E"]["tx_rate"])
+        self.assertEqual(45, by_mac["D4:D6:DF:58:5D:4E"]["rx_rate"])
+        self.assertEqual(431, by_mac["D4:D6:DF:58:50:95"]["tx_rate"])
+        self.assertEqual(479, by_mac["D4:D6:DF:58:50:95"]["rx_rate"])
+        # Nothing implausible survives anywhere in the reply.
+        self.assertEqual([], [s for s in stations
+                              if s["tx_rate"] > 1200 or s["rx_rate"] > 1200])
+
     def test_parse_mx_get_param_cnf_hfid_string(self) -> None:
         # Real capture: octets=1, num=0x40 (64), value = HFID string.
         payload = bytes.fromhex("014000") + b"tpver_701E14_190426_901".ljust(64, b"\x00")
