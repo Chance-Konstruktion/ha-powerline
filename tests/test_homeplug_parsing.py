@@ -223,6 +223,65 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual(238, decode_phy_rate(0x60EE))
         self.assertEqual(67, decode_phy_rate(0x6043))
 
+    def test_parse_mx_nw_stats_cnf_exposes_raw_rate_fields(self) -> None:
+        # Diagnostics needs the raw 16-bit words, not just the decoded rates:
+        # a capability record decodes to a plausible number, so only the raw
+        # field distinguishes it (see diagnostics.py). Real AV2000 capture.
+        responder = bytes.fromhex("98ded0da380a")
+        payload = bytes.fromhex(
+            "02"
+            "ec086b6ae1c8" "f468" "4360"   # 3D: TX capability, RX 67
+            "d4d6df585d4e" "5440" "2d40"   # Attic: 84 / 45
+        )
+        frame = (bytes.fromhex("ffffffffffff") + responder
+                 + bytes(ETH_HDR + MX_MME_HDR - 12) + payload)
+        by_mac = {s["mac"].upper(): s for s in parse_mx_nw_stats_cnf(frame)}
+
+        three_d = by_mac["EC:08:6B:6A:E1:C8"]
+        # Raw preserved verbatim even where the rate is deliberately dropped.
+        self.assertEqual(0x68F4, three_d["tx_raw"])
+        self.assertEqual(0, three_d["tx_rate"])
+        self.assertTrue(three_d["tx_raw"] & 0x0800)
+        self.assertEqual(0x6043, three_d["rx_raw"])
+        self.assertEqual(67, three_d["rx_rate"])
+
+        attic = by_mac["D4:D6:DF:58:5D:4E"]
+        self.assertEqual((0x4054, 0x402D), (attic["tx_raw"], attic["rx_raw"]))
+        self.assertEqual((84, 45), (attic["tx_rate"], attic["rx_rate"]))
+
+    def test_note_rate_sample_keeps_dropped_capability_records(self) -> None:
+        # The recorder runs BEFORE the usable-rate filter, so a record dropped
+        # as a link rate is still visible in diagnostics - the case that is
+        # impossible to diagnose from decoded output.
+        hp = HomeplugAV()
+        hp.rate_samples = []
+        hp._note_rate_sample("98:DE:D0:DA:38:0A", "EC:08:6B:6A:E1:C8",
+                             0x68F4, 0x6043)
+        self.assertEqual(2, len(hp.rate_samples))
+        tx, rx = hp.rate_samples
+
+        self.assertEqual("tx", tx["direction"])
+        self.assertEqual("0x68F4", tx["raw"])
+        self.assertEqual("0x6", tx["flag_nibble"])
+        self.assertTrue(tx["capability_bit"])
+        self.assertEqual(0, tx["rate"])
+
+        self.assertEqual("rx", rx["direction"])
+        self.assertEqual("0x6043", rx["raw"])
+        self.assertFalse(rx["capability_bit"])
+        self.assertEqual(67, rx["rate"])
+
+        # MACs normalised so responder/peer pairs collate.
+        self.assertEqual("98:DE:D0:DA:38:0A", tx["responder"])
+        self.assertEqual("EC:08:6B:6A:E1:C8", tx["peer"])
+
+    def test_note_rate_sample_ignores_missing_raw(self) -> None:
+        # Non-MX paths (QCA) carry no raw field; nothing should be recorded.
+        hp = HomeplugAV()
+        hp.rate_samples = []
+        hp._note_rate_sample("AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66", None, None)
+        self.assertEqual([], hp.rate_samples)
+
     def test_parse_mx_nw_stats_cnf_av2000_peer_capability(self) -> None:
         # Real capture, AV2000 responder (Shed) listing its three peers. Both AV2000
         # units report the OTHER with the capability value 0x68f4, in a PEER record
