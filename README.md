@@ -268,8 +268,11 @@ shows it in two places:
   full-page topology view. Can be turned off under **Settings → Devices &
   Services → Powerline → Configure** ("Show 'Powerline' sidebar panel");
   the change applies immediately, no restart needed.
-- **Lovelace card** — for your own dashboards. The card resource is
-  registered automatically; just add the card:
+- **Lovelace card** — for your own dashboards. The integration loads the
+  card into the frontend itself (as a frontend module, not as a Lovelace
+  resource), so there is nothing to add under *Dashboards → Resources*;
+  just add the card. Right after installing or updating, reload the browser
+  once (Ctrl+F5) so it picks up the new script:
 
 ```yaml
 type: custom:powerline-topology-card
