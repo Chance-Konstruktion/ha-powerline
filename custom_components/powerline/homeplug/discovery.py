@@ -34,6 +34,8 @@ from .const import (
 )
 from .frames import build_hpav_frame, build_mx_frame, build_qca_frame, mac_to_bytes
 from .parsers import (
+    RATE_CAPABILITY_FLAG,
+    decode_phy_rate,
     parse_discover_cnf,
     parse_mx_discover_cnf,
     parse_mx_get_param_cnf,
@@ -68,6 +70,31 @@ class DiscoveryMixin:
             "tx_rate": tx, "rx_rate": rx,
         }
 
+    def _note_rate_sample(self, responder: str, peer: str,
+                          tx_raw: int | None, rx_raw: int | None) -> None:
+        """Record one parsed rate pair verbatim, for diagnostics.
+
+        Called BEFORE the "is this a usable rate" filter, so a record that is
+        dropped as a link rate - an AV2000 pairing reporting its rated
+        capability with bit 11 set (#112) - still shows up in diagnostics.
+        That is precisely the case that is impossible to diagnose from
+        decoded output alone.
+        """
+        if tx_raw is None and rx_raw is None:
+            return
+        for direction, raw in (("tx", tx_raw), ("rx", rx_raw)):
+            if raw is None:
+                continue
+            self.rate_samples.append({
+                "responder": (responder or "").upper(),
+                "peer": (peer or "").upper(),
+                "direction": direction,
+                "raw": f"0x{raw:04X}",
+                "flag_nibble": f"0x{(raw >> 12) & 0xF:X}",
+                "capability_bit": bool(raw & RATE_CAPABILITY_FLAG),
+                "rate": decode_phy_rate(raw),
+            })
+
     def _annotate_capabilities(self, devices: dict[str, dict]) -> None:
         """Attach capability hints per adapter for diagnostics."""
         for mac, dev in devices.items():
@@ -99,6 +126,7 @@ class DiscoveryMixin:
 
         devices: dict[str, dict] = {}
         self.plc_links = {}
+        self.rate_samples = []
 
         # Step 1: CC_DISCOVER_LIST on 0x88E1 (works on ALL chipsets)
         frame = build_hpav_frame(BROADCAST_MAC, self._src_mac,
@@ -333,6 +361,8 @@ class DiscoveryMixin:
                         m = sta["mac"]
                         tx = sta.get("tx_rate", 0)
                         rx = sta.get("rx_rate", 0)
+                        self._note_rate_sample(src, m, sta.get("tx_raw"),
+                                               sta.get("rx_raw"))
                         if tx > 0 or rx > 0:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx
@@ -356,6 +386,8 @@ class DiscoveryMixin:
                         m = sta["mac"]
                         tx = sta.get("tx_rate", 0)
                         rx = sta.get("rx_rate", 0)
+                        self._note_rate_sample(src, m, sta.get("tx_raw"),
+                                               sta.get("rx_raw"))
                         if tx > 0 or rx > 0:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx
@@ -384,6 +416,8 @@ class DiscoveryMixin:
                         m = sta["mac"]
                         tx = sta.get("tx_rate", 0)
                         rx = sta.get("rx_rate", 0)
+                        self._note_rate_sample(src, m, sta.get("tx_raw"),
+                                               sta.get("rx_raw"))
                         if tx > 0 or rx > 0:
                             devices.setdefault(m, self._new_dev(m))
                             devices[m]["tx_rate"] = tx

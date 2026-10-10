@@ -232,12 +232,19 @@ def parse_mx_nw_stats_cnf(data: bytes) -> list[dict]:
         if p + 10 > len(payload):
             break
         mac = mac_to_str(payload[p:p+6])
-        tx = decode_phy_rate(struct.unpack("<H", payload[p+6:p+8])[0])
-        rx = decode_phy_rate(struct.unpack("<H", payload[p+8:p+10])[0])
+        tx_raw = struct.unpack("<H", payload[p+6:p+8])[0]
+        rx_raw = struct.unpack("<H", payload[p+8:p+10])[0]
+        tx = decode_phy_rate(tx_raw)
+        rx = decode_phy_rate(rx_raw)
         p += 10
         if mac.upper() == responder:
             continue            # own PLC capability, not a link rate
-        stations.append({"mac": mac, "plcmac": mac, "tx_rate": tx, "rx_rate": rx})
+        # The raw fields ride along for diagnostics: both rate bugs found so far
+        # (#110, #112) were invisible once decoded, because a capability value
+        # decodes to a plausible-looking number. Only the raw field, its flag
+        # nibble and bit 11 tell them apart.
+        stations.append({"mac": mac, "plcmac": mac, "tx_rate": tx, "rx_rate": rx,
+                         "tx_raw": tx_raw, "rx_raw": rx_raw})
     return stations
 
 def parse_mx_status_ind(data: bytes) -> dict | None:

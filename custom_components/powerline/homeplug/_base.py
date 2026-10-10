@@ -44,6 +44,11 @@ class _HomeplugBase:
         # NW_STATS replies carry the responder's rate to each peer, which is
         # the only true pairwise link data the protocol exposes.
         self.plc_links: dict[tuple[str, str], dict[str, int]] = {}
+        # Every rate field parsed during the last discover(), decoded value
+        # alongside the raw 16-bit word. Diagnostics only - never feeds the
+        # topology graph - so capability-flagged records are kept here even
+        # though they are deliberately dropped as link rates.
+        self.rate_samples: list[dict[str, Any]] = []
         # Serializes the socket-using public methods across executor threads.
         self._lock = threading.RLock()
 
