@@ -4,6 +4,14 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Diagnose-Download mit der rohen Ratentabelle.** Unter *Geraet → Diagnose
+  herunterladen* steht jetzt jedes gelesene Ratenfeld als 16-Bit-Rohwert mit
+  Flag-Nibble, Bit 11 und dekodiertem Wert, auch die verworfenen
+  Nennleistungs-Eintraege. Hinweis: Der Dump enthaelt die MAC-Adressen der
+  Adapter. Von @fboundy
+  ([#114](https://github.com/Chance-Konstruktion/ha-powerline/pull/114)).
+
 ### Fixed
 - **Auch zwischen zwei AV2000 keine Phantomrate mehr.** Dort meldet jeder
   Adapter den anderen mit seiner Nennleistung (z. B. `0x68F4` = 2292), in
