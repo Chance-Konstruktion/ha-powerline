@@ -192,6 +192,13 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > safely (a rejected write is detected and reverted, never half-applied). Details
 > in [`PROTOCOL.md` §9](PROTOCOL.md#9--qualcomm-qca--av500--implemented--verified).
 
+> 🔀 **Got G.hn adapters instead of HomePlug?** G.hn (e.g. devolo Magic, Zyxel
+> PLA6457) is a different, incompatible standard and is **not** supported here.
+> For the **Zyxel PLA6457** (and possibly similar Zyxel PLA models) there is a
+> separate integration by Christian S. ([@dieneuser](https://github.com/dieneuser)):
+> **[dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla)** — local,
+> read-only polling of status and link rates via the adapter's web UI.
+
 <details>
 <summary><b>📋 Entities created</b></summary>
 
@@ -444,7 +451,7 @@ Capture the official tpPLC app performing an action and compare with
 - [x] **Topology card:** live mesh graph (nodes/edges/analysis) with a bundled Lovelace card, topology events on the HA bus and a `powerline/topology` websocket API — see the **Topology Card** section above.
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
-- [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test.
+- [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test. Until then, Zyxel PLA6457 owners can use [dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla).
 
 ---
 
