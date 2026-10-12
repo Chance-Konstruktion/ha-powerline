@@ -23,6 +23,9 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
 
 ### Documentation
+- **Tipp fuer G.hn-Besitzer:** README verweist auf
+  [dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla) fuer den
+  Zyxel PLA6457 (G.hn wird hier nicht unterstuetzt).
 - Die README behauptete, die Karte werde als Lovelace-Ressource
   registriert. Sie wird als Frontend-Modul geladen; eine Ressource braucht
   es nicht. Hinweis: nach Installation oder Update einmal Strg+F5. Gemeldet
