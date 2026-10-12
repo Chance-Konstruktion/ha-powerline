@@ -195,7 +195,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 > 🔀 **Got G.hn adapters instead of HomePlug?** G.hn (e.g. devolo Magic, Zyxel
 > PLA6457) is a different, incompatible standard and is **not** supported here.
 > For the **Zyxel PLA6457** (and possibly similar Zyxel PLA models) there is a
-> separate integration by Christian S. ([@dieneuser](https://github.com/dieneuser)):
+> separate integration by [@dieneuser](https://github.com/dieneuser):
 > **[dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla)** — local,
 > read-only polling of status and link rates via the adapter's web UI.
 
