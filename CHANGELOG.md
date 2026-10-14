@@ -5,6 +5,13 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
 ## [Unreleased]
 
 ### Added
+- **Remote-Probe fuer Home Assistant in einem eigenen VLAN.** HomePlug wird
+  nicht geroutet; steht HA im IoT-VLAN und haengen die Adapter am Trunk,
+  fand die Einrichtung bisher 0 Adapter. Jetzt laeuft `probe/powerline_probe.py`
+  auf einem Linux-Geraet im Netz der Adapter und liefert die Werte per HTTP
+  (optional mit Token); in der Einrichtung heisst die Wahl *remote_probe*.
+  Nur lesend: LED, Energiesparen, QoS und Neustart gehen darueber nicht.
+  Angeregt von tim.plas.
 - **Diagnose-Download mit der rohen Ratentabelle.** Unter *Geraet → Diagnose
   herunterladen* steht jetzt jedes gelesene Ratenfeld als 16-Bit-Rohwert mit
   Flag-Nibble, Bit 11 und dekodiertem Wert, auch die verworfenen

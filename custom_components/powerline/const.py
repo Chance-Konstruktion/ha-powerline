@@ -94,3 +94,8 @@ def get_mac(dev: dict[str, Any]) -> str:
 # Config flow: network interface selection
 CONF_INTERFACE = "interface"
 INTERFACE_AUTO = "auto"
+
+# Remote probe (HA in another VLAN than the adapters, see remote.py)
+INTERFACE_PROBE = "remote_probe"
+CONF_PROBE_URL = "probe_url"
+CONF_PROBE_TOKEN = "probe_token"

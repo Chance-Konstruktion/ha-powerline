@@ -16,11 +16,25 @@
         "title": "Devices Found",
         "description": "Found {count} Powerline adapter(s):\n\n{devices}\n\nClick 'Submit' to add them.",
         "submit": "Submit"
+      },
+      "probe": {
+        "title": "Remote probe",
+        "description": "For adapters in another VLAN than Home Assistant. HomePlug is layer 2 and never routed, so a small probe in the adapters' network reads them and forwards only the values. Setup: see the README, section \"Home Assistant in its own VLAN\".\n\nThe probe is read-only: LED, power saving, QoS and restart cannot be switched through it.",
+        "data": {
+          "probe_url": "Probe address",
+          "probe_token": "Token (optional)"
+        },
+        "data_description": {
+          "probe_url": "e.g. http://192.168.1.2:8765",
+          "probe_token": "The same token the probe was started with (--token-file). Leave empty if it runs without one."
+        },
+        "submit": "Submit"
       }
     },
     "error": {
       "no_devices_found": "No Powerline adapters found. Check that adapters are plugged in, paired, and connected via Ethernet cable. Home Assistant needs CAP_NET_RAW.",
-      "no_interface": "No suitable network interface found. Make sure an Ethernet cable is connected."
+      "no_interface": "No suitable network interface found. Make sure an Ethernet cable is connected.",
+      "probe_unreachable": "Probe not reachable, or wrong token."
     },
     "abort": {
       "already_configured": "This Powerline network is already configured.",
