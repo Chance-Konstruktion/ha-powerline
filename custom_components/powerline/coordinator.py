@@ -45,10 +45,15 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         interface: str | None,
         initial_devices: list[dict[str, Any]],
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
+        hp: Any | None = None,
     ) -> None:
-        from .homeplug import HomeplugAV
+        # ``hp`` is injected for the remote probe (see remote.py); without it
+        # the adapters are talked to directly on the local interface.
+        if hp is None:
+            from .homeplug import HomeplugAV
 
-        self.hp = HomeplugAV(interface)
+            hp = HomeplugAV(interface)
+        self.hp = hp
         self.interface = interface or self.hp.interface
         self.devices: dict[str, dict[str, Any]] = {}
         self._known_macs: set[str] = set()

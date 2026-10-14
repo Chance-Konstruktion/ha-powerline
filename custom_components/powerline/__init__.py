@@ -22,6 +22,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
+    CONF_PROBE_TOKEN,
+    CONF_PROBE_URL,
     CONF_SPATIAL_HUB,
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
@@ -68,7 +70,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     initial_devices = entry.data.get("devices", [])
     scan_interval = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
 
-    if not is_available():
+    hp = None
+    probe_url = entry.data.get(CONF_PROBE_URL)
+    if probe_url:
+        from .remote import RemoteHomeplug
+
+        hp = RemoteHomeplug(probe_url, entry.data.get(CONF_PROBE_TOKEN))
+    elif not is_available():
         _LOGGER.error(
             "HomePlug AV raw sockets not available. "
             "Home Assistant needs CAP_NET_RAW capability. "
@@ -79,7 +87,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     coordinator = TpLinkPowerlineCoordinator(
-        hass, interface, initial_devices, scan_interval=scan_interval
+        hass, interface, initial_devices, scan_interval=scan_interval, hp=hp
     )
     coordinator.alerts_enabled = bool(
         entry.options.get(CONF_TOPOLOGY_ALERTS, DEFAULT_TOPOLOGY_ALERTS)

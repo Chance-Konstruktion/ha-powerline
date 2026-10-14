@@ -18,6 +18,8 @@ except ImportError:
 
 from .const import (
     CONF_INTERFACE,
+    CONF_PROBE_TOKEN,
+    CONF_PROBE_URL,
     CONF_SPATIAL_HUB,
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
@@ -28,10 +30,12 @@ from .const import (
     DEFAULT_TOPOLOGY_ALERTS,
     DOMAIN,
     INTERFACE_AUTO,
+    INTERFACE_PROBE,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
 from .homeplug import HomeplugAV, find_interface, is_available, list_interfaces
+from .remote import ProbeError, RemoteHomeplug, normalize_probe_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +48,7 @@ class TpLinkPowerlineConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._discovered: list[dict[str, Any]] = []
         self._interface: str | None = None
+        self._probe: dict[str, str] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -57,13 +62,16 @@ class TpLinkPowerlineConfigFlow(ConfigFlow, domain=DOMAIN):
 
         available = await self.hass.async_add_executor_job(is_available)
         if not available:
-            return self.async_abort(reason="raw_socket_unavailable")
+            # No raw sockets here -- a probe in the adapters' segment still works.
+            return await self.async_step_probe()
 
         candidates = await self.hass.async_add_executor_job(list_interfaces)
 
         if user_input is not None:
             # User confirmed — run discovery on the chosen interface
             choice = user_input.get(CONF_INTERFACE, INTERFACE_AUTO)
+            if choice == INTERFACE_PROBE:
+                return await self.async_step_probe()
             if choice == INTERFACE_AUTO:
                 self._interface = await self.hass.async_add_executor_job(
                         find_interface)
@@ -90,8 +98,47 @@ class TpLinkPowerlineConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_INTERFACE, default=INTERFACE_AUTO): vol.In(
-                        [INTERFACE_AUTO] + candidates
+                        [INTERFACE_AUTO] + candidates + [INTERFACE_PROBE]
                     ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_probe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Adapters in another VLAN: read them through a remote probe."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            url = normalize_probe_url(user_input[CONF_PROBE_URL])
+            token = (user_input.get(CONF_PROBE_TOKEN) or "").strip()
+            await self.async_set_unique_id(f"powerline_probe_{url}")
+            self._abort_if_unique_id_configured()
+
+            hp = RemoteHomeplug(url, token)
+            try:
+                await self.hass.async_add_executor_job(hp.ping)
+                self._discovered = await self.hass.async_add_executor_job(
+                    hp.discover, 8.0
+                )
+            except ProbeError as err:
+                _LOGGER.debug("Probe %s failed: %s", url, err)
+                errors["base"] = "probe_unreachable"
+            else:
+                if self._discovered:
+                    self._interface = hp.interface
+                    self._probe = {CONF_PROBE_URL: url, CONF_PROBE_TOKEN: token}
+                    return await self.async_step_confirm()
+                errors["base"] = "no_devices_found"
+
+        return self.async_show_form(
+            step_id="probe",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_PROBE_URL): str,
+                    vol.Optional(CONF_PROBE_TOKEN, default=""): str,
                 }
             ),
             errors=errors,
@@ -111,6 +158,7 @@ class TpLinkPowerlineConfigFlow(ConfigFlow, domain=DOMAIN):
                     "interface": self._interface,
                     "devices": self._discovered,
                     "device_count": count,
+                    **self._probe,
                 },
             )
 

@@ -393,6 +393,50 @@ sudo setcap cap_net_raw+ep $(readlink -f $(which python3))
 ```
 </details>
 
+### Home Assistant in its own VLAN
+
+HomePlug management frames are raw layer 2 and are **never routed**. If Home
+Assistant lives in an IoT VLAN while the adapters sit on a trunk in another
+VLAN (typical for a powerline link between buildings), HA cannot see them and
+setup finds **0 adapters**. You don't have to open up the VLAN for this:
+
+1. Run the **probe** on any Linux box (a Pi is enough) that is in the
+   adapters' segment, usually the trunk's native VLAN. It needs Python 3.10+,
+   root or `CAP_NET_RAW`, and nothing else:
+
+   ```bash
+   git clone https://github.com/Chance-Konstruktion/ha-powerline.git
+   head -c 32 /dev/urandom | base64 | sudo tee /etc/powerline-probe.token >/dev/null
+   sudo python3 ha-powerline/probe/powerline_probe.py --port 8765 --token-file /etc/powerline-probe.token
+   ```
+
+2. In Home Assistant: *Add Integration → Powerline Network*, pick
+   **remote_probe** as interface (offered automatically when HA has no raw
+   socket access), and enter `http://<probe-ip>:8765` plus the token.
+
+Only HTTP from HA to the probe has to be allowed; no VLAN gets bridged. The
+probe is **read-only**: sensors, topology and history work as usual, while
+LED, power saving, QoS and restart are not available through it.
+
+<details>
+<summary>Run the probe as a service (systemd)</summary>
+
+```ini
+# /etc/systemd/system/powerline-probe.service
+[Unit]
+Description=Powerline probe for Home Assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/ha-powerline/probe/powerline_probe.py --port 8765 --token-file /etc/powerline-probe.token
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+</details>
+
 ---
 
 ## 🩺 Troubleshooting

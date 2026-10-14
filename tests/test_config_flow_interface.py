@@ -5,7 +5,11 @@ import asyncio
 import pytest
 
 from custom_components.powerline import config_flow as cf
-from custom_components.powerline.const import CONF_INTERFACE, INTERFACE_AUTO
+from custom_components.powerline.const import (
+    CONF_INTERFACE,
+    INTERFACE_AUTO,
+    INTERFACE_PROBE,
+)
 from custom_components.powerline.homeplug import frames
 
 
@@ -119,7 +123,9 @@ def test_form_offers_auto_plus_detected_interfaces(flow):
     assert result["type"] == "form"
     felder = _felder(result["data_schema"])
     key = next(k for k in felder if k == CONF_INTERFACE)
-    assert _auswahl(felder[key]) == [INTERFACE_AUTO, "enp0s18", "enp0s19"]
+    assert _auswahl(felder[key]) == [
+        INTERFACE_AUTO, "enp0s18", "enp0s19", INTERFACE_PROBE,
+    ]
 
 
 def test_auto_uses_find_interface(flow):
