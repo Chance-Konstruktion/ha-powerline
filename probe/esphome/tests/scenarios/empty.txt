@@ -1,0 +1,5 @@
+# nothing answers
+own 02:00:00:00:00:99
+call discover 1
+call states B0:19:21:F5:DB:A7
+call states 

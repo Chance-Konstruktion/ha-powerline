@@ -5,3 +5,7 @@ __pycache__/
 .ruff_cache/
 .DS_Store
 *.zip
+
+# ESPHome probe: local secrets and build output
+probe/esphome/secrets.yaml
+probe/esphome/.esphome/
