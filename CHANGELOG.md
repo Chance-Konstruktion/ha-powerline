@@ -2,7 +2,7 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
-## [Unreleased]
+## [261016] - 2026-10-16
 
 ### Added
 - **Remote-Probe fuer Home Assistant in einem eigenen VLAN.** HomePlug wird
