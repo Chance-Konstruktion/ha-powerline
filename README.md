@@ -414,6 +414,8 @@ setup finds **0 adapters**. You don't have to open up the VLAN for this:
    **remote_probe** as interface (offered automatically when HA has no raw
    socket access), and enter `http://<probe-ip>:8765` plus the token.
 
+Step-by-step for a Raspberry Pi (Zero 2 W with USB-Ethernet): [probe/INSTALL-PI.md](probe/INSTALL-PI.md).
+
 Only HTTP from HA to the probe has to be allowed; no VLAN gets bridged. The
 probe is **read-only**: sensors, topology and history work as usual, while
 LED, power saving, QoS and restart are not available through it.
