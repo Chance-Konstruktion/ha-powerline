@@ -24,7 +24,7 @@ board and keep the rest of the example.
 
 | Board | Status |
 |-------|--------|
-| WT32-ETH01 (LAN8720) | reference board of the example (compile-checked, not yet run on hardware), [`powerline-probe-wt32-eth01.yaml`](powerline-probe-wt32-eth01.yaml) |
+| WT32-ETH01 (LAN8720) | reference board, tested on hardware (next to a Bluetooth proxy on the same chip), [`powerline-probe-wt32-eth01.yaml`](powerline-probe-wt32-eth01.yaml) |
 | LilyGO T-Internet-POE | untested, pins from the public pinout |
 | Olimex ESP32-POE | untested, pins from the public pinout |
 
@@ -77,6 +77,25 @@ SPI Ethernet modules (W5500 and friends) are not covered. Wi-Fi is no option
 either: HomePlug needs the wire.
 
 ## 1. Build and flash
+
+**Into an existing ESPHome device** (ESPHome dashboard / HA add-on): no clone
+needed, ESPHome pulls the component from this repo. Add to the device's YAML:
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/Chance-Konstruktion/ha-powerline
+      ref: main
+      path: probe/esphome/components
+    components: [powerline_probe]
+
+powerline_probe:
+  port: 8765
+  token: !secret powerline_probe_token
+```
+
+**Or standalone from a clone:**
 
 The component needs the **esp-idf** framework (the Arduino framework is
 rejected at validation). Copy the example, then give it a token:
