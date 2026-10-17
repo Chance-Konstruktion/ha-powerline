@@ -48,6 +48,17 @@ from .parsers import (
     parse_qca_nw_stats_cnf,
 )
 
+
+def _hfid_text(val: bytes) -> str:
+    """HFID bytes as text, without control characters.
+
+    Some Broadcom adapters answer the manufacturer HFID with a lone 0x02;
+    that is not a model name and must not end up in the UI.
+    """
+    txt = val.decode("ascii", errors="ignore").strip("\x00").strip()
+    return "".join(c for c in txt if " " <= c <= "~").strip()
+
+
 class DiscoveryMixin:
     """Adapter discovery and PHY-rate collection."""
 
@@ -630,8 +641,7 @@ class DiscoveryMixin:
                             self._sock_mx, frame, 1.5):
                         if mmtype == MX_GET_PARAM_CNF:
                             val = parse_mx_get_param_cnf(data)
-                            hfid = val.decode("ascii", errors="ignore"
-                                              ).strip("\x00").strip()
+                            hfid = _hfid_text(val)
                             if hfid:
                                 devices[mac]["model"] = hfid
                                 _LOGGER.debug("MX HFID %s: %s", mac, hfid)
@@ -646,8 +656,7 @@ class DiscoveryMixin:
                             self._sock_mx, frame, 1.5):
                         if mmtype == MX_GET_PARAM_CNF:
                             val = parse_mx_get_param_cnf(data)
-                            ver = val.decode("ascii", errors="ignore"
-                                             ).strip("\x00").strip()
+                            ver = _hfid_text(val)
                             if ver:
                                 devices[mac]["firmware_ver"] = ver
 

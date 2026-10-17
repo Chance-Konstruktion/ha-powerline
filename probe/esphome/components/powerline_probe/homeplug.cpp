@@ -87,7 +87,18 @@ static std::string strip_nul_then_ws(const std::string &in) {
     b++;
   while (e > b && py_space(in[e - 1]))
     e--;
-  return in.substr(b, e - b);
+  // then keep printable ASCII only, like _hfid_text(): some Broadcom
+  // adapters answer the manufacturer HFID with a lone 0x02
+  std::string out;
+  for (size_t k = b; k < e; k++)
+    if (in[k] >= ' ' && in[k] <= '~')
+      out += in[k];
+  size_t ob = 0, oe = out.size();
+  while (ob < oe && out[ob] == ' ')
+    ob++;
+  while (oe > ob && out[oe - 1] == ' ')
+    oe--;
+  return out.substr(ob, oe - ob);
 }
 
 const char *chip_name(Chip c) {
