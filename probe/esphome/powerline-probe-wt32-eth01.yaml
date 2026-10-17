@@ -1,0 +1,45 @@
+# Powerline probe on a WT32-ETH01 (ESP32 + LAN8720).
+#
+# Reads HomePlug AV adapters on the board's wired Ethernet port and serves the
+# result over HTTP on port 8765 -- the same JSON as probe/powerline_probe.py,
+# so Home Assistant's "Remote probe" setup talks to it unchanged.
+#
+#   cp secrets.example.yaml secrets.yaml      # then fill in real values
+#   esphome run powerline-probe-wt32-eth01.yaml
+
+esphome:
+  name: powerline-probe
+
+esp32:
+  board: wt32-eth01
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [powerline_probe]
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+safe_mode:
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    pin: GPIO0
+    mode: CLK_EXT_IN
+  phy_addr: 1
+  power_pin: GPIO16
+
+powerline_probe:
+  port: 8765
+  token: !secret powerline_probe_token
