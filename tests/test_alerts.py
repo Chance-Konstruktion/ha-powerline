@@ -1,10 +1,11 @@
 """Unit tests for topology alerts and conservative cause hints."""
 
+import time
 from datetime import datetime, timedelta, timezone
 
 from custom_components.powerline.alert_translations import alert_notification_text
 from custom_components.powerline.alerts import TopologyAlerts
-from custom_components.powerline.history import TopologyHistory
+from custom_components.powerline.history import BUCKET_SECONDS, TopologyHistory, edge_key
 
 MAC_A = "AA:BB:CC:DD:EE:01"
 MAC_B = "AA:BB:CC:DD:EE:02"
@@ -167,7 +168,7 @@ def test_persistently_weak_route_is_compared_with_healthy_peers():
     )
 
 
-def test_directional_tx_rx_asymmetry_suggests_a_noise_source():
+def test_directional_tx_rx_asymmetry_requires_thirty_minutes():
     history = _history_for_profiles([(MAC_A, MAC_B, 300)])
     edge = _edge(
         MAC_A,
@@ -176,30 +177,48 @@ def test_directional_tx_rx_asymmetry_suggests_a_noise_source():
         tx_phy_rate=100,
         rx_phy_rate=500,
     )
+    alerts = TopologyAlerts()
 
-    fired = TopologyAlerts().check({"edges": [edge]}, history, [], now=NOW)
-    hint = next(alert for alert in fired if alert.get("cause") == "directional_asymmetry")
+    assert not any(
+        alert.get("cause") == "directional_asymmetry"
+        for alert in alerts.check({"edges": [edge]}, history, [], now=NOW)
+    )
+    assert not any(
+        alert.get("cause") == "directional_asymmetry"
+        for alert in alerts.check(
+            {"edges": [edge]}, history, [], now=NOW + timedelta(minutes=29)
+        )
+    )
+    fired = alerts.check(
+        {"edges": [edge]}, history, [], now=NOW + timedelta(minutes=30)
+    )
+    hint = next(
+        alert for alert in fired if alert.get("cause") == "directional_asymmetry"
+    )
     assert hint["tx"] == 100
     assert hint["rx"] == 500
 
 
-def test_weak_short_link_hint_requires_explicit_distance():
-    history = _history_for_profiles([(MAC_A, MAC_B, 100)])
+def test_estimated_link_never_reports_directional_asymmetry():
+    history = _history_for_profiles([(MAC_A, MAC_B, 300)])
     edge = _edge(
         MAC_A,
         MAC_B,
-        100,
+        300,
         tx_phy_rate=100,
-        rx_phy_rate=100,
-        distance_m=5,
+        rx_phy_rate=500,
+        estimated=True,
     )
+    alerts = TopologyAlerts()
 
-    fired = TopologyAlerts().check({"edges": [edge]}, history, [], now=NOW)
-    hint = next(alert for alert in fired if alert.get("cause") == "short_weak_link")
-    assert hint["distance_m"] == 5
+    for moment in (NOW, NOW + timedelta(minutes=45)):
+        fired = alerts.check({"edges": [edge]}, history, [], now=moment)
+        assert not any(
+            alert.get("cause") == "directional_asymmetry" for alert in fired
+        )
 
 
-def test_no_cause_hint_without_an_observed_pattern_or_distance():
+def test_no_cause_hint_without_an_observed_pattern():
     history = _history_for_profiles([(MAC_A, MAC_B, 100)])
     edge = _edge(MAC_A, MAC_B, 100, tx_phy_rate=100, rx_phy_rate=100)
 
@@ -215,7 +234,6 @@ def test_cause_hints_are_suppressed_until_enough_history_exists():
         100,
         tx_phy_rate=100,
         rx_phy_rate=100,
-        distance_m=5,
     )
     for i in (2, 1):
         history.record(
@@ -237,3 +255,42 @@ def test_cause_notifications_have_german_and_english_text():
 
     assert "wiederkehrende Störung" in german["title"]
     assert "recurring interference" in english["title"]
+
+
+def test_check_twelve_adapters_with_thirty_days_history_under_100ms():
+    """Regression benchmark for the worst-case fully connected 12-adapter graph."""
+    adapters = [f"adapter-{i:02d}" for i in range(12)]
+    edges = [
+        _edge(
+            source,
+            destination,
+            500,
+            tx_phy_rate=500,
+            rx_phy_rate=500,
+        )
+        for i, source in enumerate(adapters)
+        for destination in adapters[i + 1 :]
+    ]
+    last_bucket = int(NOW.timestamp() // BUCKET_SECONDS) * BUCKET_SECONDS
+    first_bucket = last_bucket - 30 * 24 * 60 * 60 + BUCKET_SECONDS
+    bucket_starts = range(first_bucket, last_bucket + 1, BUCKET_SECONDS)
+    assert len(bucket_starts) == 30 * 24 * 4
+
+    history = TopologyHistory()
+    history.restore(
+        {
+            "buckets": {
+                edge_key(edge["source"], edge["destination"]): {
+                    str(start): [500, 1, 500, 500] for start in bucket_starts
+                }
+                for edge in edges
+            },
+            "online": {},
+        }
+    )
+
+    started = time.perf_counter()
+    TopologyAlerts().check({"edges": edges}, history, [], now=NOW)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.1, f"12-adapter, 30-day alert check took {elapsed:.3f}s"
