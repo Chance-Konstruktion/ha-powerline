@@ -22,5 +22,9 @@
   "directional_asymmetry": {
     "title": "Powerline: TX/RX-Raten sind asymmetrisch",
     "message": "Die Verbindung **{source} ↔ {destination}** meldet TX {tx} und RX {rx} Mbit/s. Eine Störquelle an einem der Endpunkte könnte dafür verantwortlich sein. Prüfe Ladegeräte, LED-Treiber, Netzteile und Haushaltsgeräte in der Nähe beider Adapter und teste mögliche Verursacher einzeln. Die Messwerte legen eine Möglichkeit nahe, beweisen sie aber nicht."
+  },
+  "consumer_correlation": {
+    "title": "Powerline: Verbraucher mit Einbruch verknüpft",
+    "message": "Wenn Leistungssensor **{sensor_name}** über {threshold_w} W liegt, fällt die Strecke **{source} ↔ {destination}** um etwa {drop_percent} % (typisch ohne Last: {baseline_rate} Mbit/s, mit Last: {active_rate} Mbit/s). Das ist ein zeitlicher Zusammenhang in der Recorder-Historie, kein Beweis für eine Ursache."
   }
 }

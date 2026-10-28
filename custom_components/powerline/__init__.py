@@ -24,6 +24,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from .const import (
     CONF_PROBE_TOKEN,
     CONF_PROBE_URL,
+    CONF_POWER_SENSORS,
     CONF_SPATIAL_HUB,
     CONF_SCAN_INTERVAL,
     CONF_SIDEBAR_PANEL,
@@ -88,6 +89,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = TpLinkPowerlineCoordinator(
         hass, interface, initial_devices, scan_interval=scan_interval, hp=hp
+    )
+    coordinator.power_sensors = list(
+        entry.options.get(CONF_POWER_SENSORS, []) or []
     )
     coordinator.alerts_enabled = bool(
         entry.options.get(CONF_TOPOLOGY_ALERTS, DEFAULT_TOPOLOGY_ALERTS)
@@ -526,6 +530,12 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
     new_interval = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
     coordinator.update_interval = timedelta(seconds=new_interval)
     _LOGGER.info("Powerline scan interval updated to %ds", new_interval)
+
+    new_power_sensors = list(entry.options.get(CONF_POWER_SENSORS, []) or [])
+    if new_power_sensors != coordinator.power_sensors:
+        coordinator.power_sensors = new_power_sensors
+        coordinator._consumer_alerted.clear()
+        coordinator._last_consumer_analysis = None
 
     _async_update_panel(
         hass, entry.options.get(CONF_SIDEBAR_PANEL, DEFAULT_SIDEBAR_PANEL)

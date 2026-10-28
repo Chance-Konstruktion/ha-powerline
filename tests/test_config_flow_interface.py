@@ -7,6 +7,7 @@ import pytest
 from custom_components.powerline import config_flow as cf
 from custom_components.powerline.const import (
     CONF_INTERFACE,
+    CONF_POWER_SENSORS,
     INTERFACE_AUTO,
     INTERFACE_PROBE,
 )
@@ -155,3 +156,21 @@ def test_explicit_interface_is_probed_and_stored(flow):
 def test_unique_id_follows_selected_interface(flow):
     asyncio.run(flow.async_step_user({CONF_INTERFACE: "enp0s19"}))
     assert flow.unique_id == "powerline_enp0s19"
+
+
+
+def test_options_form_has_optional_power_sensor_selector():
+    """Only power-class sensor entities are offered for correlation."""
+    import types
+
+    options_flow = cf.TpLinkPowerlineOptionsFlow()
+    options_flow.config_entry = types.SimpleNamespace(options={})
+    result = asyncio.run(options_flow.async_step_init())
+
+    assert result["type"] == "form"
+    fields = _felder(result["data_schema"])
+    key = next(k for k in fields if k == CONF_POWER_SENSORS)
+    selector = fields[key]
+    assert selector.config.domain == "sensor"
+    assert selector.config.device_class == "power"
+    assert selector.config.multiple is True
