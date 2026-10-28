@@ -31,16 +31,11 @@ PEER_GOOD_RATE = 300
 ISOLATED_BASELINE_FACTOR = 0.55
 ISOLATED_CURRENT_FACTOR = 0.60
 
-# A large directional difference is meaningful only when both directions
-# report non-zero rates and the absolute gap is substantial.
+# A directional difference must be substantial and persist before it is
+# reported. Estimated star links reuse node-level readings and are excluded.
 ASYMMETRY_RATIO = 0.50
 MIN_ASYMMETRY_DIFFERENCE = 150
-
-# Physical distance is not inferred from rate or graph shape. It must be
-# provided explicitly by a future/other topology source as distance_m.
-MAX_SHORT_LINK_DISTANCE_M = 10
-WEAK_LINK_RATE = 150
-WEAK_SHORT_LINK_BASELINE_MAX = 250
+ASYMMETRY_DURATION_SECONDS = 30 * 60
 
 
 class TopologyAlerts:
@@ -53,6 +48,8 @@ class TopologyAlerts:
         self._alerted: set[str] = set()
         # (edge key, cause key) pairs already emitted while the pattern holds
         self._cause_alerted: set[tuple[str, str]] = set()
+        # Edge keys whose measured TX/RX asymmetry is currently persisting.
+        self._asymmetry_since: dict[str, float] = {}
         # First check() after startup: every adapter looks "new", so
         # new-adapter alerts are suppressed once.
         self._first_check = True
@@ -70,12 +67,39 @@ class TopologyAlerts:
         alerts: list[dict[str, Any]] = []
         edges = topology.get("edges", [])
 
+        # Compute each edge's history context once. Bucket counts inspect the
+        # lookback window without sorting; peer comparisons reuse this cache.
+        edge_history: dict[str, dict[str, Any]] = {}
+        for edge in edges:
+            source, destination = edge["source"], edge["destination"]
+            key = edge_key(source, destination)
+            if key in edge_history:
+                continue
+            enough = (
+                history.bucket_count(
+                    source,
+                    destination,
+                    hours=CAUSE_HINT_HISTORY_HOURS,
+                    now=timestamp,
+                )
+                >= MIN_BUCKETS_FOR_CAUSE_HINT
+            )
+            edge_history[key] = {
+                "enough": enough,
+                "baseline": history.baseline(source, destination, now=timestamp),
+                "recurring_low_hours": (
+                    history.recurring_low_hours(
+                        source, destination, now=timestamp
+                    )
+                    if enough
+                    else []
+                ),
+            }
+
         # Sustained slowdowns against the 24h baseline.
         for edge in edges:
             key = edge_key(edge["source"], edge["destination"])
-            baseline = history.baseline(
-                edge["source"], edge["destination"], now=timestamp
-            )
+            baseline = edge_history[key]["baseline"]
             average = edge["average_rate"]
             if baseline and average < SLOW_FACTOR * baseline:
                 since = self._slow_since.setdefault(key, ts)
@@ -103,7 +127,7 @@ class TopologyAlerts:
         for edge in edges:
             key = edge_key(edge["source"], edge["destination"])
             current_edge_keys.add(key)
-            hints = self._cause_hints(edge, edges, history, timestamp)
+            hints = self._cause_hints(edge, edges, edge_history, timestamp)
             active_causes = set(hints)
 
             # A pattern that no longer meets its thresholds can alert again
@@ -133,6 +157,9 @@ class TopologyAlerts:
         for token in tuple(self._cause_alerted):
             if token[0] not in current_edge_keys:
                 self._cause_alerted.discard(token)
+        for key in tuple(self._asymmetry_since):
+            if key not in current_edge_keys:
+                self._asymmetry_since.pop(key, None)
 
         # Adapters removed after the offline retention window.
         for event in events:
@@ -149,47 +176,33 @@ class TopologyAlerts:
 
         return alerts
 
-    def _has_enough_history(
-        self,
-        source: str,
-        destination: str,
-        history: TopologyHistory,
-        now: datetime,
-    ) -> bool:
-        """Require eight real buckets in the lookback window (~two hours)."""
-        cutoff = now.timestamp() - CAUSE_HINT_HISTORY_HOURS * 3600
-        current = now.timestamp()
-        points = history.series(
-            source, destination, CAUSE_HINT_HISTORY_HOURS, now=now
-        )
-        return sum(
-            1 for point in points if cutoff <= point["t"] <= current
-        ) >= MIN_BUCKETS_FOR_CAUSE_HINT
-
     def _cause_hints(
         self,
         edge: dict[str, Any],
         edges: list[dict[str, Any]],
-        history: TopologyHistory,
+        edge_history: dict[str, dict[str, Any]],
         now: datetime,
     ) -> dict[str, dict[str, Any]]:
         """Return currently supported hints for one edge, keyed by translation key."""
         source = edge["source"]
         destination = edge["destination"]
-        average = float(edge.get("average_rate") or 0)
-        if not self._has_enough_history(source, destination, history, now):
+        key = edge_key(source, destination)
+        context = edge_history.get(key)
+        if context is None or not context["enough"]:
+            self._asymmetry_since.pop(key, None)
             return {}
+        average = float(edge.get("average_rate") or 0)
 
         hints: dict[str, dict[str, Any]] = {}
 
         # Repeated slow windows at the same time of day can fit an appliance
         # or switched-mode power supply coming on regularly.
-        if history.recurring_low_hours(source, destination, now=now):
+        if context["recurring_low_hours"]:
             hints["recurring_load"] = {}
 
         # Compare only edges with their own adequate history. Requiring a
         # healthy peer baseline avoids labelling a generally poor network.
-        own_baseline = history.baseline(source, destination, now=now)
+        own_baseline = context["baseline"]
         peer_baselines: list[float] = []
         peer_current_rates: list[float] = []
         for peer in edges:
@@ -197,14 +210,11 @@ class TopologyAlerts:
                 source, destination
             ):
                 continue
-            peer_source, peer_destination = peer["source"], peer["destination"]
-            if not self._has_enough_history(
-                peer_source, peer_destination, history, now
-            ):
+            peer_key = edge_key(peer["source"], peer["destination"])
+            peer_context = edge_history.get(peer_key)
+            if peer_context is None or not peer_context["enough"]:
                 continue
-            peer_baseline = history.baseline(
-                peer_source, peer_destination, now=now
-            )
+            peer_baseline = peer_context["baseline"]
             peer_rate = float(peer.get("average_rate") or 0)
             if peer_baseline is None or peer_rate <= 0:
                 continue
@@ -224,34 +234,25 @@ class TopologyAlerts:
                     "peer_average": round(typical_peer_current)
                 }
 
-        # A zero reading can mean a direction did not report a rate, so it
-        # must not be treated as reliable asymmetry.
+        # Estimated star links reuse node-level TX/RX readings and cannot
+        # support a directional diagnosis. Measured asymmetry must persist.
         tx = float(edge.get("tx_phy_rate") or 0)
         rx = float(edge.get("rx_phy_rate") or 0)
-        if (
-            tx > 0
+        asymmetric = (
+            not edge.get("estimated", False)
+            and tx > 0
             and rx > 0
             and min(tx, rx) <= ASYMMETRY_RATIO * max(tx, rx)
             and max(tx, rx) - min(tx, rx) >= MIN_ASYMMETRY_DIFFERENCE
-        ):
-            hints["directional_asymmetry"] = {
-                "tx": round(tx),
-                "rx": round(rx),
-            }
-
-        # Distance is optional by design. Never infer a "short" route merely
-        # from adapter count, a high rate, or an unmeasured physical layout.
-        distance_m = edge.get("distance_m")
-        if (
-            isinstance(distance_m, (int, float))
-            and not isinstance(distance_m, bool)
-            and 0 < distance_m <= MAX_SHORT_LINK_DISTANCE_M
-            and average <= WEAK_LINK_RATE
-            and own_baseline is not None
-            and own_baseline <= WEAK_SHORT_LINK_BASELINE_MAX
-        ):
-            hints["short_weak_link"] = {
-                "distance_m": round(float(distance_m), 1)
-            }
+        )
+        if asymmetric:
+            since = self._asymmetry_since.setdefault(key, now.timestamp())
+            if now.timestamp() - since >= ASYMMETRY_DURATION_SECONDS:
+                hints["directional_asymmetry"] = {
+                    "tx": round(tx),
+                    "rx": round(rx),
+                }
+        else:
+            self._asymmetry_since.pop(key, None)
 
         return hints
