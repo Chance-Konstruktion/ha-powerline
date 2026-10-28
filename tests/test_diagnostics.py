@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import types
 from types import SimpleNamespace
 
-import pytest
 
 
 def _fake_async_redact_data(data, to_redact):
@@ -74,8 +74,7 @@ def _poll(index: int) -> dict:
     }
 
 
-@pytest.mark.asyncio
-async def test_diagnostics_contains_expected_data_and_redacts_sensitive_values():
+def test_diagnostics_contains_expected_data_and_redacts_sensitive_values():
     coordinator = SimpleNamespace(
         devices={
             MAC_ONE: {
@@ -194,7 +193,7 @@ async def test_diagnostics_contains_expected_data_and_redacts_sensitive_values()
     )
     hass = SimpleNamespace(data={"powerline": {"entry-test": coordinator}})
 
-    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    diagnostics = asyncio.run(async_get_config_entry_diagnostics(hass, entry))
     exported = json.dumps(diagnostics)
 
     assert diagnostics["integration"]["domain"] == "powerline"
