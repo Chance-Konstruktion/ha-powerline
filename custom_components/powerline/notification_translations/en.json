@@ -22,9 +22,5 @@
   "directional_asymmetry": {
     "title": "Powerline: TX/RX rates are asymmetric",
     "message": "The link **{source} ↔ {destination}** reports TX {tx} and RX {rx} Mbit/s. A noise source near one endpoint may be responsible. Inspect chargers, LED drivers, power supplies, and appliances near both adapters; disconnect candidates one at a time to test. The readings suggest a possibility, not certainty."
-  },
-  "short_weak_link": {
-    "title": "Powerline: unexpectedly weak short link",
-    "message": "Although the reported distance is only {distance_m} m, the link remains weak (~{average} Mbit/s). Adapters on different electrical phases or an RCD between them may explain this. Check the circuit/phase and protection path; do not open electrical equipment or work on wiring yourself."
   }
 }
