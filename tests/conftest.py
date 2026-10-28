@@ -261,6 +261,30 @@ if not hasattr(_ha_helpers, "update_coordinator"):
     ]
 
 
+# -- homeassistant.helpers.selector --------------------------------------------
+if "homeassistant.helpers.selector" not in sys.modules:
+    selector = types.ModuleType("homeassistant.helpers.selector")
+
+    class EntitySelectorConfig:
+        def __init__(self, **kwargs):
+            self.config = kwargs
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    class EntitySelector:
+        def __init__(self, config):
+            self.config = config
+
+        def __call__(self, value):
+            """Mirror Home Assistant's selector validator contract in unit tests."""
+            return value
+
+    selector.EntitySelectorConfig = EntitySelectorConfig
+    selector.EntitySelector = EntitySelector
+    sys.modules["homeassistant.helpers.selector"] = selector
+    _ha_helpers.selector = selector
+
+
 # -- homeassistant.helpers.dispatcher ------------------------------------------
 if "homeassistant.helpers.dispatcher" not in sys.modules:
     dispatcher = types.ModuleType("homeassistant.helpers.dispatcher")

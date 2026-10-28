@@ -6,7 +6,7 @@ Discovers new devices every poll cycle (default 120s).
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,7 +15,16 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .alerts import TopologyAlerts
 from .alert_translations import alert_notification_text
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, TOPOLOGY_EVENT, get_mac, normalize_mac
+from .consumer_analysis import fetch_recorder_correlations
+from .const import (
+    CONSUMER_ANALYSIS_INTERVAL_SECONDS,
+    CONSUMER_HISTORY_HOURS,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    TOPOLOGY_EVENT,
+    get_mac,
+    normalize_mac,
+)
 from .history import TopologyHistory
 from .topology import TopologyManager
 
@@ -61,6 +70,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Consecutive polls each known adapter did not answer.
         self._missed_polls: dict[str, int] = {}
         self._new_device_callbacks: list[Callable[[list[dict[str, Any]]], None]] = []
+        self._new_link_callbacks: list[Callable[[list[dict[str, Any]]], None]] = []
         # Each platform shares the set of MACs it has already created entities
         # for. forget_device() clears a MAC from all of them so a rediscovered
         # adapter gets fresh entities instead of being silently skipped.
@@ -74,6 +84,11 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Set by __init__.py from the config entry options / HA Store.
         self.alerts_enabled = True
         self.history_store = None
+        # Selected power entities are read from Recorder only; correlation data
+        # is intentionally not persisted by this integration.
+        self.power_sensors: list[str] = []
+        self._last_consumer_analysis: datetime | None = None
+        self._consumer_alerted: set[tuple[str, str, str]] = set()
 
         self._states_queried = False
 
@@ -93,6 +108,12 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def register_new_device_callback(self, cb: Callable[[list[dict[str, Any]]], None]) -> None:
         """Register callback for when new devices are discovered."""
         self._new_device_callbacks.append(cb)
+
+    def register_new_link_callback(
+        self, cb: Callable[[list[dict[str, Any]]], None]
+    ) -> None:
+        """Register a callback that creates Recorder-backed entities for links."""
+        self._new_link_callbacks.append(cb)
 
     def register_tracked_macs(self, tracked: set[str]) -> None:
         """Register a platform's set of already-created MACs.
@@ -256,6 +277,14 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             topology = self.topology.update(
                 self.devices, getattr(self.hp, "plc_links", {})
             )
+            # Route-rate entities are only created when the user opted into
+            # consumer correlation; otherwise integration behaviour is unchanged.
+            if getattr(self, "power_sensors", []):
+                for callback in self._new_link_callbacks:
+                    try:
+                        callback(topology.get("edges", []))
+                    except Exception:
+                        _LOGGER.exception("Error in topology-link callback")
             events = self.topology.drain_events()
             for event in events:
                 self.hass.bus.async_fire(TOPOLOGY_EVENT, event)
@@ -270,6 +299,13 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.alerts_enabled:
                 for alert in self.alerts.check(topology, self.history, events):
                     self._notify_alert(alert)
+                if getattr(self, "power_sensors", []):
+                    for alert in await self._async_check_consumer_correlations(topology):
+                        self._notify_alert(alert)
+                elif hasattr(self, "_consumer_alerted"):
+                    self._consumer_alerted.clear()
+            elif hasattr(self, "_consumer_alerted"):
+                self._consumer_alerted.clear()
 
             return {
                 "online": online > 0,
@@ -286,6 +322,109 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.debug("Error polling Powerline adapters: %s", err)
             raise UpdateFailed(f"HomePlug AV error: {err}") from err
+
+
+    async def _async_check_consumer_correlations(
+        self, topology: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Compare selected power sensors with link rates from Recorder history."""
+        if not self.power_sensors:
+            self._consumer_alerted.clear()
+            return []
+
+        now = datetime.now(UTC)
+        if (
+            self._last_consumer_analysis is not None
+            and (now - self._last_consumer_analysis).total_seconds()
+            < CONSUMER_ANALYSIS_INTERVAL_SECONDS
+        ):
+            return []
+        self._last_consumer_analysis = now
+
+        # Entity registry access stays on the event loop; only Recorder reads
+        # and numerical analysis are handed to the executor below.
+        from homeassistant.helpers import entity_registry as er
+
+        registry = er.async_get(self.hass)
+        registry_entities = getattr(registry, "entities", {})
+        entity_by_unique_id = {
+            entity.unique_id: entity.entity_id
+            for entity in registry_entities.values()
+        }
+
+        edge_specs: list[dict[str, Any]] = []
+        rate_entity_ids: set[str] = set()
+        for edge in topology.get("edges", []):
+            source = edge.get("source")
+            destination = edge.get("destination")
+            if not source or not destination:
+                continue
+            rate_entity_id = entity_by_unique_id.get(
+                f"plc_link_{source}_{destination}_rate"
+            )
+            if not rate_entity_id:
+                continue
+            edge_specs.append(
+                {
+                    "source": source,
+                    "destination": destination,
+                    "entity_ids": [rate_entity_id],
+                }
+            )
+            rate_entity_ids.add(rate_entity_id)
+
+        power_sensor_ids = [
+            sensor_id
+            for sensor_id in dict.fromkeys(self.power_sensors)
+            if isinstance(sensor_id, str) and sensor_id.startswith("sensor.")
+        ]
+        if not edge_specs or not power_sensor_ids:
+            self._consumer_alerted.clear()
+            return []
+
+        sensor_names: dict[str, str] = {}
+        for sensor_id in power_sensor_ids:
+            state = self.hass.states.get(sensor_id)
+            attributes = getattr(state, "attributes", {}) or {}
+            sensor_names[sensor_id] = (
+                attributes.get("friendly_name") or sensor_id
+            )
+
+        entity_ids = sorted(rate_entity_ids | set(power_sensor_ids))
+        try:
+            correlations = await self.hass.async_add_executor_job(
+                fetch_recorder_correlations,
+                self.hass,
+                now - timedelta(hours=CONSUMER_HISTORY_HOURS),
+                now,
+                entity_ids,
+                power_sensor_ids,
+                edge_specs,
+                sensor_names,
+            )
+        except Exception:  # noqa: BLE001 - missing Recorder history must not break polling
+            _LOGGER.debug(
+                "Could not correlate Powerline history with power sensors",
+                exc_info=True,
+            )
+            return []
+
+        active = {
+            (alert["source"], alert["destination"], alert["sensor_id"])
+            for alert in correlations
+        }
+        new_alerts = [
+            alert
+            for alert in correlations
+            if (
+                alert["source"],
+                alert["destination"],
+                alert["sensor_id"],
+            )
+            not in self._consumer_alerted
+        ]
+        self._consumer_alerted = active
+        return new_alerts
 
     def adapter_name(self, mac: str) -> str:
         """Device-registry name for a MAC (user rename wins), else the MAC."""
@@ -305,7 +444,13 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _notify_alert(self, alert: dict[str, Any]) -> None:
         """Surface a topology alert as a localized persistent notification."""
         kind = alert["type"]
-        if kind not in {"link_slow", "adapter_removed", "adapter_new", "link_cause"}:
+        if kind not in {
+            "link_slow",
+            "adapter_removed",
+            "adapter_new",
+            "link_cause",
+            "consumer_correlation",
+        }:
             return
 
         try:
@@ -337,6 +482,29 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     language, "adapter_new", name=name, mac=alert["mac"]
                 )
                 notification_id = f"powerline_new_{alert['mac']}"
+            elif kind == "consumer_correlation":
+                source = self._adapter_name(alert["source"])
+                destination = self._adapter_name(alert["destination"])
+                text = alert_notification_text(
+                    language,
+                    "consumer_correlation",
+                    source=source,
+                    destination=destination,
+                    sensor_name=alert.get(
+                        "sensor_name", alert.get("sensor_id", "sensor")
+                    ),
+                    threshold_w=alert.get("threshold_w", 500),
+                    drop_percent=alert.get("drop_percent", 0),
+                    baseline_rate=alert.get("baseline_rate", 0),
+                    active_rate=alert.get("active_rate", 0),
+                )
+                sensor_token = str(alert.get("sensor_id", "sensor")).replace(
+                    ".", "_"
+                )
+                notification_id = (
+                    f"powerline_consumer_{sensor_token}_"
+                    f"{alert['source']}_{alert['destination']}"
+                )
             else:
                 cause = alert.get("cause")
                 source = self._adapter_name(alert["source"])

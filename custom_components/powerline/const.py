@@ -70,6 +70,16 @@ PANEL_URL_PATH = "powerline"
 CONF_TOPOLOGY_ALERTS = "topology_alerts"
 DEFAULT_TOPOLOGY_ALERTS = True
 
+# Optional correlation between Recorder power history and Powerline rates.
+CONF_POWER_SENSORS = "power_sensors"
+CONSUMER_HISTORY_HOURS = 24
+CONSUMER_ANALYSIS_INTERVAL_SECONDS = 300
+CONSUMER_POWER_THRESHOLD_W = 500.0
+# Eight paired observations span ~16 minutes at the default 2-minute poll rate.
+CONSUMER_MIN_OVERLAPPING_SAMPLES = 8
+CONSUMER_MIN_SAMPLES_PER_STATE = 3
+CONSUMER_MIN_RATE_DROP_PERCENT = 30
+
 # Spatial Hub provider (https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-spatial-hub).
 # Registration is free when the hub is absent -- it is a dict in hass.data
 # that nobody reads -- so this defaults to on. Users who want the adapters

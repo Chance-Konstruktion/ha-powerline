@@ -22,5 +22,9 @@
   "directional_asymmetry": {
     "title": "Powerline: TX/RX rates are asymmetric",
     "message": "The link **{source} ↔ {destination}** reports TX {tx} and RX {rx} Mbit/s. A noise source near one endpoint may be responsible. Inspect chargers, LED drivers, power supplies, and appliances near both adapters; disconnect candidates one at a time to test. The readings suggest a possibility, not certainty."
+  },
+  "consumer_correlation": {
+    "title": "Powerline: consumer-related dip detected",
+    "message": "When power sensor **{sensor_name}** is above {threshold_w} W, the link **{source} ↔ {destination}** is about {drop_percent}% slower (typical without load: {baseline_rate} Mbit/s; under load: {active_rate} Mbit/s). This is a correlation in Recorder history, not proof of causation."
   }
 }
