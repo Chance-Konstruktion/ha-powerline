@@ -1,0 +1,26 @@
+{
+  "link_slow": {
+    "title": "Powerline: link slower than usual",
+    "message": "The connection **{source} ↔ {destination}** has been much slower than usual for {minutes} minutes: {average} Mbit/s (typical: ~{baseline} Mbit/s)."
+  },
+  "adapter_removed": {
+    "title": "Powerline: adapter removed",
+    "message": "Adapter **{name}** ({mac}) has disappeared from the powerline network and was removed from the topology."
+  },
+  "adapter_new": {
+    "title": "Powerline: new adapter",
+    "message": "New adapter **{name}** ({mac}) joined the powerline network."
+  },
+  "recurring_load": {
+    "title": "Powerline: recurring interference suspected",
+    "message": "The link **{source} ↔ {destination}** has repeatedly dipped at similar times of day. A household appliance or switched-mode power supply (for example a washing machine, refrigerator, or charger) may be causing interference. Check whether the pattern follows a device switching on; test nearby devices one at a time. This is a likely cause, not a confirmed diagnosis."
+  },
+  "isolated_weak_link": {
+    "title": "Powerline: one link is persistently weaker",
+    "message": "The link **{source} ↔ {destination}** remains much slower than other links (current ~{average} Mbit/s; other links typically ~{peer_average} Mbit/s). A power strip or surge protector may attenuate the signal. Try plugging both adapters directly into wall outlets, bypassing extension leads and surge-protected strips."
+  },
+  "directional_asymmetry": {
+    "title": "Powerline: TX/RX rates are asymmetric",
+    "message": "The link **{source} ↔ {destination}** reports TX {tx} and RX {rx} Mbit/s. A noise source near one endpoint may be responsible. Inspect chargers, LED drivers, power supplies, and appliances near both adapters; disconnect candidates one at a time to test. The readings suggest a possibility, not certainty."
+  }
+}

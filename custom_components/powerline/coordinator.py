@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .alerts import TopologyAlerts
+from .alert_translations import alert_notification_text
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, TOPOLOGY_EVENT, get_mac, normalize_mac
 from .history import TopologyHistory
 from .topology import TopologyManager
@@ -302,41 +303,64 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     _adapter_name = adapter_name
 
     def _notify_alert(self, alert: dict[str, Any]) -> None:
-        """Surface a topology alert as a persistent notification."""
+        """Surface a topology alert as a localized persistent notification."""
         kind = alert["type"]
-        if kind == "link_slow":
-            source = self._adapter_name(alert["source"])
-            destination = self._adapter_name(alert["destination"])
-            title = "Powerline: link slower than usual"
-            message = (
-                f"The connection **{source} ↔ {destination}** has been much "
-                f"slower than usual for {alert['minutes']} minutes: "
-                f"{alert['average']} Mbit/s (typical: ~{alert['baseline']} Mbit/s)."
-            )
-            notification_id = f"powerline_slow_{alert['source']}_{alert['destination']}"
-        elif kind == "adapter_removed":
-            name = self._adapter_name(alert["mac"])
-            title = "Powerline: adapter removed"
-            message = (
-                f"Adapter **{name}** ({alert['mac']}) has disappeared from the "
-                "powerline network and was removed from the topology."
-            )
-            notification_id = f"powerline_removed_{alert['mac']}"
-        elif kind == "adapter_new":
-            name = self._adapter_name(alert["mac"])
-            title = "Powerline: new adapter"
-            message = f"New adapter **{name}** ({alert['mac']}) joined the powerline network."
-            notification_id = f"powerline_new_{alert['mac']}"
-        else:  # pragma: no cover - defensive against future alert types
+        if kind not in {"link_slow", "adapter_removed", "adapter_new", "link_cause"}:
             return
 
         try:
-            from homeassistant.components.persistent_notification import (
-                async_create,
-            )
+            language = getattr(getattr(self.hass, "config", None), "language", "en")
+            if kind == "link_slow":
+                source = self._adapter_name(alert["source"])
+                destination = self._adapter_name(alert["destination"])
+                text = alert_notification_text(
+                    language,
+                    "link_slow",
+                    source=source,
+                    destination=destination,
+                    minutes=alert["minutes"],
+                    average=alert["average"],
+                    baseline=alert["baseline"],
+                )
+                notification_id = (
+                    f"powerline_slow_{alert['source']}_{alert['destination']}"
+                )
+            elif kind == "adapter_removed":
+                name = self._adapter_name(alert["mac"])
+                text = alert_notification_text(
+                    language, "adapter_removed", name=name, mac=alert["mac"]
+                )
+                notification_id = f"powerline_removed_{alert['mac']}"
+            elif kind == "adapter_new":
+                name = self._adapter_name(alert["mac"])
+                text = alert_notification_text(
+                    language, "adapter_new", name=name, mac=alert["mac"]
+                )
+                notification_id = f"powerline_new_{alert['mac']}"
+            else:
+                cause = alert.get("cause")
+                source = self._adapter_name(alert["source"])
+                destination = self._adapter_name(alert["destination"])
+                values = {
+                    "source": source,
+                    "destination": destination,
+                    "average": alert.get("average", 0),
+                    "peer_average": alert.get("peer_average", 0),
+                    "tx": alert.get("tx", 0),
+                    "rx": alert.get("rx", 0),
+                }
+                text = alert_notification_text(language, cause, **values)
+                notification_id = (
+                    f"powerline_cause_{cause}_{alert['source']}_{alert['destination']}"
+                )
+
+            from homeassistant.components.persistent_notification import async_create
 
             async_create(
-                self.hass, message, title=title, notification_id=notification_id
+                self.hass,
+                text["message"],
+                title=text["title"],
+                notification_id=notification_id,
             )
         except Exception:  # noqa: BLE001 - notifications must never break polling
             _LOGGER.debug("Could not create persistent notification", exc_info=True)

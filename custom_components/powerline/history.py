@@ -11,8 +11,9 @@ The bucket tier and the transitions survive restarts via the HA Store
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from datetime import UTC, datetime
+from statistics import median
 from typing import Any
 
 BUCKET_SECONDS = 900
@@ -22,6 +23,14 @@ RETENTION_SECONDS = 30 * 24 * 3600
 # instability(): minimum aggregate buckets before a coefficient of
 # variation is considered meaningful rather than startup noise.
 MIN_BUCKETS_FOR_INSTABILITY = 4
+
+# Recurring time-of-day dips need several samples on several days. A day
+# needs at least six hours of buckets to provide a useful typical-rate baseline.
+RECURRING_LOOKBACK_DAYS = 7
+MIN_DAYS_FOR_RECURRING_DIP = 3
+MIN_BUCKETS_PER_DAY_FOR_RECURRING = 24
+MIN_BUCKETS_PER_HOUR_FOR_RECURRING_DIP = 2
+RECURRING_DIP_FACTOR = 0.65
 
 
 def edge_key(source: str, destination: str) -> str:
@@ -38,6 +47,11 @@ class TopologyHistory:
         self._buckets: dict[str, dict[int, list[int]]] = {}
         # mac -> [[unix_ts, online], ...] (transitions only)
         self._online: dict[str, list[list[Any]]] = {}
+        # Keep the expensive recurring-hour profile out of the per-poll hot path.
+        self._recurring_cache_hour: int | None = None
+        self._recurring_low_hours_cache: dict[
+            tuple[str, int, float, int], tuple[int, ...]
+        ] = {}
 
     # ── Recording ─────────────────────────────────────────
 
@@ -89,6 +103,23 @@ class TopologyHistory:
                 del self._online[mac]
 
     # ── Queries ───────────────────────────────────────────
+
+    def bucket_count(
+        self,
+        source: str,
+        destination: str,
+        hours: float,
+        now: datetime | None = None,
+    ) -> int:
+        """Count non-empty buckets in a window without materializing or sorting."""
+        ts = (now or datetime.now(UTC)).timestamp()
+        cutoff = ts - hours * 3600
+        buckets = self._buckets.get(edge_key(source, destination), {})
+        return sum(
+            1
+            for start, aggregate in buckets.items()
+            if cutoff <= start <= ts and aggregate[1] > 0
+        )
 
     def series(
         self,
@@ -181,6 +212,98 @@ class TopologyHistory:
         within = sum(mx - mn for _, mn, mx in entries) / len(entries) / (2 * mean)
         return round(between + within, 4)
 
+    def recurring_low_hours(
+        self,
+        source: str,
+        destination: str,
+        now: datetime | None = None,
+        days: int = RECURRING_LOOKBACK_DAYS,
+        factor: float = RECURRING_DIP_FACTOR,
+        min_days: int = MIN_DAYS_FOR_RECURRING_DIP,
+    ) -> list[int]:
+        """Return recurring UTC hours, caching each edge once per UTC hour.
+
+        The seven-day profile is shared by polls within the same UTC hour.
+        This keeps repeated polling from rescanning thirty days of buckets for
+        every edge. A new UTC hour invalidates the short-lived result cache.
+        """
+        ts = (now or datetime.now(UTC)).timestamp()
+        cache_hour = int(ts // 3600)
+        if self._recurring_cache_hour != cache_hour:
+            self._recurring_low_hours_cache.clear()
+            self._recurring_cache_hour = cache_hour
+
+        key = edge_key(source, destination)
+        cache_key = (key, days, factor, min_days)
+        cached = self._recurring_low_hours_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+
+        result = self._calculate_recurring_low_hours(
+            key, ts, days, factor, min_days
+        )
+        self._recurring_low_hours_cache[cache_key] = tuple(result)
+        return result
+
+    def _calculate_recurring_low_hours(
+        self,
+        key: str,
+        ts: float,
+        days: int,
+        factor: float,
+        min_days: int,
+    ) -> list[int]:
+        """Build the current daily/hourly profile without allocating datetimes."""
+        cutoff = ts - days * 24 * 3600
+        daily_values: dict[int, list[float]] = defaultdict(list)
+        hourly_values: dict[int, dict[int, list[float]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        buckets = self._buckets.get(key, {})
+        uniform_value: float | None = None
+        uniform = True
+
+        for start, agg in buckets.items():
+            if not cutoff <= start <= ts or agg[1] <= 0:
+                continue
+            value = agg[0] / agg[1]
+            if uniform_value is None:
+                uniform_value = value
+            elif value != uniform_value:
+                uniform = False
+
+            # Unix days and hours are UTC-aligned. Integer arithmetic avoids
+            # allocating a datetime for every bucket in a dense 30-day history.
+            day = int(start // 86400)
+            hour = int((start % 86400) // 3600)
+            daily_values[day].append(value)
+            hourly_values[day][hour].append(value)
+
+        # A constant history cannot contain a time-of-day dip. This common
+        # steady-network case avoids all per-day and per-hour median calls.
+        if uniform and uniform_value is not None:
+            return []
+
+        low_days_by_hour: dict[int, set[int]] = defaultdict(set)
+        for day, values in daily_values.items():
+            if len(values) < MIN_BUCKETS_PER_DAY_FOR_RECURRING:
+                continue
+            typical = median(values)
+            if typical <= 0:
+                continue
+            for hour, hour_values in hourly_values[day].items():
+                if (
+                    len(hour_values) >= MIN_BUCKETS_PER_HOUR_FOR_RECURRING_DIP
+                    and median(hour_values) <= factor * typical
+                ):
+                    low_days_by_hour[hour].add(day)
+
+        return sorted(
+            hour
+            for hour, low_days in low_days_by_hour.items()
+            if len(low_days) >= min_days
+        )
+
     def most_unstable(
         self, hours: float = 24, now: datetime | None = None
     ) -> dict[str, Any] | None:
@@ -245,3 +368,5 @@ class TopologyHistory:
             mac: [list(t) for t in transitions]
             for mac, transitions in (data.get("online") or {}).items()
         }
+        self._recurring_low_hours_cache.clear()
+        self._recurring_cache_hour = None
