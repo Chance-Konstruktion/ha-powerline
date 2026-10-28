@@ -302,7 +302,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 error_type=type(err).__name__,
                 timed_out=isinstance(err, (asyncio.TimeoutError, TimeoutError)),
             )
-            _LOGGER.debug("Error polling Powerline adapters: %s", err)
+            _LOGGER.debug("Error polling Powerline adapters: %s", err, exc_info=True)
             raise UpdateFailed(f"HomePlug AV error: {err}") from err
 
     def _record_poll_result(
