@@ -444,6 +444,23 @@ WantedBy=multi-user.target
 
 ## 🩺 Troubleshooting
 
+### Reporting a problem
+
+When reporting a problem, attach the integration's diagnostic download so maintainers
+can see the adapter models, firmware and chipsets, anonymised network topology, raw
+PHY-rate samples, and the recent polling outcomes.
+
+1. Open **Settings → Devices & services → Powerline**.
+2. Open the integration's **⋮** menu and choose **Download diagnostics**.
+3. Review the downloaded JSON, then attach it to a [new issue](https://github.com/Chance-Konstruktion/ha-powerline/issues/new/choose).
+
+The export redacts connection details and credentials and replaces adapter MAC
+addresses with temporary IDs, so link relationships remain understandable without
+publishing the hardware addresses. Please do not paste passwords, probe tokens, or
+unredacted network details into an issue. If possible, describe what you expected,
+what happened instead, and whether the problem happens on every poll or only
+intermittently.
+
 Enable debug logging first:
 
 ```yaml
