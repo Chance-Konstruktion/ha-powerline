@@ -130,3 +130,28 @@ def test_persistence_roundtrip():
     assert restored.online_ratio(MAC_A, hours=24, now=NOW) == history.online_ratio(
         MAC_A, hours=24, now=NOW
     )
+
+
+def test_recurring_low_hours_recalculates_only_once_per_utc_hour(monkeypatch):
+    """Repeated polls reuse the expensive recurring-hour profile for an hour."""
+    history = TopologyHistory()
+    calls = 0
+    original = history._calculate_recurring_low_hours
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(history, "_calculate_recurring_low_hours", counted)
+
+    first = history.recurring_low_hours(MAC_A, MAC_B, now=NOW)
+    same_hour = history.recurring_low_hours(
+        MAC_A, MAC_B, now=NOW + timedelta(minutes=45)
+    )
+    assert same_hour == first
+    assert calls == 1
+
+    history.recurring_low_hours(MAC_A, MAC_B, now=NOW + timedelta(hours=1))
+    assert calls == 2
+
