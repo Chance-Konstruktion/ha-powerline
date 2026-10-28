@@ -6,7 +6,8 @@ Discovers new devices every poll cycle (default 120s).
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from collections import deque
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
@@ -42,6 +43,9 @@ LED_SET_TIMEOUT = 30.0
 # even empty, and flipping every entity to "unavailable" for one cycle is
 # exactly the "lost all device status, then it recovers" from issue #109.
 OFFLINE_AFTER_MISSED_POLLS = 2
+
+# Keep a small in-memory window for reports without growing forever.
+POLL_HISTORY_LIMIT = 20
 
 
 class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -91,6 +95,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._consumer_alerted: set[tuple[str, str, str]] = set()
 
         self._states_queried = False
+        self.poll_history: deque[dict[str, Any]] = deque(maxlen=POLL_HISTORY_LIMIT)
 
         # Index initial devices by MAC (states will be queried on first update)
         for dev in initial_devices:
@@ -183,6 +188,8 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._known_macs.add(mac)
                     new_devices.append(dev)
 
+            state_query_error: str | None = None
+
             # Query device states (LED, QoS, Power Saving) from adapters
             if not self._states_queried and self.devices:
                 try:
@@ -209,7 +216,8 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         else:
                             self.power_saving_states.setdefault(mac, False)
                     self._states_queried = True
-                except Exception:
+                except Exception as err:
+                    state_query_error = type(err).__name__
                     _LOGGER.debug("State query failed, using defaults", exc_info=True)
                     for mac in self.devices:
                         self.led_states.setdefault(mac, True)
@@ -307,6 +315,11 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif hasattr(self, "_consumer_alerted"):
                 self._consumer_alerted.clear()
 
+            self._record_poll_result(
+                discovered,
+                status="partial" if state_query_error else "success",
+                state_query_error=state_query_error,
+            )
             return {
                 "online": online > 0,
                 "plc_devices": self.devices,
@@ -320,9 +333,82 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
         except Exception as err:
+            self._record_poll_result(
+                [],
+                status="error",
+                error_type=type(err).__name__,
+                timed_out=isinstance(err, (asyncio.TimeoutError, TimeoutError)),
+            )
             _LOGGER.debug("Error polling Powerline adapters: %s", err, exc_info=True)
             raise UpdateFailed(f"HomePlug AV error: {err}") from err
 
+    def _record_poll_result(
+        self,
+        discovered: list[dict[str, Any]],
+        *,
+        status: str,
+        error_type: str | None = None,
+        timed_out: bool = False,
+        state_query_error: str | None = None,
+    ) -> None:
+        """Keep a bounded, message-free record of the latest poll outcomes.
+
+        HomePlug discovery is a broadcast scan, so a missing adapter is
+        recorded as not seen during the scan window rather than claiming a
+        device-specific exception. Raw exception text is deliberately omitted
+        because remote-probe URLs and other local details may appear in it.
+        """
+        # Some existing unit tests construct this coordinator without
+        # running __init__; keep diagnostics collection safe in that case.
+        if not hasattr(self, "poll_history"):
+            self.poll_history = deque(maxlen=POLL_HISTORY_LIMIT)
+
+        seen_macs = {mac for dev in discovered if (mac := get_mac(dev))}
+        device_results: list[dict[str, Any]] = []
+        poll_failed = status == "error"
+
+        for mac, device in sorted(self.devices.items()):
+            seen = mac in seen_macs
+            if poll_failed:
+                device_status = "poll_error"
+                device_error = error_type or "poll_error"
+                device_timed_out = timed_out
+            elif not seen:
+                device_status = "not_seen"
+                device_error = "no_response_during_discovery"
+                device_timed_out = True
+            elif state_query_error:
+                device_status = "state_query_error"
+                device_error = state_query_error
+                device_timed_out = False
+            else:
+                device_status = "ok"
+                device_error = None
+                device_timed_out = False
+
+            device_results.append({
+                "mac": mac,
+                "status": device_status,
+                "error": device_error,
+                "timed_out": device_timed_out,
+                "online": bool(device.get("_online", True)),
+                "missed_polls": self._missed_polls.get(mac, 0),
+                "model": device.get("model") or "",
+                "firmware": device.get("firmware_ver") or device.get("firmware") or "",
+                "chipset": device.get("chipset") or getattr(self.hp, "_chipset", None),
+                "tx_rate": device.get("tx_rate", 0),
+                "rx_rate": device.get("rx_rate", 0),
+            })
+
+        self.poll_history.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": status,
+            "discovered_count": len(discovered),
+            "error_type": error_type,
+            "timed_out": bool(timed_out),
+            "state_query_error_type": state_query_error,
+            "devices": device_results,
+        })
 
     async def _async_check_consumer_correlations(
         self, topology: dict[str, Any]
