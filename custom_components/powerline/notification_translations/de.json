@@ -22,9 +22,5 @@
   "directional_asymmetry": {
     "title": "Powerline: TX/RX-Raten sind asymmetrisch",
     "message": "Die Verbindung **{source} ↔ {destination}** meldet TX {tx} und RX {rx} Mbit/s. Eine Störquelle an einem der Endpunkte könnte dafür verantwortlich sein. Prüfe Ladegeräte, LED-Treiber, Netzteile und Haushaltsgeräte in der Nähe beider Adapter und teste mögliche Verursacher einzeln. Die Messwerte legen eine Möglichkeit nahe, beweisen sie aber nicht."
-  },
-  "short_weak_link": {
-    "title": "Powerline: unerwartet schwache kurze Strecke",
-    "message": "Obwohl die gemeldete Strecke nur {distance_m} m lang ist, bleibt die Rate schwach (ca. {average} Mbit/s). Unterschiedliche Stromphasen oder ein FI-Schutzschalter zwischen den Adaptern könnten das erklären. Prüfe Stromkreis, Phase und Schutzschalterweg; öffne keine elektrischen Geräte und arbeite nicht selbst an der Elektroinstallation."
   }
 }
