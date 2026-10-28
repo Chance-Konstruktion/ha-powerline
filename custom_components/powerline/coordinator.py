@@ -348,7 +348,6 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "peer_average": alert.get("peer_average", 0),
                     "tx": alert.get("tx", 0),
                     "rx": alert.get("rx", 0),
-                    "distance_m": alert.get("distance_m", 0),
                 }
                 text = alert_notification_text(language, cause, **values)
                 notification_id = (
