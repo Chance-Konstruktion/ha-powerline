@@ -348,9 +348,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if alert.get("cause") and alert.get("action"):
                 cause = self._alert_text(f"cause_{alert['cause']}")
                 action = self._alert_text(f"action_{alert['action']}")
-                if cause.startswith("cause_") or action.startswith("action_"):
-                    pass
-                else:
+                if not cause.startswith("cause_") and not action.startswith("action_"):
                     message = f"{message}\n\n{cause}\n{action}"
             notification_id = f"powerline_slow_{alert['source']}_{alert['destination']}"
         elif kind == "adapter_removed":
