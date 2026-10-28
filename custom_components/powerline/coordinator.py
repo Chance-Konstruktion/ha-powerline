@@ -321,6 +321,11 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         device-specific exception. Raw exception text is deliberately omitted
         because remote-probe URLs and other local details may appear in it.
         """
+        # Some existing unit tests construct this coordinator without
+        # running __init__; keep diagnostics collection safe in that case.
+        if not hasattr(self, "poll_history"):
+            self.poll_history = deque(maxlen=POLL_HISTORY_LIMIT)
+
         seen_macs = {mac for dev in discovered if (mac := get_mac(dev))}
         device_results: list[dict[str, Any]] = []
         poll_failed = status == "error"
