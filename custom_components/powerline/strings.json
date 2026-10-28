@@ -57,18 +57,34 @@
   },
   "entity": {
     "sensor": {
-      "adapters_online": { "name": "Adapters Online" },
-      "slowest_link": { "name": "Slowest Link" },
-      "tx_rate": { "name": "TX Rate" },
-      "rx_rate": { "name": "RX Rate" }
+      "adapters_online": {
+        "name": "Adapters Online"
+      },
+      "slowest_link": {
+        "name": "Slowest Link"
+      },
+      "tx_rate": {
+        "name": "TX Rate"
+      },
+      "rx_rate": {
+        "name": "RX Rate"
+      }
     },
     "binary_sensor": {
-      "connectivity": { "name": "Status" },
-      "network_problem": { "name": "Network Problem" }
+      "connectivity": {
+        "name": "Status"
+      },
+      "network_problem": {
+        "name": "Network Problem"
+      }
     },
     "switch": {
-      "led": { "name": "LED" },
-      "power_saving": { "name": "Power Saving" }
+      "led": {
+        "name": "LED"
+      },
+      "power_saving": {
+        "name": "Power Saving"
+      }
     },
     "select": {
       "qos_priority": {
@@ -82,10 +98,34 @@
       }
     },
     "button": {
-      "diagnose": { "name": "Diagnose" },
-      "all_leds_on": { "name": "All LEDs On" },
-      "all_leds_off": { "name": "All LEDs Off" },
-      "restart": { "name": "Restart" }
+      "diagnose": {
+        "name": "Diagnose"
+      },
+      "all_leds_on": {
+        "name": "All LEDs On"
+      },
+      "all_leds_off": {
+        "name": "All LEDs Off"
+      },
+      "restart": {
+        "name": "Restart"
+      }
     }
+  },
+  "alerts": {
+    "link_slow_title": "Powerline: link slower than usual",
+    "link_slow_message": "The connection **{source} ↔ {destination}** has been much slower than usual for {minutes} minutes: {average} Mbit/s (typical: ~{baseline} Mbit/s).",
+    "adapter_removed_title": "Powerline: adapter removed",
+    "adapter_removed_message": "Adapter **{name}** ({mac}) has disappeared from the powerline network and was removed from the topology.",
+    "adapter_new_title": "Powerline: new adapter",
+    "adapter_new_message": "New adapter **{name}** ({mac}) joined the powerline network.",
+    "cause_daily_interference": "Possible cause: an electrical appliance may be disturbing the connection at recurring times of day.",
+    "action_check_noise_sources": "Check whether a washing machine, refrigerator, or switching power supply runs at those times. Unplug suspected devices one at a time as a test.",
+    "cause_power_strip_or_filter": "Possible cause: a power strip or surge protector may be attenuating the powerline signal.",
+    "action_use_wall_socket": "As a test, plug both powerline adapters directly into wall outlets, not into a power strip or surge protector.",
+    "cause_directional_interference": "Possible cause: a noise source or attenuation at one end may be affecting TX and RX differently.",
+    "action_check_both_ends": "Check outlets and connected power supplies at both ends. Test the adapters directly in wall outlets and disconnect suspected appliances one at a time for comparison.",
+    "cause_phase_or_rcd": "Possible cause: the adapters may be on different electrical phases or separated by an RCD/GFCI or filter element.",
+    "action_check_circuit_phase": "Check whether both outlets are on the same circuit. Do not open electrical installations; have an electrician check the phase and RCD/GFCI if needed."
   }
 }
