@@ -7,6 +7,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
 
 def _fake_async_redact_data(data, to_redact):
     """Small test stand-in for Home Assistant's recursive redaction helper."""
@@ -72,6 +74,7 @@ def _poll(index: int) -> dict:
     }
 
 
+@pytest.mark.asyncio
 async def test_diagnostics_contains_expected_data_and_redacts_sensitive_values():
     coordinator = SimpleNamespace(
         devices={
