@@ -499,7 +499,8 @@ Capture the official tpPLC app performing an action and compare with
 - [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
 - [x] **Topology card:** live mesh graph (nodes/edges/analysis) with a bundled Lovelace card, topology events on the HA bus and a `powerline/topology` websocket API — see the **Topology Card** section above.
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
-- [x] **Same-chipset link rates:** rate parsing now distinguishes peer link rates from advertised PLC capability using bit 11 of the rate field, following real adapter captures ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
+- [x] **AV2000 capability bit:** rate parsing distinguishes peer link rates from advertised PLC capability using bit 11 of the rate field, following real adapter captures ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
+- [ ] **Same-chipset link rates (two AV500 adapters):** the limitation is still under investigation; #112 fixes the AV2000 capability-bit interpretation, not same-chipset AV500 link-rate reporting.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test. Until then, Zyxel PLA6457 owners can use [dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla).
 
 ---
