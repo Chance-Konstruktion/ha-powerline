@@ -36,6 +36,8 @@ class TopologyHistory:
         self._recent: dict[str, deque[tuple[float, int]]] = {}
         # edge key -> {bucket_start: [sum, count, min, max]}
         self._buckets: dict[str, dict[int, list[int]]] = {}
+        # edge key -> deque[(unix_ts, tx_rate, rx_rate)]; raw and transient
+        self._directions: dict[str, deque[tuple[float, int, int]]] = {}
         # mac -> [[unix_ts, online], ...] (transitions only)
         self._online: dict[str, list[list[Any]]] = {}
 
@@ -49,6 +51,14 @@ class TopologyHistory:
             key = edge_key(edge["source"], edge["destination"])
             avg = int(edge["average_rate"])
             self._recent.setdefault(key, deque()).append((ts, avg))
+            if "tx_phy_rate" in edge and "rx_phy_rate" in edge:
+                self._directions.setdefault(key, deque()).append(
+                    (
+                        ts,
+                        int(edge.get("tx_phy_rate") or 0),
+                        int(edge.get("rx_phy_rate") or 0),
+                    )
+                )
             bucket = int(ts // BUCKET_SECONDS) * BUCKET_SECONDS
             agg = self._buckets.setdefault(key, {}).setdefault(
                 bucket, [0, 0, avg, avg]
@@ -71,6 +81,12 @@ class TopologyHistory:
         for samples in self._recent.values():
             while samples and samples[0][0] < recent_cutoff:
                 samples.popleft()
+
+        for key, samples in list(self._directions.items()):
+            while samples and samples[0][0] < recent_cutoff:
+                samples.popleft()
+            if not samples:
+                del self._directions[key]
 
         bucket_cutoff = ts - RETENTION_SECONDS
         for key, buckets in list(self._buckets.items()):
@@ -122,6 +138,23 @@ class TopologyHistory:
             }
             for start, agg in sorted(self._buckets.get(key, {}).items())
             if start >= cutoff
+        ]
+
+    def directions(
+        self,
+        source: str,
+        destination: str,
+        hours: float = 1,
+        now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Raw recent TX/RX samples for detecting persistent directional imbalance."""
+        ts = (now or datetime.now(UTC)).timestamp()
+        cutoff = ts - hours * 3600
+        key = edge_key(source, destination)
+        return [
+            {"t": int(t), "tx": tx, "rx": rx}
+            for t, tx, rx in self._directions.get(key, ())
+            if cutoff <= t <= ts
         ]
 
     def baseline(
@@ -221,7 +254,7 @@ class TopologyHistory:
             return 1.0 if prev_state else 0.0
         return round(min(1.0, online_seconds / window), 4)
 
-    # ── Persistence ───────────────────────────────────────
+    # ── Persistence ───────────────────────────────────────────
 
     def as_dict(self) -> dict[str, Any]:
         """JSON-serialisable snapshot (bucket tier + online transitions)."""
