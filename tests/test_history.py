@@ -55,6 +55,14 @@ def test_bucket_series_aggregates_with_min_max():
     assert series[0]["max"] == 600
 
 
+def test_bucket_count_counts_only_buckets_in_the_requested_window():
+    history = TopologyHistory()
+    history.record(_topology(400), now=NOW - timedelta(hours=30))
+    history.record(_topology(600), now=NOW - timedelta(hours=20))
+
+    assert history.bucket_count(MAC_A, MAC_B, hours=24, now=NOW) == 1
+
+
 def test_recent_samples_pruned_after_one_hour():
     history = TopologyHistory()
     history.record(_topology(500), now=NOW - timedelta(hours=2))
