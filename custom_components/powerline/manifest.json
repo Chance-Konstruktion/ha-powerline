@@ -1,14 +1,25 @@
 {
   "domain": "powerline",
   "name": "Powerline Network",
-  "codeowners": ["@Chance-Konstruktion"],
+  "after_dependencies": [
+    "recorder"
+  ],
+  "codeowners": [
+    "@Chance-Konstruktion"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "websocket_api", "frontend"],
+  "dependencies": [
+    "http",
+    "websocket_api",
+    "frontend"
+  ],
   "documentation": "https://github.com/Chance-Konstruktion/ha-powerline",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Chance-Konstruktion/ha-powerline/issues",
-  "loggers": ["custom_components.powerline"],
+  "loggers": [
+    "custom_components.powerline"
+  ],
   "requirements": [],
-  "version": "261016"
+  "version": "261028"
 }

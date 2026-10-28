@@ -96,6 +96,36 @@ async def async_setup_entry(
 
     setup_dynamic_platform(coordinator, async_add_entities, _sensor_factory)
 
+    # Only add route-level Recorder sensors when consumer correlation is enabled.
+    # The route sensors are ordinary HA entities, so their history belongs to
+    # Recorder and is retained/cleaned up under Home Assistant's normal policy.
+    tracked_links: set[tuple[str, str]] = set()
+
+    def _on_topology_links(edges: list[dict[str, Any]]) -> None:
+        if not getattr(coordinator, "power_sensors", []):
+            return
+        new_entities: list[SensorEntity] = []
+        for edge in edges:
+            source = edge.get("source")
+            destination = edge.get("destination")
+            if not source or not destination:
+                continue
+            pair = (source, destination)
+            if pair in tracked_links:
+                continue
+            tracked_links.add(pair)
+            new_entities.append(
+                PowerlineLinkRateSensor(coordinator, source, destination)
+            )
+        if new_entities:
+            async_add_entities(new_entities)
+
+    coordinator.register_new_link_callback(_on_topology_links)
+    if coordinator.power_sensors and coordinator.data:
+        _on_topology_links(
+            (coordinator.data.get("topology") or {}).get("edges", [])
+        )
+
     # Network-wide sensors. The old "TX/RX total" sums were meaningless (adding
     # unrelated link rates); replaced with the two things that actually matter:
     # how many adapters are reachable, and the weakest link in the network.
@@ -151,6 +181,52 @@ class SlowestLinkSensor(CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEnt
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"adapter": (self.coordinator.data or {}).get("slowest_link_mac")}
+
+
+class PowerlineLinkRateSensor(
+    CoordinatorEntity[TpLinkPowerlineCoordinator], SensorEntity
+):
+    """Recorder-backed, route-specific link-rate measurement for correlation."""
+
+    _attr_has_entity_name = False
+    _attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:lan-connect"
+    _attr_force_update = True
+
+    def __init__(
+        self, coordinator: TpLinkPowerlineCoordinator, source: str, destination: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._source = source
+        self._destination = destination
+        self._attr_unique_id = f"plc_link_{source}_{destination}_rate"
+        self._attr_name = (
+            f"{coordinator.adapter_name(source)} ↔ "
+            f"{coordinator.adapter_name(destination)} link rate"
+        )
+        self._attr_device_info = network_device_info()
+
+    @property
+    def force_update(self) -> bool:
+        """Record each poll while correlation is enabled, even for steady rates."""
+        return bool(getattr(self.coordinator, "power_sensors", []))
+
+    @property
+    def native_value(self) -> int | None:
+        topology = (self.coordinator.data or {}).get("topology") or {}
+        for edge in topology.get("edges", []):
+            if (
+                edge.get("source") == self._source
+                and edge.get("destination") == self._destination
+            ):
+                return edge.get("average_rate")
+        return None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
 
 
 # --- Per-device sensors ---

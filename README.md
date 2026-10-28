@@ -75,7 +75,7 @@ Feature support depends on the **chipset** (and on vendor firmware — AVM FRITZ
 </tr>
 </table>
 
-> 💡 **Online status + rates work on every HomePlug AV/AV2 chipset.** LED, power saving and QoS work on **both Broadcom** (MEDIAXTREAM `Set Parameter`) **and Qualcomm** (AV500-class, via a safe PIB read-modify-write) — verified on real hardware. See the [feature matrix](#-supported-hardware).
+> 💡 **Discovery and rate parsing use HomePlug AV/AV2 management messages, but chipset and firmware behavior can vary.** Only hardware explicitly marked **verified** below has been confirmed end-to-end. LED, power saving and QoS work on **both Broadcom** (MEDIAXTREAM `Set Parameter`) **and Qualcomm** (AV500-class, via a safe PIB read-modify-write) on the specific hardware called out in the [feature matrix](#-supported-hardware).
 
 ---
 
@@ -129,17 +129,18 @@ Settings → Devices & Services → Add Integration → "Powerline"
 | Adapter / Chipset | Status & rates | LED | Power Save · QoS |
 |---|:---:|:---:|:---:|
 | TP-Link **AV1000** / TL-PA7017 — Broadcom BCM60355 | ✅ **verified** | ✅ **verified** | ✅ **verified** |
-| Other **Broadcom** (MEDIAXTREAM) adapters | ✅ | ✅ *(expected)* | ✅ *(expected)* |
+| Other **Broadcom** (MEDIAXTREAM) adapters | ⚠️ *(not hardware-verified)* | ⚠️ *(expected)* | ⚠️ *(expected)* |
 | Qualcomm **QCA7420** (AV500-class) | ✅ **verified** | ✅ **verified** *(via PIB)* | ✅ **verified** *(via PIB)* |
 | Netgear **Powerline AV500** / XAV5602 — Qualcomm QCA7420 | ✅ **verified** | ✅ **verified** | ✅ **verified** *(via PIB)* |
-| **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ✅ | ✅ *(see note)* | — *(not on device)* |
+| **FRITZ!Powerline** (AVM QCA7420, e.g. 510E) | ⚠️ *(not hardware-verified)* | ⚠️ *(capture-based)* | — *(not on device)* |
 | TP-Link **AV1300** / TL-PA8010P v4 — no web UI | ✅ **verified** | ✅ **verified** | ✅ **verified** |
 | TP-Link **AV1300** / TL-WPA8631P v3+v4 — has web UI | ✅ **verified** | ⛔ *(HTTP only)* | ✅ QoS · — *(no PS setting)* |
-| Zyxel **PLA5456** | ✅ *(discovery, user-reported)* | ❔ *(not yet reported)* | ❔ *(not yet reported)* |
-| devolo dLAN · misc HomePlug AV/AV2 | ✅ | depends on chipset | depends on chipset |
+| Zyxel **PLA5456** | ⚠️ *(discovery reported; rates unverified)* | ❔ *(not yet reported)* | ❔ *(not yet reported)* |
+| devolo dLAN · misc HomePlug AV/AV2 | ⚠️ *(not hardware-verified)* | ⚠️ *(chipset-dependent)* | ⚠️ *(chipset-dependent)* |
 
-> ✅ = tested & confirmed on real hardware. Verified end-to-end — discovery,
-> TX/RX rates, LED, power saving and QoS — on the **AV1000 (TL-PA7017)**
+> ✅ = tested and confirmed on the specific hardware listed. ⚠️ = not yet
+> verified end-to-end on physical hardware. End-to-end checks — discovery,
+> TX/RX rates, LED, power saving and QoS — have been completed on the **AV1000 (TL-PA7017)**
 > (Broadcom, since 0.1) and on **two AV500 / QCA7420** adapters (Qualcomm, 0.2).
 
 > The **Netgear XAV5602** (QCA7420-based) was verified end-to-end (discovery,
@@ -151,8 +152,8 @@ Settings → Devices & Services → Add Integration → "Powerline"
 
 > 🟨 **Zyxel PLA5456:** a user found all four of their adapters with this
 > integration ([#109](https://github.com/Chance-Konstruktion/ha-powerline/issues/109)).
-> Which chipset path they take, and whether LED, power saving and QoS work, is
-> still open — the row gets filled in once it is confirmed on the hardware.
+> Discovery is user-reported; link rates, the chipset path, LED, power saving
+> and QoS have not been verified on that hardware.
 
 > 🟦 **FRITZ!Powerline (AVM):** these adapters use a QCA7420 chip but ship AVM's
 > own "Custom" firmware, so they get a **dedicated module** (`homeplug/fritz.py`).
@@ -245,6 +246,7 @@ setting, so those entities are deliberately omitted.
 | Scan interval | 120 s | 10–600 s | Discovery + rate polling interval |
 | Sidebar panel | on | on/off | Show the "Powerline" topology panel in the sidebar |
 | Smart alerts | on | on/off | Notify on slow links and added/removed adapters |
+| Spatial Hub provider | on | on/off | Expose adapters to Spatial Hub when that integration is installed |
 
 **Removing a single adapter.** Each adapter is its own device, so you don't have
 to delete and re-add the whole integration to get rid of one. Open the adapter's
@@ -514,7 +516,8 @@ Capture the official tpPLC app performing an action and compare with
 - [x] **FRITZ!Powerline (AVM):** dedicated `homeplug/fritz.py` module — discovery/rates, **LED on/off** (reconstructed byte-for-byte from the FRITZ!Powerline app) and a **Restart** button (`VS_RS_DEV` 0xA01C). QoS/power-saving are intentionally omitted (the device has no such setting).
 - [x] **Topology card:** live mesh graph (nodes/edges/analysis) with a bundled Lovelace card, topology events on the HA bus and a `powerline/topology` websocket API — see the **Topology Card** section above.
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
-- [ ] **rates between two same-chipset adapters:** `NW_STATS` reports the rate against the *peer*, so a link is mirrored onto the responder. Two AV500s (or any pair where neither answers `NW_STATS`) can still show no rate.
+- [x] **AV2000 capability bit:** rate parsing distinguishes peer link rates from advertised PLC capability using bit 11 of the rate field, following real adapter captures ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
+- [ ] **Same-chipset link rates (two AV500 adapters):** the limitation is still under investigation; #112 fixes the AV2000 capability-bit interpretation, not same-chipset AV500 link-rate reporting.
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test. Until then, Zyxel PLA6457 owners can use [dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla).
 
 ---

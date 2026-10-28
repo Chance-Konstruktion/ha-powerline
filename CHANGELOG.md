@@ -2,6 +2,37 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [261028] - 2026-10-28
+
+### Added
+- **Alarme nennen die wahrscheinliche Ursache.** Wird eine Strecke langsam,
+  steht im Alarm, was die Historie dazu sagt: wiederkehrende Tageszeit,
+  einzelner Adapter oder ganze Strecke
+  ([#115](https://github.com/Chance-Konstruktion/ha-powerline/pull/115)).
+- **Einbrueche mit Verbrauchern verknuepfen.** In den Optionen lassen sich
+  Leistungssensoren waehlen; faellt die Rate, sobald z. B. Waschmaschine oder
+  Heizluefter laufen, meldet die Integration den Zusammenhang. Die Werte
+  kommen nur aus dem Recorder und werden nicht gespeichert
+  ([#119](https://github.com/Chance-Konstruktion/ha-powerline/pull/119)).
+- **Diagnose-Download mit den letzten Abfragen** je Adapter (gesehen, nicht
+  gesehen, Fehlerart), ohne Fehlertexte und ohne URLs
+  ([#120](https://github.com/Chance-Konstruktion/ha-powerline/pull/120)).
+
+### Fixed
+- **Ein einzelner verpasster Poll macht keinen Adapter mehr offline**;
+  die Diagnose zeigt den Grund, das Debug-Log den Traceback
+  ([#116](https://github.com/Chance-Konstruktion/ha-powerline/pull/116)).
+
+### Performance
+- **Die Alarm-Pruefung ist rund dreimal schneller** (12 Adapter, 30 Tage
+  Historie: 148 ms auf 54 ms je Poll; einmal je Stunde ~105 ms, wenn die
+  Stundenanalyse neu gerechnet wird).
+
+### Documentation
+- README trennt die behobene AV2000-Bit-Auslegung (#112) von der weiter
+  offenen Einschraenkung zwischen zwei AV500-Adaptern
+  ([#118](https://github.com/Chance-Konstruktion/ha-powerline/pull/118)).
+
 ## [261016] - 2026-10-16
 
 ### Added

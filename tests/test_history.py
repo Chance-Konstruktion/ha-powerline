@@ -55,6 +55,14 @@ def test_bucket_series_aggregates_with_min_max():
     assert series[0]["max"] == 600
 
 
+def test_bucket_count_counts_only_buckets_in_the_requested_window():
+    history = TopologyHistory()
+    history.record(_topology(400), now=NOW - timedelta(hours=30))
+    history.record(_topology(600), now=NOW - timedelta(hours=20))
+
+    assert history.bucket_count(MAC_A, MAC_B, hours=24, now=NOW) == 1
+
+
 def test_recent_samples_pruned_after_one_hour():
     history = TopologyHistory()
     history.record(_topology(500), now=NOW - timedelta(hours=2))
@@ -122,3 +130,28 @@ def test_persistence_roundtrip():
     assert restored.online_ratio(MAC_A, hours=24, now=NOW) == history.online_ratio(
         MAC_A, hours=24, now=NOW
     )
+
+
+def test_recurring_low_hours_recalculates_only_once_per_utc_hour(monkeypatch):
+    """Repeated polls reuse the expensive recurring-hour profile for an hour."""
+    history = TopologyHistory()
+    calls = 0
+    original = history._calculate_recurring_low_hours
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(history, "_calculate_recurring_low_hours", counted)
+
+    first = history.recurring_low_hours(MAC_A, MAC_B, now=NOW)
+    same_hour = history.recurring_low_hours(
+        MAC_A, MAC_B, now=NOW + timedelta(minutes=45)
+    )
+    assert same_hour == first
+    assert calls == 1
+
+    history.recurring_low_hours(MAC_A, MAC_B, now=NOW + timedelta(hours=1))
+    assert calls == 2
+

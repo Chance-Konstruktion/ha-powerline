@@ -1,0 +1,30 @@
+{
+  "link_slow": {
+    "title": "Powerline: Verbindung langsamer als üblich",
+    "message": "Die Verbindung **{source} ↔ {destination}** ist seit {minutes} Minuten deutlich langsamer als üblich: {average} Mbit/s (typisch: ca. {baseline} Mbit/s)."
+  },
+  "adapter_removed": {
+    "title": "Powerline: Adapter entfernt",
+    "message": "Adapter **{name}** ({mac}) ist aus dem Powerline-Netz verschwunden und wurde aus der Topologie entfernt."
+  },
+  "adapter_new": {
+    "title": "Powerline: neuer Adapter",
+    "message": "Der neue Adapter **{name}** ({mac}) ist dem Powerline-Netz beigetreten."
+  },
+  "recurring_load": {
+    "title": "Powerline: wiederkehrende Störung vermutet",
+    "message": "Die Verbindung **{source} ↔ {destination}** bricht wiederholt zu ähnlichen Tageszeiten ein. Ein Haushaltsgerät oder Schaltnetzteil (z. B. Waschmaschine, Kühlschrank oder Ladegerät) könnte die Störung verursachen. Prüfe, ob das Muster mit dem Einschalten eines Geräts zusammenfällt; teste nahe Geräte einzeln. Das ist eine wahrscheinliche Ursache, keine gesicherte Diagnose."
+  },
+  "isolated_weak_link": {
+    "title": "Powerline: einzelne Strecke dauerhaft schwächer",
+    "message": "Die Verbindung **{source} ↔ {destination}** bleibt deutlich langsamer als andere Strecken (aktuell ca. {average} Mbit/s; andere Strecken typischerweise ca. {peer_average} Mbit/s). Eine Mehrfachsteckdose oder ein Überspannungsschutz könnte das Signal dämpfen. Stecke beide Adapter testweise direkt in Wandsteckdosen und umgehe Verlängerungen sowie Steckdosenleisten mit Überspannungsschutz."
+  },
+  "directional_asymmetry": {
+    "title": "Powerline: TX/RX-Raten sind asymmetrisch",
+    "message": "Die Verbindung **{source} ↔ {destination}** meldet TX {tx} und RX {rx} Mbit/s. Eine Störquelle an einem der Endpunkte könnte dafür verantwortlich sein. Prüfe Ladegeräte, LED-Treiber, Netzteile und Haushaltsgeräte in der Nähe beider Adapter und teste mögliche Verursacher einzeln. Die Messwerte legen eine Möglichkeit nahe, beweisen sie aber nicht."
+  },
+  "consumer_correlation": {
+    "title": "Powerline: Verbraucher mit Einbruch verknüpft",
+    "message": "Wenn Leistungssensor **{sensor_name}** über {threshold_w} W liegt, fällt die Strecke **{source} ↔ {destination}** um etwa {drop_percent} % (typisch ohne Last: {baseline_rate} Mbit/s, mit Last: {active_rate} Mbit/s). Das ist ein zeitlicher Zusammenhang in der Recorder-Historie, kein Beweis für eine Ursache."
+  }
+}

@@ -50,7 +50,11 @@
           "scan_interval": "Scan interval (seconds)",
           "sidebar_panel": "Show 'Powerline' sidebar panel (topology view)",
           "topology_alerts": "Smart alerts (slow link, adapter added/removed)",
-          "spatial_hub": "Provide data to Spatial Hub (network layer on the floor plan)"
+          "spatial_hub": "Provide data to Spatial Hub (network layer on the floor plan)",
+          "power_sensors": "Power sensors to correlate with link rates (optional)"
+        },
+        "data_description": {
+          "power_sensors": "Choose sensors with device_class power. Values above 500 W are compared with Powerline rates from the last 24 hours in Recorder history."
         }
       }
     }

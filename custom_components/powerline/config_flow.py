@@ -10,6 +10,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.helpers import selector
 
 try:
     from homeassistant.config_entries import ConfigFlowResult
@@ -18,6 +19,7 @@ except ImportError:
 
 from .const import (
     CONF_INTERFACE,
+    CONF_POWER_SENSORS,
     CONF_PROBE_TOKEN,
     CONF_PROBE_URL,
     CONF_SPATIAL_HUB,
@@ -219,6 +221,10 @@ class TpLinkPowerlineOptionsFlow(OptionsFlow):
             self.config_entry.options.get(CONF_SPATIAL_HUB, DEFAULT_SPATIAL_HUB)
         )
 
+        current_power_sensors = list(
+            self.config_entry.options.get(CONF_POWER_SENSORS, []) or []
+        )
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -232,6 +238,13 @@ class TpLinkPowerlineOptionsFlow(OptionsFlow):
                     vol.Required(
                         CONF_SPATIAL_HUB, default=current_spatial
                     ): bool,
+                    vol.Optional(
+                        CONF_POWER_SENSORS, default=current_power_sensors
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="sensor", device_class="power", multiple=True
+                        )
+                    ),
                 }
             ),
         )
