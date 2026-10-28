@@ -57,34 +57,18 @@
   },
   "entity": {
     "sensor": {
-      "adapters_online": {
-        "name": "Adapters Online"
-      },
-      "slowest_link": {
-        "name": "Slowest Link"
-      },
-      "tx_rate": {
-        "name": "TX Rate"
-      },
-      "rx_rate": {
-        "name": "RX Rate"
-      }
+      "adapters_online": { "name": "Adapters Online" },
+      "slowest_link": { "name": "Slowest Link" },
+      "tx_rate": { "name": "TX Rate" },
+      "rx_rate": { "name": "RX Rate" }
     },
     "binary_sensor": {
-      "connectivity": {
-        "name": "Status"
-      },
-      "network_problem": {
-        "name": "Network Problem"
-      }
+      "connectivity": { "name": "Status" },
+      "network_problem": { "name": "Network Problem" }
     },
     "switch": {
-      "led": {
-        "name": "LED"
-      },
-      "power_saving": {
-        "name": "Power Saving"
-      }
+      "led": { "name": "LED" },
+      "power_saving": { "name": "Power Saving" }
     },
     "select": {
       "qos_priority": {
@@ -98,18 +82,10 @@
       }
     },
     "button": {
-      "diagnose": {
-        "name": "Diagnose"
-      },
-      "all_leds_on": {
-        "name": "All LEDs On"
-      },
-      "all_leds_off": {
-        "name": "All LEDs Off"
-      },
-      "restart": {
-        "name": "Restart"
-      }
+      "diagnose": { "name": "Diagnose" },
+      "all_leds_on": { "name": "All LEDs On" },
+      "all_leds_off": { "name": "All LEDs Off" },
+      "restart": { "name": "Restart" }
     }
   },
   "alerts": {
