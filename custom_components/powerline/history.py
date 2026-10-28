@@ -11,8 +11,9 @@ The bucket tier and the transitions survive restarts via the HA Store
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from datetime import UTC, datetime
+from statistics import median
 from typing import Any
 
 BUCKET_SECONDS = 900
@@ -22,6 +23,14 @@ RETENTION_SECONDS = 30 * 24 * 3600
 # instability(): minimum aggregate buckets before a coefficient of
 # variation is considered meaningful rather than startup noise.
 MIN_BUCKETS_FOR_INSTABILITY = 4
+
+# Recurring time-of-day dips need several samples on several days. A day
+# needs at least six hours of buckets to provide a useful typical-rate baseline.
+RECURRING_LOOKBACK_DAYS = 7
+MIN_DAYS_FOR_RECURRING_DIP = 3
+MIN_BUCKETS_PER_DAY_FOR_RECURRING = 24
+MIN_BUCKETS_PER_HOUR_FOR_RECURRING_DIP = 2
+RECURRING_DIP_FACTOR = 0.65
 
 
 def edge_key(source: str, destination: str) -> str:
@@ -180,6 +189,61 @@ class TopologyHistory:
         between = (variance**0.5) / mean
         within = sum(mx - mn for _, mn, mx in entries) / len(entries) / (2 * mean)
         return round(between + within, 4)
+
+    def recurring_low_hours(
+        self,
+        source: str,
+        destination: str,
+        now: datetime | None = None,
+        days: int = RECURRING_LOOKBACK_DAYS,
+        factor: float = RECURRING_DIP_FACTOR,
+        min_days: int = MIN_DAYS_FOR_RECURRING_DIP,
+    ) -> list[int]:
+        """Return UTC hours repeatedly much slower than each day's norm.
+
+        A candidate hour must contain at least two 15-minute buckets below
+        the given fraction of that day's median rate, and recur on at least
+        min_days distinct days. Days with fewer than six hours of samples are
+        ignored to avoid mistaking startup history or a brief outage for a
+        daily consumer-related pattern.
+        """
+        ts = (now or datetime.now(UTC)).timestamp()
+        cutoff = ts - days * 24 * 3600
+        daily_values: dict[str, list[float]] = defaultdict(list)
+        hourly_values: dict[str, dict[int, list[float]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        buckets = self._buckets.get(edge_key(source, destination), {})
+
+        for start, agg in buckets.items():
+            if not cutoff <= start <= ts or agg[1] <= 0:
+                continue
+            moment = datetime.fromtimestamp(start, UTC)
+            day = moment.date().isoformat()
+            hour = moment.hour
+            value = agg[0] / agg[1]
+            daily_values[day].append(value)
+            hourly_values[day][hour].append(value)
+
+        low_days_by_hour: dict[int, set[str]] = defaultdict(set)
+        for day, values in daily_values.items():
+            if len(values) < MIN_BUCKETS_PER_DAY_FOR_RECURRING:
+                continue
+            typical = median(values)
+            if typical <= 0:
+                continue
+            for hour, hour_values in hourly_values[day].items():
+                if (
+                    len(hour_values) >= MIN_BUCKETS_PER_HOUR_FOR_RECURRING_DIP
+                    and median(hour_values) <= factor * typical
+                ):
+                    low_days_by_hour[hour].add(day)
+
+        return sorted(
+            hour
+            for hour, low_days in low_days_by_hour.items()
+            if len(low_days) >= min_days
+        )
 
     def most_unstable(
         self, hours: float = 24, now: datetime | None = None
