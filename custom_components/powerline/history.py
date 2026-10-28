@@ -99,6 +99,23 @@ class TopologyHistory:
 
     # ── Queries ───────────────────────────────────────────
 
+    def bucket_count(
+        self,
+        source: str,
+        destination: str,
+        hours: float,
+        now: datetime | None = None,
+    ) -> int:
+        """Count non-empty buckets in a window without materializing or sorting."""
+        ts = (now or datetime.now(UTC)).timestamp()
+        cutoff = ts - hours * 3600
+        buckets = self._buckets.get(edge_key(source, destination), {})
+        return sum(
+            1
+            for start, aggregate in buckets.items()
+            if cutoff <= start <= ts and aggregate[1] > 0
+        )
+
     def series(
         self,
         source: str,
