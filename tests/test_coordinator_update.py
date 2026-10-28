@@ -124,18 +124,29 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
 
         self.assertEqual(len(callback_received), 0)
 
-    async def test_offline_device_counted_in_total_not_online(self):
+    async def test_single_device_miss_does_not_hide_other_adapters(self):
         device_a = _make_device(MAC_A)
         device_b = _make_device(MAC_B)
-        # Only A is returned by discover; B was seen before but is now offline.
+        # A answers while B misses one discovery round. Neither adapter should
+        # disappear from the panel because of a single missed response.
         coord = _build_coordinator(discover_result=[device_a])
         _preload(coord, [device_a, device_b])
 
-        data = await _poll_until_offline(coord)
+        data = await coord._async_update_data()
 
-        self.assertEqual(data["plc_device_count"], 1)        # online only
-        self.assertEqual(data["plc_device_count_total"], 2)  # includes offline
-        self.assertTrue(data["network_problem"])             # B offline -> problem
+        self.assertTrue(coord.adapter_online(MAC_A))
+        self.assertTrue(coord.adapter_online(MAC_B))
+        self.assertEqual(data["plc_device_count"], 2)
+        self.assertFalse(data["network_problem"])
+
+        # A second consecutive miss marks only B offline; A stays visible.
+        data = await coord._async_update_data()
+
+        self.assertTrue(coord.adapter_online(MAC_A))
+        self.assertFalse(coord.adapter_online(MAC_B))
+        self.assertEqual(data["plc_device_count"], 1)
+        self.assertEqual(data["plc_device_count_total"], 2)
+        self.assertTrue(data["network_problem"])
 
     async def test_default_states_set_for_new_device(self):
         device = _make_device(MAC_A)
