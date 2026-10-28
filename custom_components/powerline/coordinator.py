@@ -5,8 +5,11 @@ Discovers new devices every poll cycle (default 120s).
 """
 
 import asyncio
+import json
 import logging
 from datetime import timedelta
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
@@ -32,6 +35,18 @@ LED_SET_TIMEOUT = 30.0
 # even empty, and flipping every entity to "unavailable" for one cycle is
 # exactly the "lost all device status, then it recovers" from issue #109.
 OFFLINE_AFTER_MISSED_POLLS = 2
+
+
+@lru_cache(maxsize=2)
+def _load_alert_translations(language: str) -> dict[str, str]:
+    """Load the small set of persistent-notification strings for a language."""
+    path = Path(__file__).parent / "translations" / f"{language}.json"
+    try:
+        with path.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return data.get("alerts", {})
 
 
 class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -301,31 +316,56 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Kept for the handful of internal callers that predate the public name.
     _adapter_name = adapter_name
 
+    def _alert_text(self, key: str, **values: Any) -> str:
+        """Return a localized notification string, defaulting to English."""
+        language = getattr(getattr(self.hass, "config", None), "language", "en")
+        language = str(language or "en").split("-")[0].lower()
+        if language not in {"de", "en"}:
+            language = "en"
+        translations = _load_alert_translations(language)
+        template = translations.get(key)
+        if template is None and language != "en":
+            template = _load_alert_translations("en").get(key)
+        if template is None:
+            return key
+        return template.format(**values)
+
     def _notify_alert(self, alert: dict[str, Any]) -> None:
-        """Surface a topology alert as a persistent notification."""
+        """Surface a topology alert as a localized persistent notification."""
         kind = alert["type"]
         if kind == "link_slow":
             source = self._adapter_name(alert["source"])
             destination = self._adapter_name(alert["destination"])
-            title = "Powerline: link slower than usual"
-            message = (
-                f"The connection **{source} ↔ {destination}** has been much "
-                f"slower than usual for {alert['minutes']} minutes: "
-                f"{alert['average']} Mbit/s (typical: ~{alert['baseline']} Mbit/s)."
+            title = self._alert_text("link_slow_title")
+            message = self._alert_text(
+                "link_slow_message",
+                source=source,
+                destination=destination,
+                minutes=alert["minutes"],
+                average=alert["average"],
+                baseline=alert["baseline"],
             )
+            if alert.get("cause") and alert.get("action"):
+                cause = self._alert_text(f"cause_{alert['cause']}")
+                action = self._alert_text(f"action_{alert['action']}")
+                if cause.startswith("cause_") or action.startswith("action_"):
+                    pass
+                else:
+                    message = f"{message}\n\n{cause}\n{action}"
             notification_id = f"powerline_slow_{alert['source']}_{alert['destination']}"
         elif kind == "adapter_removed":
             name = self._adapter_name(alert["mac"])
-            title = "Powerline: adapter removed"
-            message = (
-                f"Adapter **{name}** ({alert['mac']}) has disappeared from the "
-                "powerline network and was removed from the topology."
+            title = self._alert_text("adapter_removed_title")
+            message = self._alert_text(
+                "adapter_removed_message", name=name, mac=alert["mac"]
             )
             notification_id = f"powerline_removed_{alert['mac']}"
         elif kind == "adapter_new":
             name = self._adapter_name(alert["mac"])
-            title = "Powerline: new adapter"
-            message = f"New adapter **{name}** ({alert['mac']}) joined the powerline network."
+            title = self._alert_text("adapter_new_title")
+            message = self._alert_text(
+                "adapter_new_message", name=name, mac=alert["mac"]
+            )
             notification_id = f"powerline_new_{alert['mac']}"
         else:  # pragma: no cover - defensive against future alert types
             return
