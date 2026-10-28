@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Powerline Netzwerk",
-        "description": "Klicke 'Absenden' um nach Powerline-Adaptern in deinem Netzwerk zu suchen.\n\nBenötigt Raw-Socket-Zugriff (CAP_NET_RAW).\n\nUnterstützt: TP-Link, FRITZ!Powerline, devolo und andere HomePlug AV Adapter.",
+        "description": "Klicke 'Absenden' um nach Powerline-Adaptern in deinem Netzwerk zu suchen.\n\nBen\u00f6tigt Raw-Socket-Zugriff (CAP_NET_RAW).\n\nUnterst\u00fctzt: TP-Link, FRITZ!Powerline, devolo und andere HomePlug AV Adapter.",
         "data": {
           "interface": "Netzwerk-Schnittstelle"
         },
@@ -13,39 +13,39 @@
         "submit": "Absenden"
       },
       "confirm": {
-        "title": "Geräte gefunden",
-        "description": "{count} Powerline-Adapter gefunden:\n\n{devices}\n\nKlicke 'Absenden' um sie hinzuzufügen.",
+        "title": "Ger\u00e4te gefunden",
+        "description": "{count} Powerline-Adapter gefunden:\n\n{devices}\n\nKlicke 'Absenden' um sie hinzuzuf\u00fcgen.",
         "submit": "Absenden"
       },
       "probe": {
         "title": "Remote-Probe",
-        "description": "Für Adapter in einem anderen VLAN als Home Assistant. HomePlug läuft auf Layer 2 und wird nicht geroutet, darum fragt eine kleine Probe im Netz der Adapter sie ab und liefert nur die Werte. Einrichtung: siehe README, Abschnitt \"Home Assistant in its own VLAN\".\n\nDie Probe ist nur lesend: LED, Energiesparen, QoS und Neustart sind darüber nicht schaltbar.",
+        "description": "F\u00fcr Adapter in einem anderen VLAN als Home Assistant. HomePlug l\u00e4uft auf Layer 2 und wird nicht geroutet, darum fragt eine kleine Probe im Netz der Adapter sie ab und liefert nur die Werte. Einrichtung: siehe README, Abschnitt \"Home Assistant in its own VLAN\".\n\nDie Probe ist nur lesend: LED, Energiesparen, QoS und Neustart sind dar\u00fcber nicht schaltbar.",
         "data": {
           "probe_url": "Probe-Adresse",
           "probe_token": "Token (optional)"
         },
         "data_description": {
           "probe_url": "z. B. http://192.168.1.2:8765",
-          "probe_token": "Dasselbe Token, mit dem die Probe gestartet wurde (--token-file). Leer, wenn sie ohne Token läuft."
+          "probe_token": "Dasselbe Token, mit dem die Probe gestartet wurde (--token-file). Leer, wenn sie ohne Token l\u00e4uft."
         },
         "submit": "Absenden"
       }
     },
     "error": {
-      "no_devices_found": "Keine Powerline-Adapter gefunden. Prüfe ob die Adapter eingesteckt, gepairt und per Ethernet-Kabel verbunden sind. Home Assistant benötigt CAP_NET_RAW.",
+      "no_devices_found": "Keine Powerline-Adapter gefunden. Pr\u00fcfe ob die Adapter eingesteckt, gepairt und per Ethernet-Kabel verbunden sind. Home Assistant ben\u00f6tigt CAP_NET_RAW.",
       "no_interface": "Kein geeignetes Netzwerk-Interface gefunden. Stelle sicher, dass ein Ethernet-Kabel angeschlossen ist.",
       "probe_unreachable": "Probe nicht erreichbar oder Token falsch."
     },
     "abort": {
       "already_configured": "Dieses Powerline-Netzwerk ist bereits konfiguriert.",
-      "raw_socket_unavailable": "Raw-Socket-Zugriff nicht verfügbar. Home Assistant benötigt CAP_NET_RAW.\n\nFür Docker: --cap-add=NET_RAW --network=host verwenden\nFür HAOS: Als Add-on mit Host-Netzwerk installieren\nFür venv: sudo setcap cap_net_raw+ep $(readlink -f $(which python3))"
+      "raw_socket_unavailable": "Raw-Socket-Zugriff nicht verf\u00fcgbar. Home Assistant ben\u00f6tigt CAP_NET_RAW.\n\nF\u00fcr Docker: --cap-add=NET_RAW --network=host verwenden\nF\u00fcr HAOS: Als Add-on mit Host-Netzwerk installieren\nF\u00fcr venv: sudo setcap cap_net_raw+ep $(readlink -f $(which python3))"
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Powerline Netzwerk Optionen",
-        "description": "Polling-Verhalten anpassen. Änderungen werden sofort wirksam.",
+        "description": "Polling-Verhalten anpassen. \u00c4nderungen werden sofort wirksam.",
         "data": {
           "scan_interval": "Scan-Intervall (Sekunden)",
           "sidebar_panel": "Seitenleisten-Eintrag „Powerline“ anzeigen (Topologie-Ansicht)",
@@ -57,38 +57,22 @@
   },
   "entity": {
     "sensor": {
-      "adapters_online": {
-        "name": "Adapter Online"
-      },
-      "slowest_link": {
-        "name": "Langsamste Verbindung"
-      },
-      "tx_rate": {
-        "name": "TX Rate"
-      },
-      "rx_rate": {
-        "name": "RX Rate"
-      }
+      "adapters_online": { "name": "Adapter Online" },
+      "slowest_link": { "name": "Langsamste Verbindung" },
+      "tx_rate": { "name": "TX Rate" },
+      "rx_rate": { "name": "RX Rate" }
     },
     "binary_sensor": {
-      "connectivity": {
-        "name": "Status"
-      },
-      "network_problem": {
-        "name": "Netzwerkproblem"
-      }
+      "connectivity": { "name": "Status" },
+      "network_problem": { "name": "Netzwerkproblem" }
     },
     "switch": {
-      "led": {
-        "name": "LED"
-      },
-      "power_saving": {
-        "name": "Energiesparmodus"
-      }
+      "led": { "name": "LED" },
+      "power_saving": { "name": "Energiesparmodus" }
     },
     "select": {
       "qos_priority": {
-        "name": "QoS Priorität",
+        "name": "QoS Priorit\u00e4t",
         "state": {
           "gaming": "Onlinespiele",
           "voip": "Voice over IP",
@@ -98,18 +82,10 @@
       }
     },
     "button": {
-      "diagnose": {
-        "name": "Diagnose"
-      },
-      "all_leds_on": {
-        "name": "Alle LEDs an"
-      },
-      "all_leds_off": {
-        "name": "Alle LEDs aus"
-      },
-      "restart": {
-        "name": "Neustart"
-      }
+      "diagnose": { "name": "Diagnose" },
+      "all_leds_on": { "name": "Alle LEDs an" },
+      "all_leds_off": { "name": "Alle LEDs aus" },
+      "restart": { "name": "Neustart" }
     }
   },
   "alerts": {
