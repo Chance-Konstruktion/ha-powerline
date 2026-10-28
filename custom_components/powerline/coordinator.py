@@ -283,7 +283,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
         except Exception as err:
-            _LOGGER.debug("Error polling Powerline adapters: %s", err)
+            _LOGGER.debug("Error polling Powerline adapters: %s", err, exc_info=True)
             raise UpdateFailed(f"HomePlug AV error: {err}") from err
 
     def adapter_name(self, mac: str) -> str:
