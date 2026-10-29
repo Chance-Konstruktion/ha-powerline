@@ -17,7 +17,14 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, NETWORK_DEVICE_ID, NETWORK_DEVICE_NAME, get_mac
+from .const import (
+    DOMAIN,
+    MANUFACTURER,
+    NETWORK_DEVICE_ID,
+    NETWORK_DEVICE_NAME,
+    get_mac,
+    vendor_for_mac,
+)
 from .coordinator import TpLinkPowerlineCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,7 +35,7 @@ def device_info_for_adapter(mac: str, dev: dict[str, Any]) -> DeviceInfo:
     return DeviceInfo(
         identifiers={(DOMAIN, mac)},
         name=f"Powerline {mac[-8:]}",
-        manufacturer="TP-Link",
+        manufacturer=dev.get("manufacturer") or vendor_for_mac(mac),
         model=dev.get("model") or "Powerline Adapter",
         sw_version=dev.get("firmware_ver") or None,
         suggested_area="Network",
@@ -40,7 +47,7 @@ def network_device_info() -> DeviceInfo:
     return DeviceInfo(
         identifiers={(DOMAIN, NETWORK_DEVICE_ID)},
         name=NETWORK_DEVICE_NAME,
-        manufacturer="TP-Link",
+        manufacturer=MANUFACTURER,
         model="Powerline Network",
         suggested_area="Network",
     )
