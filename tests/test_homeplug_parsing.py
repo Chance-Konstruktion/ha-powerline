@@ -209,17 +209,15 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual(230, stations[0]["tx_rate"])
         self.assertEqual(244, stations[0]["rx_rate"])
 
-    def test_decode_phy_rate_capability_bit_is_not_a_rate(self) -> None:
-        # Bit 11 (0x0800) marks a rated PLC capability, not a measurement. Real
-        # TL-PA9020P (AV2000) values: 2292/2092/2105/2108 "Mbps", i.e. the unit's
-        # "PLC 2000 Mbps" rating. Reported as 0 = "unknown", the sentinel this
-        # module already uses, so peer-mirroring can fill it from the other end.
-        self.assertEqual(0, decode_phy_rate(0x68F4))
-        self.assertEqual(0, decode_phy_rate(0x682C))
-        self.assertEqual(0, decode_phy_rate(0x6839))
-        self.assertEqual(0, decode_phy_rate(0x683C))
-        # The top nibble is NOT the discriminator: 0x6xxx also carries real rates,
-        # and those must survive untouched.
+    def test_decode_phy_rate_bit11_is_a_flag(self) -> None:
+        # Bit 11 (0x0800) is a flag; the rate is the low 11 bits (#121: Netgear
+        # PLP2000, raw - 2048 matches the HomePlug AV integration). Real TL-PA9020P
+        # (AV2000) values from #110 against a 43-55 Mbps link:
+        self.assertEqual(244, decode_phy_rate(0x68F4))
+        self.assertEqual(44, decode_phy_rate(0x682C))
+        self.assertEqual(57, decode_phy_rate(0x6839))
+        self.assertEqual(60, decode_phy_rate(0x683C))
+        # Without the flag the same rates decode unchanged.
         self.assertEqual(238, decode_phy_rate(0x60EE))
         self.assertEqual(67, decode_phy_rate(0x6043))
 
@@ -238,9 +236,9 @@ class TestMediaXtreamParsing(TestCase):
         by_mac = {s["mac"].upper(): s for s in parse_mx_nw_stats_cnf(frame)}
 
         three_d = by_mac["EC:08:6B:6A:E1:C8"]
-        # Raw preserved verbatim even where the rate is deliberately dropped.
+        # Raw preserved verbatim, flag bit included.
         self.assertEqual(0x68F4, three_d["tx_raw"])
-        self.assertEqual(0, three_d["tx_rate"])
+        self.assertEqual(244, three_d["tx_rate"])
         self.assertTrue(three_d["tx_raw"] & 0x0800)
         self.assertEqual(0x6043, three_d["rx_raw"])
         self.assertEqual(67, three_d["rx_rate"])
@@ -264,7 +262,7 @@ class TestMediaXtreamParsing(TestCase):
         self.assertEqual("0x68F4", tx["raw"])
         self.assertEqual("0x6", tx["flag_nibble"])
         self.assertTrue(tx["capability_bit"])
-        self.assertEqual(0, tx["rate"])
+        self.assertEqual(244, tx["rate"])
 
         self.assertEqual("rx", rx["direction"])
         self.assertEqual("0x6043", rx["raw"])
@@ -301,7 +299,7 @@ class TestMediaXtreamParsing(TestCase):
 
         self.assertEqual(3, len(stations))
         by_mac = {s["mac"].upper(): s for s in stations}
-        self.assertEqual(0, by_mac["EC:08:6B:6A:E1:C8"]["tx_rate"])
+        self.assertEqual(244, by_mac["EC:08:6B:6A:E1:C8"]["tx_rate"])
         self.assertEqual(67, by_mac["EC:08:6B:6A:E1:C8"]["rx_rate"])
         self.assertEqual(84, by_mac["D4:D6:DF:58:5D:4E"]["tx_rate"])
         self.assertEqual(45, by_mac["D4:D6:DF:58:5D:4E"]["rx_rate"])

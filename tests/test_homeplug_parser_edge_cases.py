@@ -97,10 +97,10 @@ class TestParserEdgeCases(TestCase):
     def test_decode_phy_rate_edge_cases(self) -> None:
         """Test PHY rate decoding with edge cases."""
         self.assertEqual(decode_phy_rate(0x0000), 0)
-        self.assertEqual(decode_phy_rate(0x07FF), 2047)  # Max rate without capability flag
-        self.assertEqual(decode_phy_rate(0x0FFF), 0)    # Capability flag set (0x0800) -> 0
-        self.assertEqual(decode_phy_rate(0x0800), 0)    # Capability flag
-        self.assertEqual(decode_phy_rate(0x08FF), 0)    # Capability flag + max rate
+        self.assertEqual(decode_phy_rate(0x07FF), 2047)  # Max rate
+        self.assertEqual(decode_phy_rate(0x0FFF), 2047)  # Bit 11 is a flag (#121)
+        self.assertEqual(decode_phy_rate(0x0800), 0)     # Flag only
+        self.assertEqual(decode_phy_rate(0x08FF), 255)   # Flag + rate
 
     def test_parse_qca_nw_info_cnf_empty(self) -> None:
         """Test empty QCA network info confirmation."""
