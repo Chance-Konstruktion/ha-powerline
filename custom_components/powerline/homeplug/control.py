@@ -3,6 +3,8 @@ import struct
 import time
 
 from .const import (
+    ETH_HDR,
+    INT_LED_BEHAVIOR,
     MX_APPLY_CNF,
     MX_APPLY_REQ,
     PARAM_LED_AUX,
@@ -19,6 +21,8 @@ from .const import (
     QCA_QOS_VALUES,
     VS_RS_DEV_CNF,
     VS_RS_DEV_REQ,
+    VS_SET_LED_BEHAVIOR,
+    VS_SET_LED_BEHAVIOR_CNF,
     _LOGGER,
     _MX_ACTION_OK,
     _MX_APPLY_OK,
@@ -93,6 +97,20 @@ class ControlMixin:
                      ", read-back verified" if verified
                      else "; device still serving old image")
         return True
+
+    def _set_led_int6x00(self, mac: str, on: bool) -> bool:
+        """Set LED on INT6x00/INT7400 adapters via VS_SET_LED_BEHAVIOR (#122)."""
+        frame = build_qca_vs0_frame(mac_to_bytes(mac), self._src_mac,
+                                    VS_SET_LED_BEHAVIOR, INT_LED_BEHAVIOR[on])
+        for mmtype, _src, data in self._send_recv(
+                self._sock_hpav, frame, 2.0, expected_src=mac,
+                stop_on=frozenset((VS_SET_LED_BEHAVIOR_CNF,))):
+            if mmtype == VS_SET_LED_BEHAVIOR_CNF and len(data) > ETH_HDR + 6:
+                ok = data[ETH_HDR + 6] == 0x00
+                _LOGGER.info("INT LED %s on %s: %s", "ON" if on else "OFF",
+                             mac, "ok" if ok else f"status 0x{data[ETH_HDR + 6]:02x}")
+                return ok
+        return False
 
     def _set_led_broadcom(self, mac: str, on: bool) -> bool:
         """Set LED via the captured tpPLC Set Parameter + Apply sequence."""
@@ -239,6 +257,12 @@ class ControlMixin:
                         return True
                     return False
                 if self._set_led_qualcomm(mac, on):
+                    self._led_success_macs.add(mac.upper())
+                    self._mark_chipset(mac, "qualcomm")
+                    return True
+                # Older INT6x00/INT7400 (Netgear XAV500x) have no module-op PIB
+                # path; they take the LED behaviour MME instead.
+                if self._set_led_int6x00(mac, on):
                     self._led_success_macs.add(mac.upper())
                     self._mark_chipset(mac, "qualcomm")
                     return True

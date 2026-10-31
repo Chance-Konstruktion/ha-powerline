@@ -744,3 +744,43 @@ class TestRestart(TestCase):
         with patch.object(hp, "_open_hpav"), patch.object(hp, "_close"), \
              patch.object(hp, "_send_recv", return_value=[]):
             self.assertFalse(hp.restart(self.MAC))
+
+
+class TestInt6x00Led(TestCase):
+    """INT6x00/INT7400 (Netgear XAV5001/XAV5004, #122) take VS_SET_LED_BEHAVIOR."""
+
+    # Captured from the Netgear utility (#122), frame bytes after the Ethernet header.
+    OFF_WIRE = bytes.fromhex("0094a000b052" "0700ff000001ff00000200325004ff000006ff00000aff00000bff0000")
+    ON_WIRE = bytes.fromhex("0094a000b052" "070000000001000000020532500400000006000000""0a0000000b000000")
+    CNF_OK = bytes(12) + bytes.fromhex("88e1" "0095a000b052" "00") + bytes(40)
+
+    def _run(self, on):
+        hp = HomeplugAV("eth0")
+        hp._sock_hpav = MagicMock()
+        frames = []
+
+        def _capture(sock, frame, *args, **kwargs):
+            frames.append(frame)
+            return [(0xA095, "4C:60:DE:D3:9E:7D", self.CNF_OK)]
+
+        with patch.object(hp, "_send_recv", side_effect=_capture):
+            ok = hp._set_led_int6x00("4C:60:DE:D3:9E:7D", on)
+        return ok, frames
+
+    def test_off_replays_captured_frame(self) -> None:
+        ok, frames = self._run(False)
+        self.assertTrue(ok)
+        self.assertEqual(self.OFF_WIRE, frames[0][ETH_HDR:ETH_HDR + len(self.OFF_WIRE)])
+
+    def test_on_replays_captured_frame(self) -> None:
+        ok, frames = self._run(True)
+        self.assertTrue(ok)
+        self.assertEqual(self.ON_WIRE, frames[0][ETH_HDR:ETH_HDR + len(self.ON_WIRE)])
+
+    def test_nonzero_status_is_failure(self) -> None:
+        hp = HomeplugAV("eth0")
+        hp._sock_hpav = MagicMock()
+        bad = bytes(12) + bytes.fromhex("88e1" "0095a000b052" "01") + bytes(40)
+        with patch.object(hp, "_send_recv",
+                          return_value=[(0xA095, "4C:60:DE:D3:9E:7D", bad)]):
+            self.assertFalse(hp._set_led_int6x00("4C:60:DE:D3:9E:7D", True))
