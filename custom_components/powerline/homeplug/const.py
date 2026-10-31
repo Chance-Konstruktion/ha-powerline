@@ -92,9 +92,20 @@ VS_RS_DEV_REQ        = 0xA01C;  VS_RS_DEV_CNF        = 0xA01D  # reset/restart d
 # Control instead goes through the chunked module-op path (0xA0B0, below): a
 # read-modify-write of the adapter's own PIB with the universal open checksum,
 # which the firmware rejects cleanly if malformed (never half-applied).
-# VS_SET_LED_BEHAVIOR (0xA094) exists as a constant in qualcomm.h but has no
-# implementation in open-plc-utils (no payload struct), so we can't use it.
+# VS_SET_LED_BEHAVIOR (0xA094) has no payload struct in open-plc-utils, but the
+# Netgear utility uses it on INT6x00/INT7400 adapters (XAV5001/XAV5004, #122):
+# MMV=0x00, no FMI, count + 7 x 4-byte GPIO records. Replayed verbatim from the
+# capture; the CNF (0xA095) carries status 0x00 on success. Volatile -- the
+# adapter keeps the setting until power-cycled (the utility persists it with a
+# raw PIB write, which we deliberately do not do, see above).
 VS_SET_LED_BEHAVIOR  = 0xA094
+VS_SET_LED_BEHAVIOR_CNF = 0xA095
+INT_LED_BEHAVIOR = {
+    True: bytes.fromhex("07" "00000000" "01000000" "02053250" "04000000"
+                        "06000000" "0a000000" "0b000000"),
+    False: bytes.fromhex("07" "00ff0000" "01ff0000" "02003250" "04ff0000"
+                         "06ff0000" "0aff0000" "0bff0000"),
+}
 
 # QCA module operation (chunked PIB read/write) used by the QCA7420 firmware.
 # Reverse-engineered from a tpPLC capture (PROTOCOL.md §9): MMV=0x00, MMTYPE
@@ -234,6 +245,8 @@ __all__ = [
     "VS_RS_DEV_CNF",
     "VS_RS_DEV_REQ",
     "VS_SET_LED_BEHAVIOR",
+    "VS_SET_LED_BEHAVIOR_CNF",
+    "INT_LED_BEHAVIOR",
     "VS_SW_VER_CNF",
     "VS_SW_VER_REQ",
 ]
