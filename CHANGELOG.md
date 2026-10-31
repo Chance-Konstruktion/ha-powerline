@@ -2,6 +2,19 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [261031] - 2026-10-31
+
+### Fixed
+- **Falsche PHY-Raten bei MEDIAXTREAM-Adaptern.** Bit 11 des Ratenfelds ist
+  ein Merker, die Rate steht in den unteren 11 Bits; bisher wurden solche
+  Werte verworfen oder als 0 gezeigt
+  ([#121](https://github.com/Chance-Konstruktion/ha-powerline/issues/121)).
+- **LED-Schalter fuer INT6x00/INT7400-Adapter** wie den Netgear XAV500x ueber
+  VS_SET_LED_BEHAVIOR. Die Einstellung gilt bis zum naechsten Neustart des
+  Adapters ([#122](https://github.com/Chance-Konstruktion/ha-powerline/issues/122)).
+- **Hersteller je Adapter** statt fest TP-Link: gemeldeter Hersteller, sonst
+  die OUI-Tabelle, sonst ein neutraler Name.
+
 ## [261028] - 2026-10-28
 
 ### Added
