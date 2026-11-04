@@ -47,9 +47,21 @@ OFFLINE_AFTER_MISSED_POLLS = 2
 # Keep a small in-memory window for reports without growing forever.
 POLL_HISTORY_LIMIT = 20
 
+# The same tolerance applies to the poll as a whole: a discover() that dies
+# on a transient OSError (raw socket send) or an unreachable remote probe
+# must not flip every entity to "unavailable" for a full poll cycle either,
+# when the next poll would simply succeed. Without previous data there is
+# nothing to keep, so the very first failing poll still raises.
+POLL_FAILS_BEFORE_UPDATEFAILED = 2
+
 
 class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Polls Powerline adapters via HomePlug AV Layer 2."""
+
+    # Class-level defaults so coordinators built without __init__ (some unit
+    # tests construct via __new__) still tolerate a failed poll.
+    _poll_failures: int = 0
+    _last_poll_data: dict[str, Any] | None = None
 
     config_entry: ConfigEntry
 
@@ -166,6 +178,32 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             discovered = await self.hass.async_add_executor_job(
                 self.hp.discover, 5.0
             )
+        except Exception as err:
+            # One failed poll is noise, not an outage -- same reasoning as
+            # OFFLINE_AFTER_MISSED_POLLS above. A transient OSError on the raw
+            # socket send or an unreachable remote probe would otherwise flip
+            # every entity to "unavailable" for a full poll cycle, even though
+            # the next poll simply succeeds ("lost all device status, then it
+            # recovers", issue #109).
+            self._poll_failures += 1
+            self._record_poll_result(
+                [],
+                status="error",
+                error_type=type(err).__name__,
+                timed_out=isinstance(err, (asyncio.TimeoutError, TimeoutError)),
+            )
+            _LOGGER.debug(
+                "Error polling Powerline adapters: %s", err, exc_info=True)
+            if (self._last_poll_data is None
+                    or self._poll_failures >= POLL_FAILS_BEFORE_UPDATEFAILED):
+                raise UpdateFailed(f"HomePlug AV error: {err}") from err
+            _LOGGER.debug(
+                "Keeping last known data after poll failure %d/%d",
+                self._poll_failures, POLL_FAILS_BEFORE_UPDATEFAILED)
+            return self._last_poll_data
+        self._poll_failures = 0
+
+        try:
 
             new_devices: list[dict[str, Any]] = []
 
@@ -320,7 +358,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 status="partial" if state_query_error else "success",
                 state_query_error=state_query_error,
             )
-            return {
+            data = {
                 "online": online > 0,
                 "plc_devices": self.devices,
                 "plc_device_count": online,
@@ -331,6 +369,11 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "network_problem": network_problem,
                 "topology": topology,
             }
+            # Kept so a single failed poll can hand back the last known state
+            # instead of dropping every entity to "unavailable" (see
+            # POLL_FAILS_BEFORE_UPDATEFAILED above).
+            self._last_poll_data = data
+            return data
 
         except Exception as err:
             self._record_poll_result(
