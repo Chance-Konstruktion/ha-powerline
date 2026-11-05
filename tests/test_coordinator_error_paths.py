@@ -105,6 +105,59 @@ class TestCoordinatorErrorPaths(IsolatedAsyncioTestCase):
         with self.assertRaises(UpdateFailed):
             await coord._async_update_data()
 
+    async def test_single_poll_exception_keeps_last_data(self):
+        """One failed poll keeps the last known state (issue #109/#3).
+
+        A transient OSError on the raw socket send (or an unreachable remote
+        probe) must not drop every entity to "unavailable" for a full poll
+        cycle when the next poll simply succeeds.
+        """
+        device = _make_device(MAC_A)
+        coord = _build_coordinator([device])
+        good = await coord._async_update_data()
+        self.assertEqual(good["plc_device_count"], 1)
+
+        coord.hp.discover.side_effect = OSError("send failed")
+        data = await coord._async_update_data()  # must not raise
+
+        self.assertEqual(data["plc_device_count"], 1)
+        self.assertEqual(data["plc_devices"], good["plc_devices"])
+        self.assertEqual(coord._poll_failures, 1)
+
+    async def test_repeated_poll_exception_raises_updatefailed(self):
+        """Two failed polls in a row raise UpdateFailed again."""
+        device = _make_device(MAC_A)
+        coord = _build_coordinator([device])
+        await coord._async_update_data()
+
+        coord.hp.discover.side_effect = OSError("send failed")
+        await coord._async_update_data()  # tolerated
+        with self.assertRaises(UpdateFailed):
+            await coord._async_update_data()
+
+        history = coord.poll_history[-1]
+        self.assertEqual(history["status"], "error")
+        self.assertEqual(history["error_type"], "OSError")
+
+    async def test_success_resets_poll_failure_tolerance(self):
+        """A successful poll resets the counter; a new one-off is tolerated."""
+        device = _make_device(MAC_A)
+        coord = _build_coordinator([device])
+        await coord._async_update_data()
+
+        coord.hp.discover.side_effect = OSError("send failed")
+        await coord._async_update_data()  # tolerated
+        coord.hp.discover.side_effect = None
+        coord.hp.discover.return_value = [device]
+        recovered = await coord._async_update_data()
+        self.assertEqual(recovered["plc_device_count"], 1)
+        self.assertEqual(coord._poll_failures, 0)
+
+        # One more single failure is tolerated again.
+        coord.hp.discover.side_effect = OSError("send failed again")
+        again = await coord._async_update_data()
+        self.assertEqual(again["plc_device_count"], 1)
+
     async def test_query_states_exception(self):
         """Test query_device_states exception is caught and defaults applied."""
         device = _make_device(MAC_A)

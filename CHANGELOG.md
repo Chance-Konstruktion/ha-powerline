@@ -2,6 +2,17 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [Unreleased]
+
+### Fixed
+- **Einzelner fehlgeschlagener Suchlauf wird abgefedert.** Wirft `discover()`
+  eine unerwartete Ausnahme (etwa ein kurzlebiger `OSError` beim Roh-Socket-
+  Senden) oder meldet sich die Remote-Sonde einmal nicht, bleibt der letzte
+  Stand fuer einen Abfrage-Zyklus stehen, statt alle Entities auf
+  "Nicht verfuegbar" zu werfen; erst zwei Fehlversuche in Folge melden einen
+  Fehler. Ohne vorherigen Stand (erste Abfrage) bleibt es beim ehrlichen
+  Fehler ([#109](https://github.com/Chance-Konstruktion/ha-powerline/issues/109)).
+
 ## [261031] - 2026-10-31
 
 ### Fixed
