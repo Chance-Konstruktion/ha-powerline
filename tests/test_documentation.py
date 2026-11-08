@@ -45,3 +45,10 @@ def test_fritz_restart_documented_as_available():
     factory reset is still missing (pending a capture)."""
     assert "VS_RS_DEV" in _component_sources()  # sanity: the path exists
     assert "restart/reset are not implemented yet" not in README
+
+
+def test_roadmap_matches_verified_av500_pair_rates():
+    """(#9 K5) Same-chipset AV500 pair rates are verified (0.2, plus the
+    XAV5602 in #104) — the roadmap must not keep them 'under investigation'
+    while the hardware matrix lists them as verified."""
+    assert "still under investigation" not in README

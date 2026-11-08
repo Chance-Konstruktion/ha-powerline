@@ -518,7 +518,7 @@ Capture the official tpPLC app performing an action and compare with
 - [x] **Topology card:** live mesh graph (nodes/edges/analysis) with a bundled Lovelace card, topology events on the HA bus and a `powerline/topology` websocket API — see the **Topology Card** section above.
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [x] **AV2000 capability bit:** rate parsing distinguishes peer link rates from advertised PLC capability using bit 11 of the rate field, following real adapter captures ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
-- [ ] **Same-chipset link rates (two AV500 adapters):** the limitation is still under investigation; #112 fixes the AV2000 capability-bit interpretation, not same-chipset AV500 link-rate reporting.
+- [x] **Same-chipset link rates (two AV500 adapters):** verified since 0.2 — the Qualcomm paths read per-peer station lists (VS_NW_INFO), so AV500↔AV500 pairs report their rates (see the [hardware matrix](#-supported-hardware)).
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test. Until then, Zyxel PLA6457 owners can use [dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla).
 
 ---
