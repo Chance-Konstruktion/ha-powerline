@@ -294,6 +294,12 @@ class TestAdapterOnline(IsolatedAsyncioTestCase):
         coord = _build_coordinator(discover_result=[])
         self.assertFalse(coord.adapter_online("00:00:00:00:00:00"))
 
+    def test_docstring_matches_the_unknown_mac_behavior(self):
+        """(#9 K1) The code returns False for unknown MACs (the test above);
+        the docstring must not claim the opposite ("default to online")."""
+        doc = TpLinkPowerlineCoordinator.adapter_online.__doc__ or ""
+        self.assertNotIn("default to online", doc)
+
     def test_known_device_without_flag_defaults_online(self):
         # Before the first poll a device has no _online flag yet.
         coord = _build_coordinator(discover_result=[])

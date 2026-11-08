@@ -173,7 +173,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Per-adapter entities use this for their ``available`` property, so an
         offline adapter's sensors/controls show "unavailable" instead of stale
-        values. Unknown MACs (not yet polled) default to online.
+        values. Unknown MACs (never polled) return False, not online.
         """
         dev = self.devices.get(mac)
         return bool(dev.get("_online", True)) if dev else False
