@@ -493,11 +493,6 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from homeassistant.helpers import entity_registry as er
 
         registry = er.async_get(self.hass)
-        registry_entities = getattr(registry, "entities", {})
-        entity_by_unique_id = {
-            entity.unique_id: entity.entity_id
-            for entity in registry_entities.values()
-        }
 
         edge_specs: list[dict[str, Any]] = []
         rate_entity_ids: set[str] = set()
@@ -506,9 +501,14 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             destination = edge.get("destination")
             if not source or not destination:
                 continue
-            rate_entity_id = entity_by_unique_id.get(
-                f"plc_link_{source}_{destination}_rate"
-            )
+            # Registry lookup by (domain, platform, unique_id) — O(1) and
+            # precise. The old full-registry scan over every integration's
+            # entities matched any entry carrying the same unique_id (#9 K6).
+            rate_entity_id = None
+            if registry is not None:
+                rate_entity_id = registry.async_get_entity_id(
+                    "sensor", DOMAIN, f"plc_link_{source}_{destination}_rate"
+                )
             if not rate_entity_id:
                 continue
             edge_specs.append(
