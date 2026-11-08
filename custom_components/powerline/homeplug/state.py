@@ -19,6 +19,7 @@ from .const import (
     _locked,
 )
 from .frames import build_mx_frame, mac_to_bytes
+from .fritz import AVM_PIB_SIZE, FRITZ_LED_OFFSETS, FRITZ_LED_OFF, FRITZ_LED_ON
 from .parsers import parse_mx_get_param_cnf
 
 class StateMixin:
@@ -68,6 +69,18 @@ class StateMixin:
                         # LED report "on" while the lamps were physically off
                         # (#108) — better no state than a wrong one.
                         states[mac]["led"] = self.led_state_av1300(pib)
+                    elif size == AVM_PIB_SIZE:
+                        # FRITZ!Powerline: the LED table sits at AVM's own
+                        # offsets; the generic QCA offsets read past its end
+                        # (0x1F6B > 0x1F23), so the guard failed and the LED
+                        # showed the default after a restart (#9 M3). Same
+                        # 0x00/0x01 guard as the FRITZ write path.
+                        if {pib[o] for o in FRITZ_LED_OFFSETS} <= {
+                            FRITZ_LED_ON, FRITZ_LED_OFF
+                        }:
+                            states[mac]["led"] = (
+                                pib[FRITZ_LED_OFFSETS[0]] == FRITZ_LED_ON
+                            )
                     elif {pib[o] for o in QCA_LED_OFFSETS} <= {0x00, 0x01}:
                         states[mac]["led"] = pib[QCA_LED_OFFSETS[0]] == 0x00
                     # QoS sits at the same offset on both, well inside either
@@ -77,6 +90,11 @@ class StateMixin:
                         states[mac]["qos"] = qos_rev[qv]
                     if size == AV1300_PIB_SIZE:
                         states[mac]["power_saving"] =                             self.power_saving_state_av1300(pib)
+                    elif size == AVM_PIB_SIZE:
+                        # AVM firmware has no power-saving setting (the FRITZ!
+                        # app only exposes LED, restart and reset) — any byte
+                        # read from the PIB would be a guess (#9 M3).
+                        states[mac]["power_saving"] = None
                     else:
                         states[mac]["power_saving"] =                             pib[QCA_POWERSAVE_PROBE] == 0x01
             finally:
