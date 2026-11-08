@@ -63,7 +63,6 @@ def _build_coordinator(discover_result, state_result=None):
     coord.alerts = TopologyAlerts()
     coord.alerts_enabled = True
     coord.history_store = None
-    coord._states_queried = False
     coord.logger = MagicMock()
     return coord
 
@@ -168,7 +167,8 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
         self.assertFalse(coord.led_states.get(MAC_A))
         self.assertEqual(coord.qos_states.get(MAC_A), "gaming")
         self.assertTrue(coord.power_saving_states.get(MAC_A))
-        self.assertTrue(coord._states_queried)
+        # Nothing is left pending after a successful query.
+        self.assertFalse(getattr(coord, "_states_pending", None))
 
     async def test_state_query_runs_only_once(self):
         device = _make_device(MAC_A)
@@ -180,6 +180,51 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
 
         # Second update must not call query_device_states again.
         coord.hp.query_device_states.assert_not_called()
+
+    async def test_state_query_failure_is_retried_next_poll(self):
+        """(#9 M2) A failed state query must not burn the one-shot flag:
+        the next poll retries, meanwhile the defaults keep showing."""
+        device = _make_device(MAC_A)
+        coord = _build_coordinator(discover_result=[device])
+        coord.hp.query_device_states.side_effect = RuntimeError("probe down")
+
+        await coord._async_update_data()
+
+        # Defaults applied meanwhile, no crash, no UpdateFailed.
+        self.assertTrue(coord.led_states.get(MAC_A))
+        self.assertEqual(coord.qos_states.get(MAC_A), "internet")
+
+        # Next poll queries again and applies the real state.
+        coord.hp.query_device_states.side_effect = None
+        coord.hp.query_device_states.return_value = {
+            MAC_A: {"led": False, "qos": "gaming", "power_saving": True},
+        }
+        await coord._async_update_data()
+
+        self.assertFalse(coord.led_states.get(MAC_A))
+        self.assertEqual(coord.qos_states.get(MAC_A), "gaming")
+
+    async def test_later_discovered_adapter_gets_state_queried(self):
+        """(#9 M2) An adapter found after the first successful query must not
+        stay on defaults until reload — its state is read on a later poll."""
+        device_a = _make_device(MAC_A)
+        coord = _build_coordinator(
+            discover_result=[device_a],
+            state_result={MAC_A: {"led": False, "qos": "gaming",
+                                  "power_saving": True}},
+        )
+        await coord._async_update_data()
+
+        coord.hp.discover.return_value = [device_a, _make_device(MAC_B)]
+        coord.hp.query_device_states.reset_mock()
+        coord.hp.query_device_states.return_value = {
+            MAC_B: {"led": False, "qos": "voip", "power_saving": True},
+        }
+        await coord._async_update_data()
+
+        # Only the new adapter is queried; the old one is not re-read.
+        coord.hp.query_device_states.assert_called_once_with([MAC_B])
+        self.assertEqual(coord.qos_states.get(MAC_B), "voip")
 
 
 class TestAdapterOnline(IsolatedAsyncioTestCase):

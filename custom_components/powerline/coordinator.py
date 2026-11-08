@@ -106,7 +106,12 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_consumer_analysis: datetime | None = None
         self._consumer_alerted: set[tuple[str, str, str]] = set()
 
-        self._states_queried = False
+        # MACs whose LED/QoS/power-saving state has not been read from the
+        # adapter yet. A failed query is retried on the next poll and adapters
+        # discovered later are queried too — the old single one-shot flag was
+        # also set on failure and left late-found adapters on defaults until
+        # reload (#9 M2).
+        self._states_pending: set[str] = set()
         self.poll_history: deque[dict[str, Any]] = deque(maxlen=POLL_HISTORY_LIMIT)
 
         # Index initial devices by MAC (states will be queried on first update)
@@ -115,6 +120,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if mac:
                 self.devices[mac] = dev
                 self._known_macs.add(mac)
+        self._states_pending.update(self._known_macs)
 
         super().__init__(
             hass, _LOGGER,
@@ -207,6 +213,12 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             new_devices: list[dict[str, Any]] = []
 
+            # Some unit tests construct this coordinator without running
+            # __init__; make sure the pending set exists before anything
+            # adds to it (same reasoning as _record_poll_result below).
+            if not hasattr(self, "_states_pending"):
+                self._states_pending = set(self.devices)
+
             for dev in discovered:
                 mac = get_mac(dev)
                 if not mac:
@@ -216,6 +228,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.devices[mac].update(dev)
                 else:
                     self.devices[mac] = dev
+                    self._states_pending.add(mac)
                     self.led_states.setdefault(mac, True)
                     self.power_saving_states.setdefault(mac, False)
                     self.qos_states.setdefault(mac, "internet")
@@ -228,11 +241,16 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             state_query_error: str | None = None
 
-            # Query device states (LED, QoS, Power Saving) from adapters
-            if not self._states_queried and self.devices:
+            # Query device states (LED, QoS, Power Saving) for every adapter
+            # whose real state has not been read yet. A failed query is
+            # retried on the next poll (defaults apply meanwhile), and
+            # adapters discovered after the first poll are queried too (#9 M2).
+            pending = {mac for mac in self._states_pending
+                       if mac in self.devices}
+            if pending:
                 try:
                     queried = await self.hass.async_add_executor_job(
-                        self.hp.query_device_states, list(self.devices.keys())
+                        self.hp.query_device_states, sorted(pending)
                     )
                     for mac, state in queried.items():
                         if state.get("led") is not None:
@@ -253,15 +271,15 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                          mac, "ON" if state["power_saving"] else "OFF")
                         else:
                             self.power_saving_states.setdefault(mac, False)
-                    self._states_queried = True
+                    self._states_pending -= pending
                 except Exception as err:
                     state_query_error = type(err).__name__
                     _LOGGER.debug("State query failed, using defaults", exc_info=True)
-                    for mac in self.devices:
+                    for mac in pending:
                         self.led_states.setdefault(mac, True)
                         self.power_saving_states.setdefault(mac, False)
                         self.qos_states.setdefault(mac, "internet")
-                    self._states_queried = True
+                    # Keep pending: the next poll retries (#9 M2).
 
             # Ensure all devices have state entries
             for mac in self.devices:

@@ -73,7 +73,6 @@ def _build_coordinator(discover_result, state_result=None):
     coord.alerts = TopologyAlerts()
     coord.alerts_enabled = True
     coord.history_store = None
-    coord._states_queried = False
     coord.logger = MagicMock()
     return coord
 
