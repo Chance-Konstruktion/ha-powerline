@@ -37,3 +37,11 @@ def test_control_entity_docs_match_enabled_by_default():
         assert "are disabled by default" not in doc, (
             f"{where} claims the controls are disabled by default"
         )
+
+
+def test_fritz_restart_documented_as_available():
+    """(#9 K4) The FRITZ restart button exists (RestartButton, VS_RS_DEV),
+    so the docs must not claim restart is not implemented — only the
+    factory reset is still missing (pending a capture)."""
+    assert "VS_RS_DEV" in _component_sources()  # sanity: the path exists
+    assert "restart/reset are not implemented yet" not in README

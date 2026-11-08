@@ -492,7 +492,8 @@ adapters — verified on AV1000 and AV500. If a toggle has no effect: make sure 
 adapter is **online** (an offline adapter shows its controls as *unavailable*),
 and note that other/older chipsets or firmware may not expose these controls.
 On **FRITZ!Powerline (AVM)** only **LED** is available (the device has no QoS or
-power-saving setting); restart/reset are not implemented yet.
+power-saving setting); a **Restart** button is provided, factory reset is not
+implemented yet.
 See the [feature matrix](#-supported-hardware).
 </details>
 
