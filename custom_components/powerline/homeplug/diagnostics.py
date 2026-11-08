@@ -172,9 +172,15 @@ class DiagnosticsMixin:
                              VS_NW_STATS_REQ)),
         ])
 
+        # Fair share of the caller's timeout for every probe (#9 K2): the
+        # fixed 3 s / 0.6 s windows ran ~90 s for two adapters, while
+        # button.py passes timeout=8.0 expecting a bound.
+        probe_count = len(tests) + (0x0060 - 0x0030 if disc_macs else 0) + 2
+        per_probe = max(0.05, max(0.5, timeout - 2.0) / probe_count)
+
         for label, sock, frame in tests:
             lines.append(f"=== {label} ===")
-            resps = self._send_recv(sock, frame, 3.0)
+            resps = self._send_recv(sock, frame, min(3.0, per_probe))
             lines.append(f"Responses: {len(resps)}")
             for mmtype, src, data in resps:
                 plen = min(len(data), ETH_HDR + 256)
@@ -239,7 +245,7 @@ class DiagnosticsMixin:
                     seq=self._next_seq(),
                     payload=struct.pack("<H", pid))
                 for mmtype, src, data in self._send_recv(
-                        self._sock_mx, frame, 0.6):
+                        self._sock_mx, frame, min(0.6, per_probe)):
                     if mmtype == MX_GET_PARAM_CNF:
                         val = parse_mx_get_param_cnf(data)
                         if len(val) >= 1:
@@ -256,7 +262,7 @@ class DiagnosticsMixin:
         for etype_name, sock in [("0x88E1", self._sock_hpav),
                                   ("0x8912", self._sock_mx)]:
             lines.append(f"=== PASSIVE LISTEN {etype_name} (3s) ===")
-            passive = self._listen(sock, 3.0)
+            passive = self._listen(sock, min(3.0, per_probe))
             lines.append(f"Frames: {len(passive)}")
             for mmtype, src, data in passive:
                 p = data[ETH_HDR:min(len(data), ETH_HDR+256)]
