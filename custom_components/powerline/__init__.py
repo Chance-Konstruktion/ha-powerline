@@ -534,7 +534,17 @@ async def async_remove_config_entry_device(
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update -- apply scan interval and panel setting live."""
-    coordinator: TpLinkPowerlineCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: TpLinkPowerlineCoordinator | None = hass.data.get(DOMAIN, {}).get(
+        entry.entry_id
+    )
+    if coordinator is None:
+        # Changes can arrive for a not-loaded entry (e.g. deleting an adapter
+        # device updates entry.data and fires this listener). HA would only
+        # log the KeyError — nothing gets applied either way (#9 K3).
+        _LOGGER.debug(
+            "Powerline options update for unloaded entry %s ignored", entry.entry_id
+        )
+        return
     new_interval = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
     coordinator.update_interval = timedelta(seconds=new_interval)
     _LOGGER.info("Powerline scan interval updated to %ds", new_interval)
