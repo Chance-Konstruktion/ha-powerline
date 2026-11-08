@@ -155,3 +155,59 @@ def test_recurring_low_hours_recalculates_only_once_per_utc_hour(monkeypatch):
     history.recurring_low_hours(MAC_A, MAC_B, now=NOW + timedelta(hours=1))
     assert calls == 2
 
+
+
+def test_restore_skips_malformed_parts_instead_of_raising():
+    """(#9 M1) Valid JSON with an unexpected structure (a hand-edited store,
+    schema drift between versions) must not kill the setup: restore() keeps
+    what it can parse and skips the rest with a warning."""
+    history = TopologyHistory()
+
+    # Top level entirely wrong.
+    history.restore({"buckets": "not-a-dict", "online": 42})
+    assert history._buckets == {}
+    assert history._online == {}
+
+    # Payload itself is not even an object.
+    history.restore("garbage")
+    assert history._buckets == {}
+
+    # Mixed payload: one good bucket / transition among malformed ones.
+    key = f"{MAC_A}|{MAC_B}"
+    history.restore({
+        "buckets": {
+            key: {
+                "oops": [0, 0, 0, 0],    # bucket start not an int
+                123: "nope",             # aggregate not a 4-field list
+                124: [100, 1, 90, 110],  # the one well-formed bucket
+            },
+            7: "not-a-dict",             # whole group malformed
+        },
+        "online": {
+            MAC_A: [[NOW.timestamp(), True]],
+            MAC_B: "not-a-list",
+            "AA:BB:CC:DD:EE:03": [[1, 2, 3], [NOW.timestamp(), False]],
+        },
+    })
+
+    assert list(history._buckets[key]) == [124]
+    assert history._buckets[key][124] == [100, 1, 90, 110]
+    # A malformed group leaves no trace at all.
+    assert 7 not in history._buckets
+    assert history._online[MAC_A] == [[NOW.timestamp(), True]]
+    # A malformed transitions list leaves no trace at all.
+    assert MAC_B not in history._online
+    assert history._online["AA:BB:CC:DD:EE:03"] == [[NOW.timestamp(), False]]
+
+    # The restored history is usable, not just loaded.
+    assert history.online_ratio(MAC_A, hours=24, now=NOW) == 1.0
+
+
+def test_restore_with_malformed_data_still_records_new_samples():
+    """(#9 M1) After skipping garbage, the history keeps working."""
+    history = TopologyHistory()
+    history.restore({"buckets": {"broken": [1, 2]}, "online": None})
+
+    history.record(_topology(500), now=NOW)
+
+    assert history.series(MAC_A, MAC_B, hours=1, now=NOW)[-1]["avg"] == 500

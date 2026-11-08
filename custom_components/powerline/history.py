@@ -11,10 +11,13 @@ The bucket tier and the transitions survive restarts via the HA Store
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict, deque
 from datetime import UTC, datetime
 from statistics import median
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 BUCKET_SECONDS = 900
 RECENT_SECONDS = 3600
@@ -357,16 +360,80 @@ class TopologyHistory:
         }
 
     def restore(self, data: dict[str, Any] | None) -> None:
-        """Load a snapshot produced by ``as_dict`` (e.g. after a restart)."""
+        """Load a snapshot produced by ``as_dict`` (e.g. after a restart).
+
+        The HA Store already handles corrupt files; valid JSON with an
+        unexpected structure (a hand-edited store, schema drift between
+        versions) reached here anyway and killed the setup. Malformed parts
+        are skipped with a warning instead of raising (#9 M1).
+        """
         if not data:
             return
-        self._buckets = {
-            key: {int(start): list(agg) for start, agg in buckets.items()}
-            for key, buckets in (data.get("buckets") or {}).items()
-        }
-        self._online = {
-            mac: [list(t) for t in transitions]
-            for mac, transitions in (data.get("online") or {}).items()
-        }
+        if not isinstance(data, dict):
+            _LOGGER.warning(
+                "Powerline history store holds a %s instead of an object — ignored",
+                type(data).__name__,
+            )
+            return
+
+        self._buckets = {}
+        raw_buckets = data.get("buckets")
+        if not isinstance(raw_buckets, dict):
+            if raw_buckets is not None:
+                _LOGGER.warning(
+                    "Powerline history: 'buckets' is a %s — ignored",
+                    type(raw_buckets).__name__,
+                )
+            raw_buckets = {}
+        for key, buckets in raw_buckets.items():
+            if not isinstance(buckets, dict):
+                _LOGGER.warning(
+                    "Powerline history: bucket group %r is a %s — skipped",
+                    key, type(buckets).__name__,
+                )
+                continue
+            parsed: dict[int, list[int]] = {}
+            for start, agg in buckets.items():
+                try:
+                    if len(agg) != 4:
+                        raise ValueError
+                    parsed[int(start)] = [int(v) for v in agg]
+                except (TypeError, ValueError):
+                    _LOGGER.warning(
+                        "Powerline history: bucket %r/%r is malformed — skipped",
+                        key, start,
+                    )
+            self._buckets[key] = parsed
+
+        self._online = {}
+        raw_online = data.get("online")
+        if not isinstance(raw_online, dict):
+            if raw_online is not None:
+                _LOGGER.warning(
+                    "Powerline history: 'online' is a %s — ignored",
+                    type(raw_online).__name__,
+                )
+            raw_online = {}
+        for mac, transitions in raw_online.items():
+            if not isinstance(transitions, (list, tuple)):
+                _LOGGER.warning(
+                    "Powerline history: transitions for %r are a %s — skipped",
+                    mac, type(transitions).__name__,
+                )
+                continue
+            parsed_transitions: list[list[Any]] = []
+            for transition in transitions:
+                try:
+                    ts, online = transition
+                    ts = float(ts)
+                except (TypeError, ValueError):
+                    _LOGGER.warning(
+                        "Powerline history: transition %r for %r is malformed — skipped",
+                        transition, mac,
+                    )
+                    continue
+                parsed_transitions.append([ts, bool(online)])
+            self._online[mac] = parsed_transitions
+
         self._recurring_low_hours_cache.clear()
         self._recurring_cache_hour = None

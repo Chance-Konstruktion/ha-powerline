@@ -161,6 +161,14 @@ async def _register_layout_store(hass: HomeAssistant) -> None:
 
         store = Store(hass, 1, f"{DOMAIN}.topology_layout")
         layout = (await store.async_load()) or {}
+        if not isinstance(layout, dict):
+            # Valid JSON with an unexpected structure must not break the
+            # layout websocket later on (#9 M1).
+            _LOGGER.warning(
+                "Powerline layout store holds a %s instead of an object — ignored",
+                type(layout).__name__,
+            )
+            layout = {}
         hass.data[_DATA_LAYOUT_STORE] = store
     except ImportError:  # pragma: no cover - Store exists in every real HA
         pass

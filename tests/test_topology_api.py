@@ -265,3 +265,36 @@ class TestLayoutApi(TestCase):
         set_schema = integration._websocket_set_layout._ws_schema
         for field in ("type", "entry_id", "positions", "background", "icon_scale", "icon_style"):
             self.assertIn(field, set_schema)
+
+
+class TestLayoutStoreShape(TestCase):
+    """(#9 M1) A layout store holding valid JSON of the wrong shape (a hand-
+    edited store, schema drift) must not break the layout websocket."""
+
+    def test_non_dict_layout_from_store_is_ignored(self):
+        import asyncio
+        from unittest.mock import patch
+
+        class _BadStore:
+            def __init__(self, hass, version, key):
+                self.key = key
+
+            async def async_load(self):
+                return ["positions", "background"]
+
+        hass = type("Hass", (), {"data": {}})()
+
+        async def load():
+            with patch("homeassistant.helpers.storage.Store", _BadStore):
+                await integration._register_layout_store(hass)
+
+        asyncio.run(load())
+
+        self.assertEqual(hass.data[integration._DATA_LAYOUT], {})
+
+        # The websocket handler answers normally instead of crashing.
+        connection = _Connection()
+        integration._websocket_get_layout(hass, connection, {"id": 3})
+        msg_id, payload = connection.results[0]
+        self.assertEqual(payload["positions"], {})
+        self.assertEqual(connection.errors, [])
