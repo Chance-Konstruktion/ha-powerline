@@ -121,9 +121,9 @@ Settings → Devices & Services → Add Integration → "Powerline"
 |--------|------|---------|
 | TX Rate / RX Rate | Sensor | Enabled |
 | Status | Binary Sensor (`connectivity`) | Enabled |
-| LED | Switch | Disabled |
-| Power Saving | Switch | Disabled |
-| QoS Priority | Select | Disabled |
+| LED | Switch | Enabled |
+| Power Saving | Switch | Enabled |
+| QoS Priority | Select | Enabled |
 | Restart | Button (`restart`) | FRITZ!Powerline only |
 
 **What the controls do** (mirrors the tpPLC app):
@@ -132,7 +132,7 @@ Settings → Devices & Services → Add Integration → "Powerline"
 - **Power Saving** — reduces the adapter's power consumption when the connected device has been switched off or unplugged for ~5 minutes.
 - **QoS Priority** — choose the traffic type to give the highest priority: **Internet**, **Online Games**, **Audio / Video**, or **Voice over IP**.
 
-LED / Power Saving / QoS are disabled by default — enable them per entity. They work on both Broadcom and Qualcomm (AV500) adapters. On **FRITZ!Powerline (AVM)** only the **LED** switch is created — those devices have no QoS or power-saving setting, so those entities are deliberately omitted.
+LED / Power Saving / QoS are enabled by default — disable them per entity if you don't need them. They work on both Broadcom and Qualcomm (AV500) adapters. On **FRITZ!Powerline (AVM)** only the **LED** switch is created — those devices have no QoS or power-saving setting, so those entities are deliberately omitted.
 
 ---
 

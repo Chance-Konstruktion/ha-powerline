@@ -218,9 +218,9 @@ Settings → Devices & Services → Add Integration → "Powerline"
 |--------|------|---------|
 | TX Rate / RX Rate | Sensor | Enabled |
 | Status | Binary Sensor (`connectivity`) | Enabled |
-| LED | Switch | Disabled |
-| Power Saving | Switch | Disabled |
-| QoS Priority | Select | Disabled |
+| LED | Switch | Enabled |
+| Power Saving | Switch | Enabled |
+| QoS Priority | Select | Enabled |
 | Restart | Button (`restart`) | FRITZ!Powerline only |
 
 **What the controls do** (mirrors the tpPLC app):
@@ -230,10 +230,10 @@ Settings → Devices & Services → Add Integration → "Powerline"
 - **QoS Priority** — choose the traffic type to give the highest priority:
   **Internet**, **Online Games**, **Audio / Video**, or **Voice over IP**.
 
-LED / Power Saving / QoS are disabled by default — enable them per entity. They
-work on both Broadcom and Qualcomm (AV500) adapters. On **FRITZ!Powerline (AVM)**
-only the **LED** switch is created — those devices have no QoS or power-saving
-setting, so those entities are deliberately omitted.
+LED / Power Saving / QoS are enabled by default — disable them per entity if you
+don't need them. They work on both Broadcom and Qualcomm (AV500) adapters. On
+**FRITZ!Powerline (AVM)** only the **LED** switch is created — those devices
+have no QoS or power-saving setting, so those entities are deliberately omitted.
 </details>
 
 <details>
@@ -492,7 +492,8 @@ adapters — verified on AV1000 and AV500. If a toggle has no effect: make sure 
 adapter is **online** (an offline adapter shows its controls as *unavailable*),
 and note that other/older chipsets or firmware may not expose these controls.
 On **FRITZ!Powerline (AVM)** only **LED** is available (the device has no QoS or
-power-saving setting); restart/reset are not implemented yet.
+power-saving setting); a **Restart** button is provided, factory reset is not
+implemented yet.
 See the [feature matrix](#-supported-hardware).
 </details>
 
@@ -517,7 +518,7 @@ Capture the official tpPLC app performing an action and compare with
 - [x] **Topology card:** live mesh graph (nodes/edges/analysis) with a bundled Lovelace card, topology events on the HA bus and a `powerline/topology` websocket API — see the **Topology Card** section above.
 - [ ] **FRITZ!Powerline factory reset:** a separate one-shot AVM MME — pending a capture of the reset action from the FRITZ!Powerline app.
 - [x] **AV2000 capability bit:** rate parsing distinguishes peer link rates from advertised PLC capability using bit 11 of the rate field, following real adapter captures ([#112](https://github.com/Chance-Konstruktion/ha-powerline/pull/112)).
-- [ ] **Same-chipset link rates (two AV500 adapters):** the limitation is still under investigation; #112 fixes the AV2000 capability-bit interpretation, not same-chipset AV500 link-rate reporting.
+- [x] **Same-chipset link rates (two AV500 adapters):** verified since 0.2 — the Qualcomm paths read per-peer station lists (VS_NW_INFO), so AV500↔AV500 pairs report their rates (see the [hardware matrix](#-supported-hardware)).
 - [ ] **G.hn powerline** *(maybe someday)* — G.hn (ITU-T G.9960/61, e.g. devolo Magic) is a **separate, incompatible** standard and would need its own module. On the wishlist for if/when suitable adapter hardware is available to capture and test. Until then, Zyxel PLA6457 owners can use [dieneuser/zyxel_pla](https://github.com/dieneuser/zyxel_pla).
 
 ---

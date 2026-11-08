@@ -4,6 +4,13 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from custom_components.powerline import homeplug as _MODULE
+from custom_components.powerline.homeplug.fritz import (
+    AVM_PIB_SIZE,
+    FRITZ_LED_OFFSETS,
+    FRITZ_LED_OFF,
+    FRITZ_LED_ON,
+)
+from custom_components.powerline.homeplug.const import QCA_POWERSAVE_PROBE
 
 HomeplugAV = _MODULE.HomeplugAV
 MX_ACTION_CNF = _MODULE.MX_ACTION_CNF
@@ -784,3 +791,53 @@ class TestInt6x00Led(TestCase):
         with patch.object(hp, "_send_recv",
                           return_value=[(0xA095, "4C:60:DE:D3:9E:7D", bad)]):
             self.assertFalse(hp._set_led_int6x00("4C:60:DE:D3:9E:7D", True))
+
+
+class TestFritzStateQuery(TestCase):
+    """(#9 M3) A FRITZ!Powerline PIB (AVM size) must be read at the AVM LED
+    offsets. The generic QCA offsets read past the AVM LED table (it ends at
+    0x1F23), so the guard usually failed and the LED showed the default; and
+    the generic power-saving probe byte is meaningless on AVM firmware."""
+
+    FRITZ = "5C:49:79:11:22:33"   # AVM OUI (see fritz.py)
+
+    def _pib(self, led_value: int) -> bytes:
+        pib = bytearray(AVM_PIB_SIZE)
+        for i in range(len(pib)):
+            pib[i] = i & 0xFF                      # arbitrary content
+        for o in FRITZ_LED_OFFSETS:
+            pib[o] = led_value                     # 0x00 = on, 0x01 = off
+        return bytes(pib)
+
+    def _query(self, pib: bytes) -> dict:
+        hp = HomeplugAV("eth0")
+        hp._chipset_by_mac = {self.FRITZ: "qualcomm"}
+        hp._sock_mx = MagicMock()
+        hp._sock_hpav = MagicMock()
+        with patch.object(hp, "_open_hpav"), patch.object(hp, "_close"), \
+             patch.object(hp, "_pib_size", return_value=AVM_PIB_SIZE), \
+             patch.object(hp, "_qca_read_pib", return_value=pib):
+            return hp.query_device_states([self.FRITZ])
+
+    def test_fritz_led_off_read_at_avm_offsets(self) -> None:
+        states = self._query(self._pib(FRITZ_LED_OFF))
+        self.assertIs(False, states[self.FRITZ]["led"])
+
+    def test_fritz_led_on_read_at_avm_offsets(self) -> None:
+        states = self._query(self._pib(FRITZ_LED_ON))
+        self.assertIs(True, states[self.FRITZ]["led"])
+
+    def test_fritz_power_saving_stays_none(self) -> None:
+        # AVM has no power-saving setting; a random PIB byte (here exactly the
+        # QCA probe byte, set to the captured "on" value) must not be reported
+        # as the power-saving state.
+        pib = bytearray(self._pib(FRITZ_LED_ON))
+        pib[QCA_POWERSAVE_PROBE] = 0x01
+        states = self._query(bytes(pib))
+        self.assertIsNone(states[self.FRITZ]["power_saving"])
+
+    def test_fritz_unverified_led_bytes_report_no_state(self) -> None:
+        # Not 0x00/0x01 at the AVM table: different AVM model/firmware —
+        # better no state than a wrong one (same guard as the write path).
+        states = self._query(self._pib(0x42))
+        self.assertIsNone(states[self.FRITZ]["led"])

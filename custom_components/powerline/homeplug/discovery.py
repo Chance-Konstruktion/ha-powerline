@@ -1,5 +1,6 @@
 """Adapter discovery and PHY-rate collection."""
 import struct
+import time
 
 from .const import (
     BROADCAST_MAC,
@@ -47,6 +48,17 @@ from .parsers import (
     parse_qca_nw_info_stations,
     parse_qca_nw_stats_cnf,
 )
+
+# Total budget for the rate hunt plus the info/role queries inside one
+# discover() call. Locally nothing enforces a deadline, but the remote probe
+# client aborts a /v1/discover request after REQUEST_TIMEOUT (30 s) and two
+# failed polls flip every entity to "unavailable" (#9 M5). The fixed
+# per-adapter fallback cascade ran 60+ s on a silent network with only three
+# adapters. 18 s keeps the full worst case (≤5 s discovery preamble + budget
+# + one 3 s window) below the client timeout. Phases are skipped only once
+# nothing has answered the whole time — a network that answers returns
+# earlier by design (found -> return), so it never reaches the tail.
+DISCOVERY_RATE_BUDGET = 18.0
 
 
 def _hfid_text(val: bytes) -> str:
@@ -174,14 +186,17 @@ class DiscoveryMixin:
         else:
             _LOGGER.info("No MEDIAXTREAM responses; trying Qualcomm path")
 
+        # Steps 3-5 run against one shared budget so a single discover() can
+        # never outlast the remote probe's client timeout (#9 M5).
+        deadline = time.monotonic() + DISCOVERY_RATE_BUDGET
         # Step 3: Get TX/RX rates
-        self._fetch_rates(devices)
+        self._fetch_rates(devices, deadline)
 
         # Step 4: Get firmware/model info
-        self._fetch_device_info(devices)
+        self._fetch_device_info(devices, deadline)
 
         # Step 5: Network role (CCo MAC) for the topology graph
-        self._fetch_network_roles(devices)
+        self._fetch_network_roles(devices, deadline)
         self._annotate_capabilities(devices)
 
         self._close()
@@ -242,7 +257,12 @@ class DiscoveryMixin:
                 d["tx_rate"] = tx
                 d["rx_rate"] = rx
 
-    def _fetch_rates(self, devices: dict) -> bool:
+    @staticmethod
+    def _budget_left(deadline: float | None) -> bool:
+        """True while the discovery budget still has room (None = no budget)."""
+        return deadline is None or time.monotonic() < deadline
+
+    def _fetch_rates(self, devices: dict, deadline: float | None = None) -> bool:
         found = False
 
         # Note: even a single adapter can report its own PHY rate to other
@@ -282,6 +302,8 @@ class DiscoveryMixin:
         qca = False
         macs = list(devices.keys())
         for mac in macs:
+            if not self._budget_left(deadline):
+                break
             dst = mac_to_bytes(mac)
             frame = build_qca_frame(dst, self._src_mac, VS_NW_INFO_REQ)
             for mmtype, src, data in self._send_recv(
@@ -357,6 +379,8 @@ class DiscoveryMixin:
         # Unicast to each adapter, then broadcast as fallback.
         _LOGGER.debug("Trying MX NW_STATS (0xA02C) unicast...")
         for mac in list(devices.keys()):
+            if not self._budget_left(deadline):
+                break
             if self._mac_chipset(mac) == "qualcomm":
                 continue  # QCA adapter — answered VS_NW_INFO, skip MEDIAXTREAM
             dst = mac_to_bytes(mac)
@@ -384,6 +408,10 @@ class DiscoveryMixin:
                             _LOGGER.info("NW_STATS unicast: "
                                          "%s TX=%d RX=%d", m, tx, rx)
 
+        if not found and not self._budget_left(deadline):
+            # Budget spent: nothing has answered the whole time — the
+            # remaining fallback phases only burn fixed windows (#9 M5).
+            return found
         if not found:
             _LOGGER.debug("Trying MX NW_STATS (0xA02C) broadcast...")
             frame = build_mx_frame(BROADCAST_MAC, self._src_mac,
@@ -413,8 +441,14 @@ class DiscoveryMixin:
             return True
 
         # ── B: MX LINK_STATS (0xA032) UNICAST — per-link rate query ──
+        if not self._budget_left(deadline):
+            # Budget spent: nothing has answered the whole time — the
+            # remaining fallback phases only burn fixed windows (#9 M5).
+            return found
         _LOGGER.debug("Trying MX LINK_STATS (0xA032) unicast...")
         for mac in list(devices.keys()):
+            if not self._budget_left(deadline):
+                break
             dst = mac_to_bytes(mac)
             frame = build_mx_frame(dst, self._src_mac,
                                    MX_LINK_STATS_REQ,
@@ -442,8 +476,12 @@ class DiscoveryMixin:
             return True
 
         # ── C: MX GET_STATION_INFO (0xA04C) UNICAST to each adapter ──
+        if not self._budget_left(deadline):
+            return found
         _LOGGER.debug("Trying MX GET_STATION_INFO (0xA04C) unicast...")
         for mac in list(devices.keys()):
+            if not self._budget_left(deadline):
+                break
             dst = mac_to_bytes(mac)
             frame = build_mx_frame(dst, self._src_mac,
                                    MX_GET_STATION_REQ,
@@ -461,8 +499,12 @@ class DiscoveryMixin:
             return True
 
         # ── D: MX NW_INFO UNICAST (0xA028) per adapter ──
+        if not self._budget_left(deadline):
+            return found
         _LOGGER.debug("Trying MX NW_INFO (0xA028) UNICAST per adapter...")
         for mac in list(devices.keys()):
+            if not self._budget_left(deadline):
+                break
             dst = mac_to_bytes(mac)
             frame = build_mx_frame(
                 dst, self._src_mac, MX_NW_INFO_REQ,
@@ -490,6 +532,8 @@ class DiscoveryMixin:
             return True
 
         # ── E: MX NW_INFO BROADCAST (0xA028) ──
+        if not self._budget_left(deadline):
+            return found
         _LOGGER.debug("Trying MX NW_INFO (0xA028) broadcast...")
         frame = build_mx_frame(
             BROADCAST_MAC, self._src_mac, MX_NW_INFO_REQ,
@@ -513,6 +557,8 @@ class DiscoveryMixin:
             return True
 
         # ── F: Qualcomm VS_NW_STATS on 0x88E1 (fallback) ──
+        if not self._budget_left(deadline):
+            return found
         _LOGGER.debug("Trying QCA VS_NW_STATS (0xA048) on 0x88E1...")
         frame = build_qca_frame(BROADCAST_MAC, self._src_mac,
                                 VS_NW_STATS_REQ)
@@ -582,7 +628,7 @@ class DiscoveryMixin:
 
     # ── Network Roles (CCo detection) ─────────────────────
 
-    def _fetch_network_roles(self, devices: dict) -> None:
+    def _fetch_network_roles(self, devices: dict, deadline: float | None = None) -> None:
         """Learn each network's Central Coordinator via MX NW_INFO (0xA028).
 
         The confirm's network block carries the CCo MAC, which the topology
@@ -593,6 +639,9 @@ class DiscoveryMixin:
         skipped; their role stays unknown.
         """
         for mac in list(devices.keys()):
+            if not self._budget_left(deadline):
+                # Not marked attempted: the next poll retries (#9 M5).
+                break
             if self._mac_chipset(mac) == "qualcomm":
                 continue
             if mac in self._roles_attempted:
@@ -619,13 +668,16 @@ class DiscoveryMixin:
 
     # ── Device Info ───────────────────────────────────────
 
-    def _fetch_device_info(self, devices: dict):
+    def _fetch_device_info(self, devices: dict, deadline: float | None = None):
         for mac in list(devices.keys()):
             # Firmware/model rarely change and the queries are slow (and time
             # out on adapters that don't answer). Try each adapter only once
             # per session instead of every poll.
             if mac in self._info_attempted and devices[mac].get("firmware_ver"):
                 continue
+            if not self._budget_left(deadline):
+                # Not marked attempted: the next poll retries (#9 M5).
+                break
             self._info_attempted.add(mac)
             dst = mac_to_bytes(mac)
             cs = self._mac_chipset(mac)
