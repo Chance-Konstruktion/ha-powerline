@@ -58,6 +58,9 @@ API_VERSION = 1
 # contract above is frozen; this is not part of it.
 #
 # 5 -- `anchors`: say what a node is near when you cannot say where it is.
+# 6 -- never carried by this copy: it jumped straight to 7 (see below).
+# 7 -- number only: the content already matched the hub's SDK, but the
+#      stale number made the hub report `sdk_outdated` in its diagnostics.
 SDK_VERSION = 7
 
 # ── Spatial vocabulary (Specification 1.0) ───────────────────────────

@@ -5,7 +5,7 @@ when new devices are discovered during polling.
 """
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass, SensorEntity, SensorStateClass,
