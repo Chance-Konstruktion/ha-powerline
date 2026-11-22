@@ -67,6 +67,15 @@ _ensure(
 )
 
 
+# -- homeassistant.const ------------------------------------------------------
+# homeassistant.core is stubbed below without importing the real package, so
+# integration code that imports constants needs its own stub module.
+if "homeassistant.const" not in sys.modules:
+    const = types.ModuleType("homeassistant.const")
+    const.EVENT_HOMEASSISTANT_STOP = "homeassistant_stop"
+    sys.modules["homeassistant.const"] = const
+
+
 # -- homeassistant.core -------------------------------------------------------
 if "homeassistant.core" not in sys.modules:
     core = types.ModuleType("homeassistant.core")

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import voluptuous as vol
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -172,6 +173,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.register_new_device_callback(
         lambda devices: _persist_discovered_devices(hass, entry, devices)
     )
+
+    # The coordinator saves the history on a fixed cadence (#11); flush the
+    # last few minutes on stop so short sessions keep their history too.
+    entry.async_on_unload(
+        hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, coordinator.async_flush_history
+        )
+    )
+
     await coordinator.async_config_entry_first_refresh()
     # Also capture anything already present on the first refresh, including
     # devices that were seeded without passing through the new-device callback.

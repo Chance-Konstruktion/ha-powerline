@@ -44,6 +44,13 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   Entity-Registry statt ueber den Namen.
 - Kein KeyError mehr im Log, wenn sich Optionen eines nicht geladenen
   Eintrags aendern (etwa beim Loeschen eines Adapter-Geraets).
+- **Topologie-Verlauf wird auch bei Poll-Intervallen unter 300 s gespeichert.**
+  `Store.async_delay_save` ist ein Debounce: Kammen Polls schneller als alle
+  300 s (Standard: 120 s), schob jeder Poll den ausstehenden Schreibzeitpunkt
+  weiter nach hinten -- geschrieben wurde nur noch beim Herunterfahren, ein
+  Absturz verlor die gesamte Linkraten-Historie. Der Coordinator schreibt
+  jetzt selbst im 300-s-Takt und flusht beim Stoppen von Home Assistant
+  die letzten Minuten nach (#11).
 
 ## [261031] - 2026-10-31
 

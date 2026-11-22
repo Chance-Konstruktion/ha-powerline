@@ -19,10 +19,24 @@ from custom_components.powerline.const import (
     DOMAIN,
 )
 
+# conftest.py stubs homeassistant.const before this module is collected.
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+
 
 class _FakeHass:
     def __init__(self):
         self.data = {}
+
+
+class _FakeListenBus:
+    """Records one-shot listeners the way hass.bus.async_listen_once does."""
+
+    def __init__(self):
+        self.listeners = {}
+
+    def async_listen_once(self, event_type, listener):
+        self.listeners.setdefault(event_type, []).append(listener)
+        return lambda: None
 
 
 def _coordinator():
@@ -89,6 +103,7 @@ class _SetupHass(_FakeHass):
 
     def __init__(self):
         super().__init__()
+        self.bus = _FakeListenBus()
         self.http = SimpleNamespace(register_static_path=lambda *a, **k: None)
         self.forwarded = None
         self.unloaded = None
@@ -166,7 +181,9 @@ class TestSetupEntry(IsolatedAsyncioTestCase):
         # forwarded and the update listener is registered on the entry.
         self.assertIn(entry.entry_id, hass.data[DOMAIN])
         self.assertEqual((entry, integration.PLATFORMS), hass.forwarded)
-        self.assertEqual(1, len(entry.unload_hooks))
+        # The options update listener and the history stop flush (#11) are
+        # registered on the entry.
+        self.assertEqual(2, len(entry.unload_hooks))
         # The websocket commands got registered once.
         self.assertEqual(4, len(hass.registered_websocket_commands))
         # And the card script is injected into the frontend.
@@ -255,6 +272,36 @@ class TestSetupEntry(IsolatedAsyncioTestCase):
             len(alert_translations.LOCALES),
             alert_translations._catalog.cache_info().currsize,
         )
+
+    async def test_setup_flushes_history_on_stop(self):
+        """(#11) The cadence save only runs on polls; setup must register the
+        EVENT_HOMEASSISTANT_STOP listener so short sessions flush the last
+        few minutes of link-rate history instead of dropping it."""
+        hass = _SetupHass()
+        entry = _probe_entry({
+            CONF_SIDEBAR_PANEL: False,
+            CONF_SPATIAL_HUB: False,
+        })
+
+        await self._setup(hass, entry)
+
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        self.assertEqual(
+            [coordinator.async_flush_history],
+            hass.bus.listeners[EVENT_HOMEASSISTANT_STOP],
+        )
+
+        # And the flush really writes through to the store.
+        class _SaveStore:
+            def __init__(self):
+                self.saved = []
+
+            async def async_save(self, data):
+                self.saved.append(data)
+
+        coordinator.history_store = _SaveStore()
+        await coordinator.async_flush_history("event")
+        self.assertEqual(1, len(coordinator.history_store.saved))
 
     async def test_setup_without_raw_sockets_and_without_probe_fails_cleanly(self):
         """(#9 K8) The setup error path: no raw sockets and no probe must
