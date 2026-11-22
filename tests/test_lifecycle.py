@@ -93,6 +93,13 @@ class _SetupHass(_FakeHass):
         self.forwarded = None
         self.unloaded = None
 
+        async def run_executor_job(func, *args):
+            # In real Home Assistant this runs in a thread; the synchronous
+            # call is enough to exercise what setup hands to the executor.
+            return func(*args)
+
+        self.async_add_executor_job = run_executor_job
+
         async def forward_entry_setups(entry, platforms):
             self.forwarded = (entry, platforms)
 
@@ -157,6 +164,26 @@ class TestSetupEntry(IsolatedAsyncioTestCase):
         self.assertEqual(4, len(hass.registered_websocket_commands))
         # And the card script is injected into the frontend.
         self.assertEqual(1, len(hass.extra_js_urls))
+
+    async def test_setup_preloads_notification_catalogs(self):
+        """(#12) Alerts are raised from the poll callback on the event loop,
+        so setup must warm the catalog lru_cache in the executor first — the
+        first alert may not open a translation file on the loop."""
+        from custom_components.powerline import alert_translations
+
+        alert_translations._catalog.cache_clear()
+        hass = _SetupHass()
+        entry = _probe_entry({
+            CONF_SIDEBAR_PANEL: False,
+            CONF_SPATIAL_HUB: False,
+        })
+
+        await self._setup(hass, entry)
+
+        self.assertEqual(
+            len(alert_translations.LOCALES),
+            alert_translations._catalog.cache_info().currsize,
+        )
 
     async def test_setup_without_raw_sockets_and_without_probe_fails_cleanly(self):
         """(#9 K8) The setup error path: no raw sockets and no probe must

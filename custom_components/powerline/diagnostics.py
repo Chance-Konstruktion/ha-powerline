@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -60,15 +58,19 @@ MAX_POLL_HISTORY = 20
 MAX_RATE_SAMPLES = 200
 
 
-def _integration_version() -> str | None:
-    """Read the version from the integration manifest."""
+def _integration_version(hass: HomeAssistant) -> str | None:
+    """Version of the loaded integration, without file I/O on the event loop.
+
+    Diagnostics runs on the loop; reading manifest.json there is blocking
+    file I/O, so the version comes from the already-loaded integration object
+    instead (#12, same pattern as spatial._integration_version).
+    """
     try:
-        manifest = json.loads(
-            Path(__file__).with_name("manifest.json").read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
+        from homeassistant.loader import async_get_loaded_integration
+
+        version = async_get_loaded_integration(hass, DOMAIN).version
+    except Exception:  # noqa: BLE001 - cosmetics must never break diagnostics
         return None
-    version = manifest.get("version")
     return str(version) if version is not None else None
 
 
@@ -281,7 +283,7 @@ async def async_get_config_entry_diagnostics(
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if coordinator is None:
         return {
-            "integration": {"domain": DOMAIN, "version": _integration_version()},
+            "integration": {"domain": DOMAIN, "version": _integration_version(hass)},
             "error": "coordinator not loaded",
         }
 
@@ -307,7 +309,7 @@ async def async_get_config_entry_diagnostics(
     options = async_redact_data(dict(entry.options), TO_REDACT)
 
     return {
-        "integration": {"domain": DOMAIN, "version": _integration_version()},
+        "integration": {"domain": DOMAIN, "version": _integration_version(hass)},
         "entry": {
             "version": entry.version,
             "minor_version": entry.minor_version,

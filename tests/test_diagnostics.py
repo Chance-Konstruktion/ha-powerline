@@ -38,6 +38,22 @@ if "homeassistant.components.diagnostics" not in sys.modules:
     if components_module is not None:
         components_module.diagnostics = diagnostics_module
 
+
+# Diagnostics resolves the integration version through the loaded integration
+# object instead of reading manifest.json on the event loop (#12). Stub the
+# loader with Home Assistant's lookup semantics: KeyError when not loaded.
+if "homeassistant.loader" not in sys.modules:
+    loader_module = types.ModuleType("homeassistant.loader")
+
+    def _fake_async_get_loaded_integration(hass, domain):
+        integration = hass.data.get("integrations", {}).get(domain)
+        if integration is None:
+            raise KeyError(domain)
+        return integration
+
+    loader_module.async_get_loaded_integration = _fake_async_get_loaded_integration
+    sys.modules["homeassistant.loader"] = loader_module
+
 from custom_components.powerline.diagnostics import (  # noqa: E402
     async_get_config_entry_diagnostics,
 )
@@ -191,7 +207,12 @@ def test_diagnostics_contains_expected_data_and_redacts_sensitive_values():
         },
         options={"scan_interval": 120, "password": "secret-option-password"},
     )
-    hass = SimpleNamespace(data={"powerline": {"entry-test": coordinator}})
+    hass = SimpleNamespace(
+        data={
+            "integrations": {"powerline": SimpleNamespace(version="261031")},
+            "powerline": {"entry-test": coordinator},
+        }
+    )
 
     diagnostics = asyncio.run(async_get_config_entry_diagnostics(hass, entry))
     exported = json.dumps(diagnostics)
@@ -231,3 +252,22 @@ def test_diagnostics_contains_expected_data_and_redacts_sensitive_values():
     ):
         assert sensitive_value not in exported
     assert "**REDACTED**" in exported
+
+
+def test_diagnostics_version_comes_from_the_loaded_integration():
+    """(#12) Diagnostics runs on the event loop, so the version must come
+    from the loaded integration object — not from reading manifest.json."""
+    hass = SimpleNamespace(
+        data={
+            "integrations": {"powerline": SimpleNamespace(version="42.0-test")},
+            "powerline": {},
+        }
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-test", version=1, minor_version=2, data={}, options={}
+    )
+
+    diagnostics = asyncio.run(async_get_config_entry_diagnostics(hass, entry))
+
+    assert diagnostics["integration"]["domain"] == "powerline"
+    assert diagnostics["integration"]["version"] == "42.0-test"
