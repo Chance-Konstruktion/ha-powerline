@@ -42,6 +42,7 @@ from .const import (
     TOPOLOGY_PANEL_URL,
     get_mac,
 )
+from .alert_translations import async_preload_catalogs
 from .coordinator import TpLinkPowerlineCoordinator
 from .homeplug import is_available
 from .registry import device_for_mac
@@ -96,6 +97,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.alerts_enabled = bool(
         entry.options.get(CONF_TOPOLOGY_ALERTS, DEFAULT_TOPOLOGY_ALERTS)
     )
+
+    # Preload the notification catalogs in the executor: the first alert is
+    # raised from the poll callback on the event loop, and reading the catalog
+    # file there would be blocking file I/O (#12).
+    await async_preload_catalogs(hass)
 
     # Restore link-rate history (survives restarts, ~30 days of aggregates)
     try:

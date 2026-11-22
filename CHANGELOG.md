@@ -12,6 +12,12 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   "Nicht verfuegbar" zu werfen; erst zwei Fehlversuche in Folge melden einen
   Fehler. Ohne vorherigen Stand (erste Abfrage) bleibt es beim ehrlichen
   Fehler ([#109](https://github.com/Chance-Konstruktion/ha-powerline/issues/109)).
+- **Erster Alarm liest keine Datei mehr im Event-Loop.** Die Benachrichtigungs-
+  kataloge werden beim Einrichten einmalig im Executor vorgeladen; bisher
+  oeffnete der erste Alarm je Sprache die Katalogdatei direkt im
+  Ereignis-Loop ("Detected blocking call to open"). Die Diagnose liest die
+  Integrations-Version aus dem geladenen Integrations-Objekt statt per
+  `read_text` aus der manifest.json (#12).
 
 ## [261031] - 2026-10-31
 
