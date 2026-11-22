@@ -6,6 +6,13 @@ from typing import Any
 DOMAIN = "powerline"
 MANUFACTURER = "Powerline"
 
+# unique_id convention (frozen: existing ids must never change, or entity
+# registries break on update). Per-adapter entities use "plc_<mac>_*".
+# Network-wide entities keep the historic "tplink_plc_*" prefix — it
+# predates AVM support and no longer implies the vendor. New network-wide
+# entities use "plc_*"; the "tplink_" spelling stays only for the
+# existing ones.
+
 # Vendor per MAC prefix. Deliberately short: only prefixes seen on hardware
 # this integration was actually tested against, because a half-remembered OUI
 # table that mislabels someone's adapter is worse than the neutral fallback.

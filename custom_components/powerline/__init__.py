@@ -104,6 +104,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_preload_catalogs(hass)
 
     # Restore link-rate history (survives restarts, ~30 days of aggregates)
+    #
+    # The storage key is deliberately global (no entry_id), unlike the
+    # layout store, whose JSON content is keyed by entry id. Safe only as
+    # long as this integration stays single-entry: the config flow aborts
+    # a second entry with "already_configured". If that ever loosens, put
+    # the entry_id into this key first, or two networks' histories mix.
     try:
         from homeassistant.helpers.storage import Store
 

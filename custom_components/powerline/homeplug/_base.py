@@ -3,6 +3,7 @@ import socket
 import struct
 import threading
 import time
+from typing import Any
 
 from .const import ETHERTYPE_HPAV, ETHERTYPE_MEDIAXTREAM, ETH_HDR, _LOGGER
 from .frames import _find_interface, get_iface_mac, mac_to_str
