@@ -456,6 +456,7 @@ class TestHomeplugSetLed(TestCase):
             result = hp.set_led("AA:BB:CC:DD:EE:FF", True)
 
         self.assertTrue(result)
+        self.assertIn("AA:BB:CC:DD:EE:FF", hp._led_last_success)
         close_mock.assert_called_once()
 
     def test_set_led_returns_false_when_only_status_broadcast_seen(self) -> None:

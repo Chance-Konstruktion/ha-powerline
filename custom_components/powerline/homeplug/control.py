@@ -39,8 +39,9 @@ from .parsers import qca_pib_set_byte
 # Some Broadcom adapters briefly stop answering MEDIAXTREAM commands after
 # Apply (0xA020). The normal retry is kept for first-time chipset detection;
 # only an adapter that recently confirmed a Broadcom LED write gets the longer
-# bounded backoff. Total added sleep is 5.5 s, keeping the path inside the
-# coordinator's 30 s command budget even when each retry bails on its first ACK.
+# bounded backoff. Total added sleep is 5.5 s. If a busy adapter drops the first
+# Set Parameter request on each attempt, four 2 s attempts plus backoff fit
+# within the coordinator's 30 s command budget.
 _BROADCOM_LED_RECENT_SUCCESS_SECONDS = 30.0
 _BROADCOM_LED_RETRY_DELAYS = (0.5, 1.5, 3.5)
 
