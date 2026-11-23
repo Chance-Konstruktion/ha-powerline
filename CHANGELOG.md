@@ -2,7 +2,7 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
-## [Unreleased]
+## [261123] - 2026-11-23
 
 ### Fixed
 - **Einzelner fehlgeschlagener Suchlauf wird abgefedert.** Wirft `discover()`
@@ -17,7 +17,24 @@ All notable changes to **Powerline Network** (ha-powerline) are documented here.
   oeffnete der erste Alarm je Sprache die Katalogdatei direkt im
   Ereignis-Loop ("Detected blocking call to open"). Die Diagnose liest die
   Integrations-Version aus dem geladenen Integrations-Objekt statt per
-  `read_text` aus der manifest.json (#12).
+  `read_text` aus der manifest.json.
+- **FRITZ!Powerline: LED-Zustand nach Neustart richtig.** Der Zustand wird an
+  den AVM-eigenen PIB-Stellen gelesen; bisher zeigte der LED-Schalter nach
+  einem HA-Neustart den Standardwert. AVM-Firmware kennt keinen
+  Energiesparmodus, dafuer wird kein geratener Wert mehr angezeigt.
+- **Zustand spaeter gefundener Adapter.** LED, QoS und Energiesparmodus werden
+  auch fuer Adapter abgefragt, die erst nach dem Start auftauchen; eine
+  fehlgeschlagene Zustandsabfrage wird beim naechsten Zyklus wiederholt.
+- **Suchlauf und Diagnose mit Zeitbudget.** Die Discovery-Kaskade und jede
+  Diagnose-Pruefung halten ein festes Zeitbudget ein, statt sich bei stummen
+  Adaptern aufzusummieren.
+- **Robuster gegen beschaedigte Speicherdateien.** Raten-Verlauf und
+  Topologie-Layout mit unerwarteter Struktur werden ignoriert statt das
+  Einrichten oder den Layout-Websocket zu stoeren.
+- **Verbraucher-Korrelation findet umbenannte Raten-Entities** ueber die
+  Entity-Registry statt ueber den Namen.
+- Kein KeyError mehr im Log, wenn sich Optionen eines nicht geladenen
+  Eintrags aendern (etwa beim Loeschen eines Adapter-Geraets).
 
 ## [261031] - 2026-10-31
 
