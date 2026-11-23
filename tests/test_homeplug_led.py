@@ -526,7 +526,7 @@ class TestHomeplugSetLed(TestCase):
         self.assertEqual(4, set_broadcom.call_count)
         self.assertEqual(3, sleep.call_count)
         joined = "\n".join(logs.output)
-        self.assertIn("recently confirmed Broadcom Apply", joined)
+        self.assertIn("recently successful Broadcom LED command", joined)
         self.assertNotIn("may not be supported via Layer 2", joined)
 
 

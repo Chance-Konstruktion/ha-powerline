@@ -238,11 +238,11 @@ class ControlMixin:
 
             cs = self._mac_chipset(mac)
             # Try Broadcom MEDIAXTREAM first (most common for modern TP-Link).
-            # A confirmed previous LED write is evidence that this MAC is
-            # Broadcom, and its firmware may still be committing that Apply.
+            # A previous successful LED write identifies this MAC as Broadcom;
+            # its firmware may still be committing that setting.
             mac_key = mac.upper()
             last_led_success = self._led_last_success.get(mac_key)
-            recent_broadcom_apply = (
+            recent_broadcom_success = (
                 cs == "broadcom"
                 and last_led_success is not None
                 and time.monotonic() - last_led_success
@@ -251,7 +251,7 @@ class ControlMixin:
             if cs in ("broadcom", "unknown"):
                 retry_delays = (
                     _BROADCOM_LED_RETRY_DELAYS
-                    if recent_broadcom_apply
+                    if recent_broadcom_success
                     else (0.5,)
                 )
                 for attempt in range(len(retry_delays) + 1):
@@ -263,10 +263,10 @@ class ControlMixin:
                         self._led_last_success[mac_key] = time.monotonic()
                         return True
 
-                if recent_broadcom_apply:
+                if recent_broadcom_success:
                     _LOGGER.warning(
-                        "LED: %s did not respond after a recently confirmed "
-                        "Broadcom Apply; the adapter may still be committing "
+                        "LED: %s did not respond after a recently successful "
+                        "Broadcom LED command; the adapter may still be applying "
                         "the previous setting or be offline.",
                         mac,
                     )
