@@ -79,10 +79,13 @@ DEFAULT_TOPOLOGY_ALERTS = True
 
 # Optional correlation between Recorder power history and Powerline rates.
 CONF_POWER_SENSORS = "power_sensors"
-CONSUMER_HISTORY_HOURS = 24
+# Four days leave room for three complete UTC-day profiles at any analysis time.
+CONSUMER_HISTORY_HOURS = 24 * 4
 CONSUMER_ANALYSIS_INTERVAL_SECONDS = 300
 CONSUMER_POWER_THRESHOLD_W = 500.0
-# Eight paired observations span ~16 minutes at the default 2-minute poll rate.
+# A correlation needs repeated observations in both load states across several days.
+CONSUMER_MIN_DAYS = 3
+CONSUMER_MIN_SAMPLES_PER_STATE_PER_DAY = 2
 CONSUMER_MIN_OVERLAPPING_SAMPLES = 8
 CONSUMER_MIN_SAMPLES_PER_STATE = 3
 CONSUMER_MIN_RATE_DROP_PERCENT = 30

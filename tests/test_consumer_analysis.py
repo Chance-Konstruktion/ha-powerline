@@ -12,13 +12,26 @@ from custom_components.powerline.consumer_analysis import (
 )
 
 
-def _profile(power_w: float = 600, baseline_rate: float = 600, active_rate: float = 150):
-    """Create 12 aligned two-minute samples: six idle, then six loaded."""
-    power = [(index * 120.0, 0.0 if index < 6 else power_w) for index in range(12)]
-    rates = [
-        (index * 120.0, baseline_rate if index < 6 else active_rate)
-        for index in range(12)
-    ]
+def _profile(
+    power_w: float = 600,
+    baseline_rate: float = 600,
+    active_rate: float = 150,
+    days: int = 3,
+):
+    """Create six idle and six loaded rate samples on each UTC day."""
+    power = []
+    rates = []
+    for day in range(days):
+        start = float(day * 86400)
+        power.extend([(start + 3600, 0.0), (start + 7200, power_w)])
+        rates.extend(
+            (start + 3600 + index * 120, baseline_rate)
+            for index in range(6)
+        )
+        rates.extend(
+            (start + 7200 + index * 120, active_rate)
+            for index in range(6)
+        )
     return power, rates
 
 
@@ -32,7 +45,38 @@ def test_consumer_above_threshold_correlates_with_a_clear_link_drop():
     assert result["baseline_rate"] == 600
     assert result["active_rate"] == 150
     assert result["drop_percent"] == 75
-    assert result["overlapping_samples"] == 12
+    assert result["overlapping_samples"] == 36
+    assert result["days_observed"] == 3
+
+
+def test_short_single_day_coincidence_does_not_produce_a_hint():
+    power, rates = _profile(days=1)
+
+    assert len(rates) >= 8
+    assert correlate_power_and_rate(power, rates) is None
+
+
+def test_two_days_of_repeated_samples_are_not_enough():
+    power, rates = _profile(days=2)
+
+    assert len(rates) >= 8
+    assert correlate_power_and_rate(power, rates) is None
+
+
+def test_every_observed_day_needs_both_load_states():
+    power, rates = _profile(days=3)
+    # On the middle day only one active-state rate was observed. The other
+    # two days still contain enough samples overall, but only two days qualify.
+    rates = [
+        (timestamp, rate)
+        for timestamp, rate in rates
+        if not (
+            int(timestamp // 86400) == 1
+            and timestamp >= 86400 + 7200 + 120
+        )
+    ]
+
+    assert correlate_power_and_rate(power, rates) is None
 
 
 def test_flat_rate_does_not_produce_a_consumer_hint():
@@ -91,6 +135,7 @@ def test_consumer_correlation_notification_is_translated_in_both_languages():
         "drop_percent": 75,
         "baseline_rate": 600,
         "active_rate": 150,
+        "days_observed": 3,
     }
     english = alert_notification_text("en-US", "consumer_correlation", **values)
     german = alert_notification_text(
@@ -103,6 +148,8 @@ def test_consumer_correlation_notification_is_translated_in_both_languages():
     assert "Washing machine" in english["message"]
     assert "75 %" in german["message"]
     assert "Waschmaschine" in german["message"]
+    assert "3 verschiedenen Tagen" in german["message"]
+    assert "3 different days" in english["message"]
 
 
 class _FakeRegistry:

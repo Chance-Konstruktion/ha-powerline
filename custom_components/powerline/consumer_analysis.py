@@ -12,9 +12,11 @@ from statistics import median
 from typing import Any
 
 from .const import (
+    CONSUMER_MIN_DAYS,
     CONSUMER_MIN_OVERLAPPING_SAMPLES,
     CONSUMER_MIN_RATE_DROP_PERCENT,
     CONSUMER_MIN_SAMPLES_PER_STATE,
+    CONSUMER_MIN_SAMPLES_PER_STATE_PER_DAY,
     CONSUMER_POWER_THRESHOLD_W,
 )
 
@@ -142,9 +144,10 @@ def correlate_power_and_rate(
     """Detect a material rate drop while a consumer is drawing above threshold.
 
     Each rate point is paired with the latest known power state at or before
-    its timestamp. A hint requires at least eight overlapping observations,
-    including three with the consumer active and three inactive; without both
-    regimes there is no comparison baseline.
+    its timestamp. A hint needs the global sample minimum and at least
+    CONSUMER_MIN_DAYS UTC dates with repeated rate observations in both the
+    active and inactive power states. A single day's brief coincidence cannot
+    produce a notification.
     """
     if not power_samples or not rate_samples:
         return None
@@ -155,6 +158,8 @@ def correlate_power_and_rate(
     current_power: float | None = None
     active_rates: list[float] = []
     inactive_rates: list[float] = []
+    active_by_day: dict[int, int] = {}
+    inactive_by_day: dict[int, int] = {}
 
     for timestamp, rate in rates:
         while power_index < len(power) and power[power_index][0] <= timestamp:
@@ -162,16 +167,26 @@ def correlate_power_and_rate(
             power_index += 1
         if current_power is None or rate is None or rate < 0:
             continue
+        utc_day = int(timestamp // 86400)
         if current_power > threshold_w:
             active_rates.append(rate)
+            active_by_day[utc_day] = active_by_day.get(utc_day, 0) + 1
         else:
             inactive_rates.append(rate)
+            inactive_by_day[utc_day] = inactive_by_day.get(utc_day, 0) + 1
 
     overlaps = len(active_rates) + len(inactive_rates)
+    observed_days = sum(
+        1
+        for day, active_count in active_by_day.items()
+        if active_count >= CONSUMER_MIN_SAMPLES_PER_STATE_PER_DAY
+        and inactive_by_day.get(day, 0) >= CONSUMER_MIN_SAMPLES_PER_STATE_PER_DAY
+    )
     if (
         overlaps < CONSUMER_MIN_OVERLAPPING_SAMPLES
         or len(active_rates) < CONSUMER_MIN_SAMPLES_PER_STATE
         or len(inactive_rates) < CONSUMER_MIN_SAMPLES_PER_STATE
+        or observed_days < CONSUMER_MIN_DAYS
     ):
         return None
 
@@ -189,6 +204,7 @@ def correlate_power_and_rate(
         "active_rate": round(active),
         "drop_percent": drop_percent,
         "overlapping_samples": overlaps,
+        "days_observed": observed_days,
     }
 
 

@@ -54,7 +54,7 @@
           "power_sensors": "Leistungssensoren für den Vergleich mit Verbindungsraten (optional)"
         },
         "data_description": {
-          "power_sensors": "Sensoren mit device_class power auswählen. Werte über 500 W werden mit Powerline-Raten der letzten 24 Stunden aus dem Recorder verglichen."
+          "power_sensors": "Sensoren mit device_class power auswählen. Werte über 500 W werden mit Powerline-Raten der letzten vier Tage aus dem Recorder verglichen. Ein Hinweis erscheint erst nach Messungen an mindestens drei verschiedenen Tagen mit und ohne Last."
         }
       }
     }

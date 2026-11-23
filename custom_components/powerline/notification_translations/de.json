@@ -25,6 +25,6 @@
   },
   "consumer_correlation": {
     "title": "Powerline: Verbraucher mit Einbruch verknüpft",
-    "message": "Wenn Leistungssensor **{sensor_name}** über {threshold_w} W liegt, fällt die Strecke **{source} ↔ {destination}** um etwa {drop_percent} % (typisch ohne Last: {baseline_rate} Mbit/s, mit Last: {active_rate} Mbit/s). Das ist ein zeitlicher Zusammenhang in der Recorder-Historie, kein Beweis für eine Ursache."
+    "message": "Wenn Leistungssensor **{sensor_name}** über {threshold_w} W liegt, fällt die Strecke **{source} ↔ {destination}** um etwa {drop_percent} % (typisch ohne Last: {baseline_rate} Mbit/s, mit Last: {active_rate} Mbit/s). Das Muster wurde an {days_observed} verschiedenen Tagen innerhalb der letzten vier Tage beobachtet. Es ist ein zeitlicher Zusammenhang in der Recorder-Historie, kein Beweis für eine Ursache."
   }
 }
