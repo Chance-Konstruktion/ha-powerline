@@ -36,6 +36,16 @@ from .frames import (
 )
 from .parsers import qca_pib_set_byte
 
+# Some Broadcom adapters briefly stop answering MEDIAXTREAM commands after
+# Apply (0xA020). The normal retry is kept for first-time chipset detection;
+# only an adapter that recently confirmed a Broadcom LED write gets the longer
+# bounded backoff. Total added sleep is 5.5 s. If a busy adapter drops the first
+# Set Parameter request on each attempt, four 2 s attempts plus backoff fit
+# within the coordinator's 30 s command budget.
+_BROADCOM_LED_RECENT_SUCCESS_SECONDS = 30.0
+_BROADCOM_LED_RETRY_DELAYS = (0.5, 1.5, 3.5)
+
+
 class ControlMixin:
     """LED, QoS and power-saving actuation."""
 
@@ -227,18 +237,40 @@ class ControlMixin:
                 return False
 
             cs = self._mac_chipset(mac)
-            # Try Broadcom MEDIAXTREAM first (most common for modern TP-Link)
+            # Try Broadcom MEDIAXTREAM first (most common for modern TP-Link).
+            # A previous successful LED write identifies this MAC as Broadcom;
+            # its firmware may still be committing that setting.
+            mac_key = mac.upper()
+            last_led_success = self._led_last_success.get(mac_key)
+            recent_broadcom_success = (
+                cs == "broadcom"
+                and last_led_success is not None
+                and time.monotonic() - last_led_success
+                <= _BROADCOM_LED_RECENT_SUCCESS_SECONDS
+            )
             if cs in ("broadcom", "unknown"):
-                if self._set_led_broadcom(mac, on):
-                    self._led_success_macs.add(mac.upper())
-                    self._mark_chipset(mac, "broadcom")
-                    return True
-                # Retry once after short delay (adapter may be busy)
-                time.sleep(0.5)
-                if self._set_led_broadcom(mac, on):
-                    self._led_success_macs.add(mac.upper())
-                    self._mark_chipset(mac, "broadcom")
-                    return True
+                retry_delays = (
+                    _BROADCOM_LED_RETRY_DELAYS
+                    if recent_broadcom_success
+                    else (0.5,)
+                )
+                for attempt in range(len(retry_delays) + 1):
+                    if attempt:
+                        time.sleep(retry_delays[attempt - 1])
+                    if self._set_led_broadcom(mac, on):
+                        self._led_success_macs.add(mac_key)
+                        self._mark_chipset(mac, "broadcom")
+                        self._led_last_success[mac_key] = time.monotonic()
+                        return True
+
+                if recent_broadcom_success:
+                    _LOGGER.warning(
+                        "LED: %s did not respond after a recently successful "
+                        "Broadcom LED command; the adapter may still be applying "
+                        "the previous setting or be offline.",
+                        mac,
+                    )
+                    return False
 
             # Qualcomm (QCA / AV500): LED lives in the PIB. We do a careful
             # read-modify-write that flips only the 10-byte LED table and writes

@@ -456,6 +456,7 @@ class TestHomeplugSetLed(TestCase):
             result = hp.set_led("AA:BB:CC:DD:EE:FF", True)
 
         self.assertTrue(result)
+        self.assertIn("AA:BB:CC:DD:EE:FF", hp._led_last_success)
         close_mock.assert_called_once()
 
     def test_set_led_returns_false_when_only_status_broadcast_seen(self) -> None:
@@ -476,6 +477,57 @@ class TestHomeplugSetLed(TestCase):
             result = hp.set_led("AA:BB:CC:DD:EE:FF", True)
 
         self.assertFalse(result)
+
+
+    def test_recent_broadcom_apply_uses_patient_retry_until_ack(self) -> None:
+        """A rapid second command retries through the adapter's Apply busy window."""
+        import time
+
+        mac = "B0:19:21:F5:DB:A7"
+        hp = HomeplugAV("eth0")
+        hp._chipset_by_mac = {mac: "broadcom"}
+        hp._led_last_success = {mac: time.monotonic() - 1.0}
+
+        with patch.object(hp, "_open_hpav"), \
+             patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(
+                 hp, "_set_led_broadcom",
+                 side_effect=[False, False, False, True],
+             ) as set_broadcom, \
+             patch("custom_components.powerline.homeplug.control.time.sleep") as sleep:
+            self.assertTrue(hp.set_led(mac, False))
+
+        self.assertEqual(4, set_broadcom.call_count)
+        self.assertEqual(
+            [0.5, 1.5, 3.5],
+            [call.args[0] for call in sleep.call_args_list],
+        )
+        self.assertIn(mac, hp._led_success_macs)
+        self.assertGreater(hp._led_last_success[mac], 0)
+
+    def test_recent_broadcom_apply_exhaustion_does_not_claim_unsupported(self) -> None:
+        """A recently working adapter that is busy/offline is not called unsupported."""
+        import time
+
+        mac = "B0:19:21:F5:DB:A7"
+        hp = HomeplugAV("eth0")
+        hp._chipset_by_mac = {mac: "broadcom"}
+        hp._led_last_success = {mac: time.monotonic() - 1.0}
+
+        with patch.object(hp, "_open_hpav"), \
+             patch.object(hp, "_open_mx"), \
+             patch.object(hp, "_close"), \
+             patch.object(hp, "_set_led_broadcom", return_value=False) as set_broadcom, \
+             patch("custom_components.powerline.homeplug.control.time.sleep") as sleep, \
+             self.assertLogs("custom_components.powerline.homeplug", level="WARNING") as logs:
+            self.assertFalse(hp.set_led(mac, False))
+
+        self.assertEqual(4, set_broadcom.call_count)
+        self.assertEqual(3, sleep.call_count)
+        joined = "\n".join(logs.output)
+        self.assertIn("recently successful Broadcom LED command", joined)
+        self.assertNotIn("may not be supported via Layer 2", joined)
 
 
 class TestQcaQos(TestCase):
