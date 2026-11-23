@@ -1,3 +1,631 @@
+"""DataUpdateCoordinator for Powerline Network.
+
+Uses HomePlug AV raw Ethernet (Layer 2) -- no IP needed.
+Discovers new devices every poll cycle (default 120s).
+"""
+
+import asyncio
+import logging
+from collections import deque
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any, Callable
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .alerts import TopologyAlerts
+from .alert_translations import alert_notification_text
+from .consumer_analysis import fetch_recorder_correlations
+from .const import (
+    CONSUMER_ANALYSIS_INTERVAL_SECONDS,
+    CONSUMER_HISTORY_HOURS,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    TOPOLOGY_EVENT,
+    get_mac,
+    normalize_mac,
+)
+from .history import TopologyHistory
+from .topology import TopologyManager
+
+_LOGGER = logging.getLogger(__name__)
+
+# Control commands (LED, power saving, QoS) are serialized with the poll on a
+# shared lock, so a command issued mid-poll must wait for the poll to finish.
+# This budget must comfortably exceed a full poll, otherwise a command that
+# actually succeeds gets reported as a timeout failure in the UI.
+LED_SET_TIMEOUT = 30.0
+
+# A known adapter only counts as offline after this many polls in a row
+# without an answer. One missed discovery is noise, not an outage: on noisy
+# wiring or across phases a single 5 s broadcast window can come back short or
+# even empty, and flipping every entity to "unavailable" for one cycle is
+# exactly the "lost all device status, then it recovers" from issue #109.
+OFFLINE_AFTER_MISSED_POLLS = 2
+
+# Keep a small in-memory window for reports without growing forever.
+POLL_HISTORY_LIMIT = 20
+
+# The same tolerance applies to the poll as a whole: a discover() that dies
+# on a transient OSError (raw socket send) or an unreachable remote probe
+# must not flip every entity to "unavailable" for a full poll cycle either,
+# when the next poll would simply succeed. Without previous data there is
+# nothing to keep, so the very first failing poll still raises.
+POLL_FAILS_BEFORE_UPDATEFAILED = 2
+
+
+class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Polls Powerline adapters via HomePlug AV Layer 2."""
+
+    # Class-level defaults so coordinators built without __init__ (some unit
+    # tests construct via __new__) still tolerate a failed poll.
+    _poll_failures: int = 0
+    _last_poll_data: dict[str, Any] | None = None
+
+    config_entry: ConfigEntry
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        interface: str | None,
+        initial_devices: list[dict[str, Any]],
+        scan_interval: int = DEFAULT_SCAN_INTERVAL,
+        hp: Any | None = None,
+    ) -> None:
+        # ``hp`` is injected for the remote probe (see remote.py); without it
+        # the adapters are talked to directly on the local interface.
+        if hp is None:
+            from .homeplug import HomeplugAV
+
+            hp = HomeplugAV(interface)
+        self.hp = hp
+        self.interface = interface or self.hp.interface
+        self.devices: dict[str, dict[str, Any]] = {}
+        self._known_macs: set[str] = set()
+        # Consecutive polls each known adapter did not answer.
+        self._missed_polls: dict[str, int] = {}
+        self._new_device_callbacks: list[Callable[[list[dict[str, Any]]], None]] = []
+        self._new_link_callbacks: list[Callable[[list[dict[str, Any]]], None]] = []
+        # Each platform shares the set of MACs it has already created entities
+        # for. forget_device() clears a MAC from all of them so a rediscovered
+        # adapter gets fresh entities instead of being silently skipped.
+        self._tracked_mac_sets: list[set[str]] = []
+        self.led_states: dict[str, bool] = {}
+        self.power_saving_states: dict[str, bool] = {}
+        self.qos_states: dict[str, str] = {}
+        self.topology = TopologyManager()
+        self.history = TopologyHistory()
+        self.alerts = TopologyAlerts()
+        # Set by __init__.py from the config entry options / HA Store.
+        self.alerts_enabled = True
+        self.history_store = None
+        # Selected power entities are read from Recorder only; correlation data
+        # is intentionally not persisted by this integration.
+        self.power_sensors: list[str] = []
+        self._last_consumer_analysis: datetime | None = None
+        self._consumer_alerted: set[tuple[str, str, str]] = set()
+
+        # MACs whose LED/QoS/power-saving state has not been read from the
+        # adapter yet. A failed query is retried on the next poll and adapters
+        # discovered later are queried too — the old single one-shot flag was
+        # also set on failure and left late-found adapters on defaults until
+        # reload (#9 M2).
+        self._states_pending: set[str] = set()
+        self.poll_history: deque[dict[str, Any]] = deque(maxlen=POLL_HISTORY_LIMIT)
+
+        # Index initial devices by MAC (states will be queried on first update)
+        for dev in initial_devices:
+            mac = get_mac(dev)
+            if mac:
+                self.devices[mac] = dev
+                self._known_macs.add(mac)
+        self._states_pending.update(self._known_macs)
+
+        super().__init__(
+            hass, _LOGGER,
+            name=f"{DOMAIN}_homeplug",
+            update_interval=timedelta(seconds=scan_interval),
+        )
+
+    def register_new_device_callback(self, cb: Callable[[list[dict[str, Any]]], None]) -> None:
+        """Register callback for when new devices are discovered."""
+        self._new_device_callbacks.append(cb)
+
+    def register_new_link_callback(
+        self, cb: Callable[[list[dict[str, Any]]], None]
+    ) -> None:
+        """Register a callback that creates Recorder-backed entities for links."""
+        self._new_link_callbacks.append(cb)
+
+    def register_tracked_macs(self, tracked: set[str]) -> None:
+        """Register a platform's set of already-created MACs.
+
+        ``forget_device`` clears the MAC from every registered set, so an
+        adapter that was deleted from the UI but is still plugged in gets its
+        entities created again on the next poll.
+        """
+        self._tracked_mac_sets.append(tracked)
+
+    def forget_device(self, mac: str) -> None:
+        """Drop all in-memory state for a single adapter.
+
+        Called when the user deletes a device from the UI. Wipes the cached
+        device, its known-MAC marker and its LED/QoS/power-saving state, and
+        clears it from every platform's tracked-MAC set. The adapter only
+        stays gone for good if it is genuinely offline (wrongly detected,
+        swapped or unplugged) -- a still-present adapter is rediscovered on
+        the next poll, which is the correct behaviour for hardware that's
+        really there.
+        """
+        mac = normalize_mac(mac)
+        self.devices.pop(mac, None)
+        self._known_macs.discard(mac)
+        self._missed_polls.pop(mac, None)
+        self.led_states.pop(mac, None)
+        self.power_saving_states.pop(mac, None)
+        self.qos_states.pop(mac, None)
+        for tracked in self._tracked_mac_sets:
+            tracked.discard(mac)
+
+    def adapter_online(self, mac: str) -> bool:
+        """Whether an adapter answered the most recent poll.
+
+        Per-adapter entities use this for their ``available`` property, so an
+        offline adapter's sensors/controls show "unavailable" instead of stale
+        values. Unknown MACs (never polled) return False, not online.
+        """
+        dev = self.devices.get(mac)
+        return bool(dev.get("_online", True)) if dev else False
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Full discovery + stats every poll cycle."""
+        try:
+            discovered = await self.hass.async_add_executor_job(
+                self.hp.discover, 5.0
+            )
+        except Exception as err:
+            # One failed poll is noise, not an outage -- same reasoning as
+            # OFFLINE_AFTER_MISSED_POLLS above. A transient OSError on the raw
+            # socket send or an unreachable remote probe would otherwise flip
+            # every entity to "unavailable" for a full poll cycle, even though
+            # the next poll simply succeeds ("lost all device status, then it
+            # recovers", issue #109).
+            self._poll_failures += 1
+            self._record_poll_result(
+                [],
+                status="error",
+                error_type=type(err).__name__,
+                timed_out=isinstance(err, (asyncio.TimeoutError, TimeoutError)),
+            )
+            _LOGGER.debug(
+                "Error polling Powerline adapters: %s", err, exc_info=True)
+            if (self._last_poll_data is None
+                    or self._poll_failures >= POLL_FAILS_BEFORE_UPDATEFAILED):
+                raise UpdateFailed(f"HomePlug AV error: {err}") from err
+            _LOGGER.debug(
+                "Keeping last known data after poll failure %d/%d",
+                self._poll_failures, POLL_FAILS_BEFORE_UPDATEFAILED)
+            return self._last_poll_data
+        self._poll_failures = 0
+
+        try:
+
+            new_devices: list[dict[str, Any]] = []
+
+            # Some unit tests construct this coordinator without running
+            # __init__; make sure the pending set exists before anything
+            # adds to it (same reasoning as _record_poll_result below).
+            if not hasattr(self, "_states_pending"):
+                self._states_pending = set(self.devices)
+
+            for dev in discovered:
+                mac = get_mac(dev)
+                if not mac:
+                    continue
+
+                if mac in self.devices:
+                    self.devices[mac].update(dev)
+                else:
+                    self.devices[mac] = dev
+                    self._states_pending.add(mac)
+                    self.led_states.setdefault(mac, True)
+                    self.power_saving_states.setdefault(mac, False)
+                    self.qos_states.setdefault(mac, "internet")
+                    _LOGGER.info("New Powerline adapter discovered: %s (FW: %s)",
+                                 mac, dev.get("firmware_ver", "?"))
+
+                if mac not in self._known_macs:
+                    self._known_macs.add(mac)
+                    new_devices.append(dev)
+
+            state_query_error: str | None = None
+
+            # Query device states (LED, QoS, Power Saving) for every adapter
+            # whose real state has not been read yet. A failed query is
+            # retried on the next poll (defaults apply meanwhile), and
+            # adapters discovered after the first poll are queried too (#9 M2).
+            pending = {mac for mac in self._states_pending
+                       if mac in self.devices}
+            if pending:
+                try:
+                    queried = await self.hass.async_add_executor_job(
+                        self.hp.query_device_states, sorted(pending)
+                    )
+                    for mac, state in queried.items():
+                        if state.get("led") is not None:
+                            self.led_states[mac] = state["led"]
+                            _LOGGER.info("Initial LED state for %s: %s",
+                                         mac, "ON" if state["led"] else "OFF")
+                        else:
+                            self.led_states.setdefault(mac, True)
+                        if state.get("qos") is not None:
+                            self.qos_states[mac] = state["qos"]
+                            _LOGGER.info("Initial QoS state for %s: %s",
+                                         mac, state["qos"])
+                        else:
+                            self.qos_states.setdefault(mac, "internet")
+                        if state.get("power_saving") is not None:
+                            self.power_saving_states[mac] = state["power_saving"]
+                            _LOGGER.info("Initial Power Saving state for %s: %s",
+                                         mac, "ON" if state["power_saving"] else "OFF")
+                        else:
+                            self.power_saving_states.setdefault(mac, False)
+                    self._states_pending -= pending
+                except Exception as err:
+                    state_query_error = type(err).__name__
+                    _LOGGER.debug("State query failed, using defaults", exc_info=True)
+                    for mac in pending:
+                        self.led_states.setdefault(mac, True)
+                        self.power_saving_states.setdefault(mac, False)
+                        self.qos_states.setdefault(mac, "internet")
+                    # Keep pending: the next poll retries (#9 M2).
+
+            # Ensure all devices have state entries
+            for mac in self.devices:
+                self.led_states.setdefault(mac, True)
+                self.power_saving_states.setdefault(mac, False)
+                self.qos_states.setdefault(mac, "internet")
+
+            # Mark devices not seen in this scan -- but only after
+            # OFFLINE_AFTER_MISSED_POLLS misses in a row (see there).
+            seen_macs = {get_mac(d) for d in discovered}
+            for mac in self.devices:
+                if mac in seen_macs:
+                    self._missed_polls.pop(mac, None)
+                    self.devices[mac]["_online"] = True
+                    continue
+                missed = self._missed_polls.get(mac, 0) + 1
+                self._missed_polls[mac] = missed
+                if missed >= OFFLINE_AFTER_MISSED_POLLS:
+                    self.devices[mac]["_online"] = False
+                else:
+                    _LOGGER.debug("Adapter %s missed poll %d/%d, keeping it online",
+                                  mac, missed, OFFLINE_AFTER_MISSED_POLLS)
+
+            # Notify platforms about new devices so they create entities
+            if new_devices:
+                _LOGGER.info("Notifying platforms about %d new device(s)", len(new_devices))
+                for cb in self._new_device_callbacks:
+                    try:
+                        cb(new_devices)
+                    except Exception:
+                        _LOGGER.exception("Error in new device callback")
+
+            # Build output data
+            online_devices = {m: d for m, d in self.devices.items() if d.get("_online", True)}
+
+            plc_rates: dict[str, dict[str, int]] = {}
+            for mac, dev in self.devices.items():
+                plc_rates[mac] = {
+                    "tx": dev.get("tx_rate", 0),
+                    "rx": dev.get("rx_rate", 0),
+                }
+
+            # Weakest/slowest link: the lowest per-adapter link rate among online
+            # adapters that actually report one. A single number summing all rates
+            # is meaningless; the slowest link is what actually limits the network.
+            links: list[tuple[int, str]] = []
+            for mac, dev in online_devices.items():
+                rates = [r for r in (dev.get("tx_rate", 0), dev.get("rx_rate", 0)) if r > 0]
+                if rates:
+                    links.append((min(rates), mac))
+            slowest = min(links) if links else None
+
+            total = len(self.devices)
+            online = len(online_devices)
+            # Network has a problem if nothing is reachable, or a known adapter
+            # that we have seen before is currently offline.
+            network_problem = online == 0 or online < total
+
+            topology = self.topology.update(
+                self.devices, getattr(self.hp, "plc_links", {})
+            )
+            # Route-rate entities are only created when the user opted into
+            # consumer correlation; otherwise integration behaviour is unchanged.
+            if getattr(self, "power_sensors", []):
+                for callback in self._new_link_callbacks:
+                    try:
+                        callback(topology.get("edges", []))
+                    except Exception:
+                        _LOGGER.exception("Error in topology-link callback")
+            events = self.topology.drain_events()
+            for event in events:
+                self.hass.bus.async_fire(TOPOLOGY_EVENT, event)
+
+            self.history.record(topology)
+            unstable = self.history.most_unstable()
+            if unstable:
+                topology["analysis"]["most_unstable_link"] = unstable
+            if self.history_store is not None:
+                self.history_store.async_delay_save(self.history.as_dict, 300)
+
+            if self.alerts_enabled:
+                for alert in self.alerts.check(topology, self.history, events):
+                    self._notify_alert(alert)
+                if getattr(self, "power_sensors", []):
+                    for alert in await self._async_check_consumer_correlations(topology):
+                        self._notify_alert(alert)
+                elif hasattr(self, "_consumer_alerted"):
+                    self._consumer_alerted.clear()
+            elif hasattr(self, "_consumer_alerted"):
+                self._consumer_alerted.clear()
+
+            self._record_poll_result(
+                discovered,
+                status="partial" if state_query_error else "success",
+                state_query_error=state_query_error,
+            )
+            data = {
+                "online": online > 0,
+                "plc_devices": self.devices,
+                "plc_device_count": online,
+                "plc_device_count_total": total,
+                "plc_rates": plc_rates,
+                "slowest_link": slowest[0] if slowest else None,
+                "slowest_link_mac": slowest[1] if slowest else None,
+                "network_problem": network_problem,
+                "topology": topology,
+            }
+            # Kept so a single failed poll can hand back the last known state
+            # instead of dropping every entity to "unavailable" (see
+            # POLL_FAILS_BEFORE_UPDATEFAILED above).
+            self._last_poll_data = data
+            return data
+
+        except Exception as err:
+            self._record_poll_result(
+                [],
+                status="error",
+                error_type=type(err).__name__,
+                timed_out=isinstance(err, (asyncio.TimeoutError, TimeoutError)),
+            )
+            _LOGGER.debug("Error polling Powerline adapters: %s", err, exc_info=True)
+            raise UpdateFailed(f"HomePlug AV error: {err}") from err
+
+    def _record_poll_result(
+        self,
+        discovered: list[dict[str, Any]],
+        *,
+        status: str,
+        error_type: str | None = None,
+        timed_out: bool = False,
+        state_query_error: str | None = None,
+    ) -> None:
+        """Keep a bounded, message-free record of the latest poll outcomes.
+
+        HomePlug discovery is a broadcast scan, so a missing adapter is
+        recorded as not seen during the scan window rather than claiming a
+        device-specific exception. Raw exception text is deliberately omitted
+        because remote-probe URLs and other local details may appear in it.
+        """
+        # Some existing unit tests construct this coordinator without
+        # running __init__; keep diagnostics collection safe in that case.
+        if not hasattr(self, "poll_history"):
+            self.poll_history = deque(maxlen=POLL_HISTORY_LIMIT)
+
+        seen_macs = {mac for dev in discovered if (mac := get_mac(dev))}
+        device_results: list[dict[str, Any]] = []
+        poll_failed = status == "error"
+
+        for mac, device in sorted(self.devices.items()):
+            seen = mac in seen_macs
+            if poll_failed:
+                device_status = "poll_error"
+                device_error = error_type or "poll_error"
+                device_timed_out = timed_out
+            elif not seen:
+                device_status = "not_seen"
+                device_error = "no_response_during_discovery"
+                device_timed_out = True
+            elif state_query_error:
+                device_status = "state_query_error"
+                device_error = state_query_error
+                device_timed_out = False
+            else:
+                device_status = "ok"
+                device_error = None
+                device_timed_out = False
+
+            device_results.append({
+                "mac": mac,
+                "status": device_status,
+                "error": device_error,
+                "timed_out": device_timed_out,
+                "online": bool(device.get("_online", True)),
+                "missed_polls": self._missed_polls.get(mac, 0),
+                "model": device.get("model") or "",
+                "firmware": device.get("firmware_ver") or device.get("firmware") or "",
+                "chipset": device.get("chipset") or getattr(self.hp, "_chipset", None),
+                "tx_rate": device.get("tx_rate", 0),
+                "rx_rate": device.get("rx_rate", 0),
+            })
+
+        self.poll_history.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": status,
+            "discovered_count": len(discovered),
+            "error_type": error_type,
+            "timed_out": bool(timed_out),
+            "state_query_error_type": state_query_error,
+            "devices": device_results,
+        })
+
+    async def _async_check_consumer_correlations(
+        self, topology: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Compare selected power sensors with link rates from Recorder history."""
+        if not self.power_sensors:
+            self._consumer_alerted.clear()
+            return []
+
+        now = datetime.now(UTC)
+        if (
+            self._last_consumer_analysis is not None
+            and (now - self._last_consumer_analysis).total_seconds()
+            < CONSUMER_ANALYSIS_INTERVAL_SECONDS
+        ):
+            return []
+        self._last_consumer_analysis = now
+
+        # Entity registry access stays on the event loop; only Recorder reads
+        # and numerical analysis are handed to the executor below.
+        from homeassistant.helpers import entity_registry as er
+
+        registry = er.async_get(self.hass)
+
+        edge_specs: list[dict[str, Any]] = []
+        rate_entity_ids: set[str] = set()
+        for edge in topology.get("edges", []):
+            source = edge.get("source")
+            destination = edge.get("destination")
+            if not source or not destination:
+                continue
+            # Registry lookup by (domain, platform, unique_id) — O(1) and
+            # precise. The old full-registry scan over every integration's
+            # entities matched any entry carrying the same unique_id (#9 K6).
+            rate_entity_id = None
+            if registry is not None:
+                rate_entity_id = registry.async_get_entity_id(
+                    "sensor", DOMAIN, f"plc_link_{source}_{destination}_rate"
+                )
+            if not rate_entity_id:
+                continue
+            edge_specs.append(
+                {
+                    "source": source,
+                    "destination": destination,
+                    "entity_ids": [rate_entity_id],
+                }
+            )
+            rate_entity_ids.add(rate_entity_id)
+
+        power_sensor_ids = [
+            sensor_id
+            for sensor_id in dict.fromkeys(self.power_sensors)
+            if isinstance(sensor_id, str) and sensor_id.startswith("sensor.")
+        ]
+        if not edge_specs or not power_sensor_ids:
+            self._consumer_alerted.clear()
+            return []
+
+        sensor_names: dict[str, str] = {}
+        for sensor_id in power_sensor_ids:
+            state = self.hass.states.get(sensor_id)
+            attributes = getattr(state, "attributes", {}) or {}
+            sensor_names[sensor_id] = (
+                attributes.get("friendly_name") or sensor_id
+            )
+
+        entity_ids = sorted(rate_entity_ids | set(power_sensor_ids))
+        try:
+            correlations = await self.hass.async_add_executor_job(
+                fetch_recorder_correlations,
+                self.hass,
+                now - timedelta(hours=CONSUMER_HISTORY_HOURS),
+                now,
+                entity_ids,
+                power_sensor_ids,
+                edge_specs,
+                sensor_names,
+            )
+        except Exception:  # noqa: BLE001 - missing Recorder history must not break polling
+            _LOGGER.debug(
+                "Could not correlate Powerline history with power sensors",
+                exc_info=True,
+            )
+            return []
+
+        active = {
+            (alert["source"], alert["destination"], alert["sensor_id"])
+            for alert in correlations
+        }
+        new_alerts = [
+            alert
+            for alert in correlations
+            if (
+                alert["source"],
+                alert["destination"],
+                alert["sensor_id"],
+            )
+            not in self._consumer_alerted
+        ]
+        self._consumer_alerted = active
+        return new_alerts
+
+    def adapter_name(self, mac: str) -> str:
+        """Device-registry name for a MAC (user rename wins), else the MAC."""
+        try:
+            from .registry import device_for_mac
+
+            device = device_for_mac(self.hass, mac)
+            if device:
+                return device.name_by_user or device.name or mac
+        except Exception:  # noqa: BLE001 - name lookup must never break polling
+            pass
+        return mac
+
+    # Kept for the handful of internal callers that predate the public name.
+    _adapter_name = adapter_name
+
+    def _notify_alert(self, alert: dict[str, Any]) -> None:
+        """Surface a topology alert as a localized persistent notification."""
+        kind = alert["type"]
+        if kind not in {
+            "link_slow",
+            "adapter_removed",
+            "adapter_new",
+            "link_cause",
+            "consumer_correlation",
+        }:
+            return
+
+        try:
+            language = getattr(getattr(self.hass, "config", None), "language", "en")
+            if kind == "link_slow":
+                source = self._adapter_name(alert["source"])
+                destination = self._adapter_name(alert["destination"])
+                text = alert_notification_text(
+                    language,
+                    "link_slow",
+                    source=source,
+                    destination=destination,
+                    minutes=alert["minutes"],
+                    average=alert["average"],
+                    baseline=alert["baseline"],
+                )
+                notification_id = (
+                    f"powerline_slow_{alert['source']}_{alert['destination']}"
+                )
+            elif kind == "adapter_removed":
+                name = self._adapter_name(alert["mac"])
+                text = alert_notification_text(
+                    language, "adapter_removed", name=name, mac=alert["mac"]
+                )
+                notification_id = f"powerline_removed_{alert['mac']}"
+            elif kind == "adapter_new":
+                name = self._adapter_name(alert["mac"])
+                text = alert_notification_text(
                     language, "adapter_new", name=name, mac=alert["mac"]
                 )
                 notification_id = f"powerline_new_{alert['mac']}"
@@ -39,3 +667,111 @@
                 }
                 text = alert_notification_text(language, cause, **values)
                 notification_id = (
+                    f"powerline_cause_{cause}_{alert['source']}_{alert['destination']}"
+                )
+
+            from homeassistant.components.persistent_notification import async_create
+
+            async_create(
+                self.hass,
+                text["message"],
+                title=text["title"],
+                notification_id=notification_id,
+            )
+        except Exception:  # noqa: BLE001 - notifications must never break polling
+            _LOGGER.debug("Could not create persistent notification", exc_info=True)
+
+    async def async_set_led(self, mac: str, on: bool) -> bool:
+        """Set LED on a specific adapter (by MAC)."""
+        try:
+            result = await asyncio.wait_for(
+                self.hass.async_add_executor_job(self.hp.set_led, mac, on),
+                timeout=LED_SET_TIMEOUT,
+            )
+            if result:
+                self.led_states[mac] = on
+            return result
+        except asyncio.TimeoutError:
+            _LOGGER.warning("LED control timed out for %s", mac)
+            return False
+        except Exception:
+            _LOGGER.exception("LED control crashed for %s (on=%s)", mac, on)
+            return False
+
+    async def async_restart_adapter(self, mac: str) -> bool:
+        """Reboot an adapter (soft restart via VS_RS_DEV)."""
+        try:
+            result = await asyncio.wait_for(
+                self.hass.async_add_executor_job(self.hp.restart, mac),
+                timeout=LED_SET_TIMEOUT,
+            )
+            return result
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Restart timed out for %s", mac)
+            return False
+        except Exception:
+            _LOGGER.exception("Restart crashed for %s", mac)
+            return False
+
+    async def async_set_all_leds(self, on: bool) -> bool:
+        """Turn every adapter's LED on/off at once (tpPLC "all LEDs" buttons).
+
+        Reuses the per-adapter ``async_set_led`` so each adapter takes its own
+        chipset path. A QCA (AV500) adapter can *apply* the write but drop the
+        close confirmation, so ``async_set_led`` may report False even though the
+        LED physically changed (Broadcom/AV1000 acks reliably, hence it was fine).
+        Because this is a deliberate "set them all" action — like tpPLC's button —
+        we reflect the requested state for every adapter and log how many
+        explicitly confirmed. The real state is re-read on the next restart.
+        """
+        macs = list(self.devices.keys())
+        if not macs:
+            _LOGGER.warning("All LEDs %s: no adapters known yet",
+                            "on" if on else "off")
+            return False
+        confirmed = 0
+        for mac in macs:
+            if await self.async_set_led(mac, on):
+                confirmed += 1
+            # async_set_led already set led_states on a confirmed write; mirror
+            # the requested state for the rest too (apply-but-no-ack is common
+            # on QCA), so the dashboard matches the physical LEDs.
+            self.led_states[mac] = on
+        _LOGGER.info("All LEDs %s: %d/%d adapters confirmed the write",
+                     "on" if on else "off", confirmed, len(macs))
+        self.async_update_listeners()
+        return True
+
+    async def async_set_power_saving(self, mac: str, on: bool) -> bool:
+        """Set power saving mode on a specific adapter (by MAC)."""
+        try:
+            result = await asyncio.wait_for(
+                self.hass.async_add_executor_job(self.hp.set_power_saving, mac, on),
+                timeout=LED_SET_TIMEOUT,
+            )
+            if result:
+                self.power_saving_states[mac] = on
+            return result
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Power saving control timed out for %s", mac)
+            return False
+        except Exception:
+            _LOGGER.exception("Power saving control crashed for %s (on=%s)", mac, on)
+            return False
+
+    async def async_set_qos_priority(self, mac: str, priority: str) -> bool:
+        """Set QoS priority on a specific adapter (by MAC)."""
+        try:
+            result = await asyncio.wait_for(
+                self.hass.async_add_executor_job(self.hp.set_qos_priority, mac, priority),
+                timeout=LED_SET_TIMEOUT,
+            )
+            if result:
+                self.qos_states[mac] = priority
+            return result
+        except asyncio.TimeoutError:
+            _LOGGER.warning("QoS control timed out for %s", mac)
+            return False
+        except Exception:
+            _LOGGER.exception("QoS control crashed for %s (priority=%s)", mac, priority)
+            return False
