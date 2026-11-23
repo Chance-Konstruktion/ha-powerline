@@ -148,8 +148,8 @@ def test_consumer_correlation_notification_is_translated_in_both_languages():
     assert "Washing machine" in english["message"]
     assert "75 %" in german["message"]
     assert "Waschmaschine" in german["message"]
-    assert "3 verschiedenen Tagen" in german["message"]
-    assert "3 different days" in english["message"]
+    assert "3 UTC-Kalendertagen" in german["message"]
+    assert "3 UTC calendar days" in english["message"]
 
 
 class _FakeRegistry:
