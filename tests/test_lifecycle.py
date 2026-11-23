@@ -107,9 +107,16 @@ class _SetupHass(_FakeHass):
             self.unloaded = (entry, platforms)
             return True
 
+        self.config_updates = []
+
+        def update_entry(entry, data=None):
+            entry.data = data
+            self.config_updates.append(dict(data or {}))
+
         self.config_entries = SimpleNamespace(
             async_forward_entry_setups=forward_entry_setups,
             async_unload_platforms=unload_platforms,
+            async_update_entry=update_entry,
         )
 
 
@@ -164,6 +171,70 @@ class TestSetupEntry(IsolatedAsyncioTestCase):
         self.assertEqual(4, len(hass.registered_websocket_commands))
         # And the card script is injected into the frontend.
         self.assertEqual(1, len(hass.extra_js_urls))
+
+    async def test_setup_persists_devices_seen_on_first_refresh(self):
+        """A device first discovered during setup must be remembered for the next restart."""
+        from unittest.mock import patch
+
+        from custom_components.powerline.coordinator import TpLinkPowerlineCoordinator
+
+        hass = _SetupHass()
+        entry = _probe_entry({CONF_SIDEBAR_PANEL: False, CONF_SPATIAL_HUB: False})
+        discovered = {
+            "mac": "54:FE:E3:00:00:01",
+            "manufacturer": "Broadcom",
+            "model": "Powerline Adapter",
+            "firmware_ver": "1.2.3",
+            "tx_rate": 420,
+            "rx_rate": 380,
+            "_online": True,
+        }
+
+        async def first_refresh(coordinator):
+            coordinator.devices[discovered["mac"]] = dict(discovered)
+
+        with patch.object(
+            TpLinkPowerlineCoordinator,
+            "async_config_entry_first_refresh",
+            new=first_refresh,
+            create=True,
+        ):
+            await integration.async_setup_entry(hass, entry)
+
+        self.assertEqual(
+            [{
+                "mac": discovered["mac"],
+                "manufacturer": "Broadcom",
+                "model": "Powerline Adapter",
+                "firmware_ver": "1.2.3",
+            }],
+            entry.data["devices"],
+        )
+        self.assertEqual("http://probe.invalid", entry.data["probe_url"])
+        self.assertNotIn("tx_rate", entry.data["devices"][0])
+        self.assertNotIn("_online", entry.data["devices"][0])
+
+    async def test_later_discoveries_are_persisted_once(self):
+        """Runtime discovery callbacks remember new adapters without duplicates."""
+        hass = _SetupHass()
+        entry = _probe_entry({CONF_SIDEBAR_PANEL: False, CONF_SPATIAL_HUB: False})
+        await self._setup(hass, entry)
+
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        discovered = {
+            "mac": "54:FE:E3:00:00:02",
+            "model": "Second Adapter",
+            "tx_rate": 120,
+        }
+        callback = coordinator._new_device_callbacks[0]
+        callback([discovered])
+        callback([discovered])
+
+        self.assertEqual(
+            [{"mac": discovered["mac"], "model": "Second Adapter"}],
+            entry.data["devices"],
+        )
+        self.assertEqual(1, len(hass.config_updates))
 
     async def test_setup_preloads_notification_catalogs(self):
         """(#12) Alerts are raised from the poll callback on the event loop,
