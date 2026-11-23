@@ -66,6 +66,54 @@ _DATA_SPATIAL = f"{DOMAIN}_spatial"
 MAX_BACKGROUND_BYTES = 4 * 1024 * 1024
 
 
+def _persist_discovered_devices(
+    hass: HomeAssistant, entry: ConfigEntry, devices: list[dict]
+) -> None:
+    """Remember discovered adapters so offline devices survive HA restarts (#15).
+
+    Only stable identity/display fields are stored. Live rates and the online
+    marker are rebuilt by the next discovery, never restored as stale state.
+    """
+    stored = entry.data.get("devices", [])
+    if not isinstance(stored, list):
+        _LOGGER.warning(
+            "Powerline device list for entry %s is not a list; discoveries not persisted",
+            entry.entry_id,
+        )
+        return
+
+    known_macs: set[str] = set()
+    for stored_device in stored:
+        if isinstance(stored_device, dict):
+            mac = get_mac(stored_device)
+            if mac:
+                known_macs.add(mac)
+
+    additions: list[dict] = []
+    for device in devices:
+        if not isinstance(device, dict):
+            continue
+        mac = get_mac(device)
+        if not mac or mac in known_macs:
+            continue
+
+        # Do not persist poll data such as tx/rx rates or _online. Those values
+        # are runtime observations and must be refreshed after a restart.
+        snapshot = {"mac": mac}
+        for key in ("manufacturer", "model", "firmware_ver"):
+            value = device.get(key)
+            if isinstance(value, str) and value:
+                snapshot[key] = value
+        additions.append(snapshot)
+        known_macs.add(mac)
+
+    if additions:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, "devices": [*stored, *additions]},
+        )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Powerline Network from a config entry."""
     interface = entry.data.get("interface")
@@ -119,7 +167,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except ImportError:  # pragma: no cover - Store exists in every real HA
         pass
 
+    # Persist devices discovered at runtime. Register before the first refresh,
+    # because that first discovery happens before entity platforms are forwarded.
+    coordinator.register_new_device_callback(
+        lambda devices: _persist_discovered_devices(hass, entry, devices)
+    )
     await coordinator.async_config_entry_first_refresh()
+    # Also capture anything already present on the first refresh, including
+    # devices that were seeded without passing through the new-device callback.
+    _persist_discovered_devices(hass, entry, list(coordinator.devices.values()))
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
