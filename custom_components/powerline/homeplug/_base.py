@@ -30,6 +30,9 @@ class _HomeplugBase:
         # state and rate code must branch per MAC — never on one global guess.
         self._chipset_by_mac: dict[str, str] = {}
         self._led_success_macs: set[str] = set()
+        # Monotonic time of the last confirmed Broadcom LED write per adapter.
+        # A second Apply immediately afterwards can hit firmware commit busy time.
+        self._led_last_success: dict[str, float] = {}
         # Firmware/HFID strings learned during discovery, used by FritzMixin to
         # identify AVM "Custom" firmware on AVM OUIs we don't list explicitly.
         self._fw_hint: dict[str, str] = {}
