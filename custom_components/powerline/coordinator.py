@@ -8,6 +8,7 @@ import asyncio
 import logging
 from collections import deque
 from datetime import UTC, datetime, timedelta, timezone
+from time import monotonic
 from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
@@ -54,6 +55,13 @@ POLL_HISTORY_LIMIT = 20
 # nothing to keep, so the very first failing poll still raises.
 POLL_FAILS_BEFORE_UPDATEFAILED = 2
 
+# The link-rate history is persisted on this fixed cadence instead of through
+# the Store's debounce: ``async_delay_save`` postpones the write whenever a
+# new call arrives before the pending timer fires, so with the default poll
+# rate (120 s) against the old 300 s delay the write time ran away forever
+# and the store only ever wrote at HA shutdown (#11).
+HISTORY_SAVE_INTERVAL = 300
+
 
 class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Polls Powerline adapters via HomePlug AV Layer 2."""
@@ -62,6 +70,8 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # tests construct via __new__) still tolerate a failed poll.
     _poll_failures: int = 0
     _last_poll_data: dict[str, Any] | None = None
+    # Monotonic time of the last history write (see _async_save_history).
+    _last_history_save: float | None = None
 
     config_entry: ConfigEntry
 
@@ -357,8 +367,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             unstable = self.history.most_unstable()
             if unstable:
                 topology["analysis"]["most_unstable_link"] = unstable
-            if self.history_store is not None:
-                self.history_store.async_delay_save(self.history.as_dict, 300)
+            self._async_save_history()
 
             if self.alerts_enabled:
                 for alert in self.alerts.check(topology, self.history, events):
@@ -470,6 +479,43 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "state_query_error_type": state_query_error,
             "devices": device_results,
         })
+
+    def _async_save_history(self) -> None:
+        """Persist the link-rate history on a fixed cadence (#11).
+
+        ``Store.async_delay_save`` debounces: a call that arrives before the
+        pending timer fires pushes the write time out again. With the default
+        120 s poll rate against the old 300 s delay the pending write ran
+        away forever and the store only wrote at HA shutdown -- so a crash
+        lost the whole history. Writing ourselves keeps the store current
+        while polling; async_flush_history covers the tail on stop.
+        """
+        if self.history_store is None:
+            return
+        now = monotonic()
+        if (
+            self._last_history_save is not None
+            and now - self._last_history_save < HISTORY_SAVE_INTERVAL
+        ):
+            return
+        self._last_history_save = now
+        self.hass.async_create_background_task(
+            self.history_store.async_save(self.history.as_dict()),
+            f"{DOMAIN}_history_save",
+        )
+
+    async def async_flush_history(self, _event: Any = None) -> None:
+        """Write the current history now, not at the next cadence tick.
+
+        Registered for EVENT_HOMEASSISTANT_STOP (#11): without this a session
+        shorter than HISTORY_SAVE_INTERVAL would keep no link-rate history at
+        all. The write is awaited because stop listeners are awaited before
+        Home Assistant shuts the loop down.
+        """
+        if self.history_store is None:
+            return
+        self._last_history_save = monotonic()
+        await self.history_store.async_save(self.history.as_dict())
 
     async def _async_check_consumer_correlations(
         self, topology: dict[str, Any]

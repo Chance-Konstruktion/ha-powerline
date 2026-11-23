@@ -1,11 +1,13 @@
 """Unit tests for TpLinkPowerlineCoordinator._async_update_data."""
 
+import asyncio
 import types
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # conftest.py installs all HA stubs before this module is collected.
 from custom_components.powerline.coordinator import (
+    HISTORY_SAVE_INTERVAL,
     OFFLINE_AFTER_MISSED_POLLS,
     TpLinkPowerlineCoordinator,
 )
@@ -29,15 +31,51 @@ class _FakeBus:
         self.events.append((event_type, event_data))
 
 
+class _FakeClock:
+    """Controllable stand-in patched over coordinator.monotonic."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class _FakeStore:
+    """Counts what the coordinator hands to the real Store."""
+
+    def __init__(self):
+        self.save_count = 0
+        self.last_data = None
+
+    async def async_save(self, data):
+        self.save_count += 1
+        self.last_data = data
+
+
 class _FakeHass:
     """Minimal hass stub that runs executor jobs synchronously."""
 
     def __init__(self):
         self.bus = _FakeBus()
+        self.background_tasks = []
 
     async def async_add_executor_job(self, func, *args):
         # Simply call the (possibly mocked) function; MagicMock.return_value is returned.
         return func(*args)
+
+    def async_create_background_task(self, coro, name=None, **kwargs):
+        task = asyncio.get_running_loop().create_task(coro, name=name)
+        self.background_tasks.append(task)
+        return task
+
+    async def await_background_tasks(self):
+        if self.background_tasks:
+            await asyncio.gather(*self.background_tasks)
+            self.background_tasks.clear()
 
 
 def _build_coordinator(discover_result, state_result=None):
@@ -122,6 +160,36 @@ class TestAsyncUpdateData(IsolatedAsyncioTestCase):
         await coord._async_update_data()
 
         self.assertEqual(len(callback_received), 0)
+
+    async def test_history_is_saved_on_a_fixed_cadence(self):
+        """(#11) Store.async_delay_save debounces: with polls faster than the
+        delay (the default 120 s poll against the old 300 s delay) every poll
+        pushed the pending write time out again and the store never wrote --
+        the history only survived shutdowns. The coordinator writes itself
+        now, at most once per HISTORY_SAVE_INTERVAL."""
+        devices = [_make_device(MAC_A, tx=200, rx=100), _make_device(MAC_B, tx=300, rx=150)]
+        coord = _build_coordinator(discover_result=devices)
+        store = _FakeStore()
+        coord.history_store = store
+        clock = _FakeClock()
+
+        with patch(
+            "custom_components.powerline.coordinator.monotonic", clock
+        ):
+            # Polls five seconds apart, well under the cadence: only the
+            # first poll may write.
+            for _ in range(3):
+                await coord._async_update_data()
+                clock.advance(5)
+            await coord.hass.await_background_tasks()
+            self.assertEqual(1, store.save_count)
+            self.assertIn("buckets", store.last_data)
+
+            # Once the cadence has passed, the next poll writes again.
+            clock.advance(HISTORY_SAVE_INTERVAL)
+            await coord._async_update_data()
+            await coord.hass.await_background_tasks()
+            self.assertEqual(2, store.save_count)
 
     async def test_single_device_miss_does_not_hide_other_adapters(self):
         device_a = _make_device(MAC_A)
