@@ -2,6 +2,15 @@
 
 All notable changes to **Powerline Network** (ha-powerline) are documented here.
 
+## [Unreleased]
+
+### Improved
+- **Verbraucher-Korrelation ist belastbarer.** Leistungssensoren werden mit
+  vier Tagen Recorder-Historie verglichen. Ein Zusammenhang wird erst gemeldet,
+  wenn an mindestens drei verschiedenen UTC-Tagen jeweils wiederholt sowohl
+  Last- als auch Leerlauf-Messungen vorliegen. Ein einzelner kurzer Einbruch
+  löst dadurch keine Verbraucher-Warnung mehr aus (#7).
+
 ## [261123] - 2026-11-23
 
 ### Fixed

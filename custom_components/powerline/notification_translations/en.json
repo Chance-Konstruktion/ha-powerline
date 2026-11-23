@@ -25,6 +25,6 @@
   },
   "consumer_correlation": {
     "title": "Powerline: consumer-related dip detected",
-    "message": "When power sensor **{sensor_name}** is above {threshold_w} W, the link **{source} ↔ {destination}** is about {drop_percent}% slower (typical without load: {baseline_rate} Mbit/s; under load: {active_rate} Mbit/s). This is a correlation in Recorder history, not proof of causation."
+    "message": "When power sensor **{sensor_name}** is above {threshold_w} W, the link **{source} ↔ {destination}** is about {drop_percent}% slower (typical without load: {baseline_rate} Mbit/s; under load: {active_rate} Mbit/s). The pattern was observed on {days_observed} UTC calendar days in the rolling four-day observation window. This is a correlation in Recorder history, not proof of causation."
   }
 }

@@ -644,6 +644,7 @@ class TpLinkPowerlineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     drop_percent=alert.get("drop_percent", 0),
                     baseline_rate=alert.get("baseline_rate", 0),
                     active_rate=alert.get("active_rate", 0),
+                    days_observed=alert.get("days_observed", 0),
                 )
                 sensor_token = str(alert.get("sensor_id", "sensor")).replace(
                     ".", "_"
